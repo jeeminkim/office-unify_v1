@@ -5,23 +5,67 @@ import { logger, updateHealth } from './logger';
 
 const STATE_FILE = path.join(process.cwd(), 'state', 'discord-panel.json');
 
+type PanelState = {
+    mainPanel: {
+        channelId: string;
+        messageId: string;
+        updatedAt: number;
+    };
+};
+
 export function savePanelState(channelId: string, messageId: string) {
     const dir = path.dirname(STATE_FILE);
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(STATE_FILE, JSON.stringify({ channelId, messageId }, null, 2));
-    logger.info('PANEL', 'State file forcibly saved/updated', { STATE_FILE, channelId, messageId });
+    const nextState: PanelState = {
+        mainPanel: {
+            channelId,
+            messageId,
+            updatedAt: Date.now()
+        }
+    };
+    fs.writeFileSync(STATE_FILE, JSON.stringify(nextState, null, 2));
+    logger.info('PANEL', 'state file updated', { channelId, messageId });
 }
 
 export function loadPanelState(): { channelId: string, messageId: string } | null {
     if (!fs.existsSync(STATE_FILE)) return null;
     try {
         const data = fs.readFileSync(STATE_FILE, 'utf-8');
-        return JSON.parse(data);
+        const parsed = JSON.parse(data);
+        // Backward compatibility: old format { channelId, messageId }
+        if (parsed?.channelId && parsed?.messageId) {
+            return { channelId: parsed.channelId, messageId: parsed.messageId };
+        }
+        if (parsed?.mainPanel?.channelId && parsed?.mainPanel?.messageId) {
+            return {
+                channelId: parsed.mainPanel.channelId,
+                messageId: parsed.mainPanel.messageId
+            };
+        }
+        return null;
     } catch {
+        logger.warn('PANEL', 'panel state file is invalid JSON, recreating');
         return null;
     }
+}
+
+export async function ensureMainPanelOnBoot(client: Client, defaultChannelId?: string): Promise<Message | null> {
+    logger.info('BOOT', 'ensureMainPanelOnBoot entered', {
+        pid: process.pid
+    });
+    const panelMessage = await restoreOrBuildMainPanel(client, defaultChannelId);
+    if (!panelMessage) {
+        logger.error('BOOT', 'main panel restore failed');
+        return null;
+    }
+    // Restart announcement is represented by the main panel itself.
+    logger.info('BOOT', 'restart announcement ensured', {
+        channelId: panelMessage.channel.id,
+        panelMessageId: panelMessage.id
+    });
+    return panelMessage;
 }
 
 export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?: string): Promise<Message | null> {
@@ -33,6 +77,11 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
     });
 
     const state = loadPanelState();
+    logger.info('BOOT', 'main panel state loaded', {
+        hasState: !!state,
+        channelId: state?.channelId || null,
+        messageId: state?.messageId || null
+    });
     const targetChannelId = state?.channelId || defaultChannelId;
 
     if (!targetChannelId) {
@@ -65,6 +114,11 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
     if (state && state.messageId && state.channelId === channel.id) {
         logger.info('PANEL', 'Checking old message validity...', { messageId: state.messageId });
         const oldMsg = await channel.messages.fetch(state.messageId).catch(() => null);
+        logger.info('BOOT', 'main panel existing message fetch result', {
+            found: !!oldMsg,
+            channelId: channel.id,
+            messageId: state.messageId
+        });
         if (oldMsg) {
             // Edit existing
             const editedMsg = await oldMsg.edit(getMainPanel()).catch(e => {
@@ -72,7 +126,11 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
                 return null;
             });
             if (editedMsg) {
-                logger.info('PANEL', 'Old panel successfully restored (edited)', { messageId: editedMsg.id });
+                logger.info('BOOT', 'main panel edit executed', {
+                    channelId: channel.id,
+                    messageId: editedMsg.id
+                });
+                logger.info('BOOT', 'main panel restore success', { messageId: editedMsg.id });
                 updateHealth(s => {
                     s.panels.restoreSucceeded = true;
                     s.panels.mainPanelMessageId = editedMsg.id;
@@ -95,8 +153,16 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
     });
 
     if (newMsg) {
+        logger.info('BOOT', 'main panel send executed', {
+            channelId: channel.id,
+            messageId: newMsg.id
+        });
         savePanelState(channel.id, newMsg.id); // 🔥 Instantly replace state
-        logger.info('PANEL', 'New panel forcefully created and state fully updated', { messageId: newMsg.id });
+        logger.info('BOOT', 'main panel state saved', {
+            channelId: channel.id,
+            messageId: newMsg.id
+        });
+        logger.info('BOOT', 'main panel missing, recreated', { messageId: newMsg.id });
         updateHealth(s => {
             s.panels.restoreSucceeded = true;
             s.panels.mainPanelMessageId = newMsg.id;
@@ -115,10 +181,26 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
 }
 
 export function getMainPanel() {
+    const restartedAt = new Date().toLocaleString('ko-KR', { hour12: false });
     const embed = new EmbedBuilder()
-      .setTitle("📊 KJM AI Investment Office")
-      .setDescription("현재 상태를 기반으로:\n- 리스크 분석\n- 소비 평가\n- 투자 기회 탐색\n- 실행 전략 도출\n\n아래 버튼으로 진행하세요.")
-      .setColor('#2b2d31');
+      .setTitle("My_Office 시스템이 재기동되었습니다")
+      .setDescription(
+        [
+          `시스템 재기동 완료 (${restartedAt})`,
+          '',
+          '아래 버튼으로 진행하세요.',
+          '',
+          '- 포트폴리오: 보유 종목 등록/조회/삭제/비중 분석',
+          '- 소비/현금흐름: 지출 및 현금흐름 등록/조회',
+          '- AI 토론: 포트폴리오/소비 데이터 기반 의견 정리',
+          '- 트렌드: 시장/종목/이슈 아이디어 탐색',
+          '- 설정: 모드/응답 성향/기본 옵션 설정',
+          '',
+          '메인 메뉴로 이동: `🔙 메인으로` 버튼'
+        ].join('\n')
+      )
+      .setColor('#2b2d31')
+      .setFooter({ text: `마지막 갱신: ${restartedAt}` });
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('panel:main:portfolio').setLabel('📊 포트폴리오').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('panel:main:finance').setLabel('💸 소비/현금흐름').setStyle(ButtonStyle.Primary),
@@ -195,6 +277,7 @@ export function getSettingsPanel() {
       new ButtonBuilder().setCustomId('panel:settings:aggressive').setLabel('⚡ AGGRESSIVE 모드').setStyle(ButtonStyle.Danger)
     );
     const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('panel:settings:view').setLabel('📌 현재 설정 보기').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('panel:settings:reinstall').setLabel('🔄 패널 재설치').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('panel:main:reinstall').setLabel('🔙 메인으로').setStyle(ButtonStyle.Secondary)
     );

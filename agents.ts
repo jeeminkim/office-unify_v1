@@ -18,19 +18,22 @@ export interface AgentContext {
   cashflow: any[];
 }
 
+/** 포트폴리오(평가 스냅샷 또는 보유 row)가 있어야 재무 분석 게이트 통과 */
 export function hasRequiredAnchoredData(context: AgentContext): { ok: boolean; reasons: string[] } {
   const reasons: string[] = [];
-  if (!context || !context.portfolio || context.portfolio.length === 0) reasons.push("포트폴리오(자산) 데이터가 없습니다.");
-  
-  const expLen = context.expenses ? context.expenses.length : 0;
-  const cfLen = context.cashflow ? context.cashflow.length : 0;
-  if (expLen === 0 && cfLen === 0) {
-    reasons.push("지출 또는 현금흐름 데이터가 최소 하나 이상 필요합니다.");
+  if (!context || !context.portfolio || context.portfolio.length === 0) {
+    reasons.push('포트폴리오(자산) 데이터가 없습니다.');
   }
   return {
     ok: reasons.length === 0,
     reasons
   };
+}
+
+export function hasLifestyleAnchors(context: AgentContext): boolean {
+  const expLen = context.expenses ? context.expenses.length : 0;
+  const cfLen = context.cashflow ? context.cashflow.length : 0;
+  return expLen > 0 || cfLen > 0;
 }
 
 export function buildAnchoredSummary(context: AgentContext) {
@@ -52,9 +55,10 @@ export function buildAnchoredSummary(context: AgentContext) {
 
 const CommonProtocol = `
 [CORE_OPERATIONAL_LOGIC]
-1. DATA_ANCHORING: Analysis affecting user finances MUST use anchored data (portfolio/expenses/cashflow).
-2. NO_SPECULATION: Do NOT speculate on absent financial data or prices.
+1. DATA_ANCHORING: 재무 분석은 반드시 제공된 포트폴리오 스냅샷(USER 메시지의 PORTFOLIO_SNAPSHOT)을 우선한다. 지출/현금흐름이 없으면 해당 축은 추정·단정하지 말고 제한을 명시한다.
+2. NO_SPECULATION: 스냅샷에 없는 가격·수치·개인 현금흐름을 지어내지 말 것.
 3. OUTPUT_PROTOCOL: Tone MUST be concise, structured, and professional (like an 8-year developer colleague).
+4. PARTIAL_VS_FULL: 지출/현금흐름이 없을 때 "**부분 분석**"과 "**정밀 분석 불가**" 항목(생활비 적합성, 월 투자여력, 현금버퍼 적정성 등)을 구분해 서술한다. 추가 데이터 입력 시 정밀화 가능함을 한 줄로 안내한다.
 `;
 
 export class BaseAgent {
@@ -74,9 +78,9 @@ export class BaseAgent {
     try {
       // SCHEMA-SAFE LOADING: Removed .order('date') to prevent crash on missing column in production
       const [portfolioRes, expensesRes, cashflowRes] = await Promise.all([
-        this.supabase.from('portfolio').select('*').eq('user_id', userId),
-        this.supabase.from('expenses').select('*').eq('user_id', userId).limit(50),
-        this.supabase.from('cashflow').select('*').eq('user_id', userId).limit(50)
+        this.supabase.from('portfolio').select('*').or(`discord_user_id.eq.${userId},user_id.eq.${userId}`),
+        this.supabase.from('expenses').select('*').or(`discord_user_id.eq.${userId},user_id.eq.${userId}`).limit(50),
+        this.supabase.from('cashflow').select('*').or(`discord_user_id.eq.${userId},user_id.eq.${userId}`).limit(50)
       ]);
       
       if (portfolioRes.error) throw new Error(`Portfolio fetch error: ${portfolioRes.error.message}`);
@@ -94,6 +98,10 @@ export class BaseAgent {
     }
   }
 
+  setPortfolioSnapshot(positions: any[]) {
+    this.context.portfolio = positions || [];
+  }
+
   async validateAndGenerate(query: string, isTrendQuery: boolean, additionalLog: string = ''): Promise<string> {
     const validation = hasRequiredAnchoredData(this.context);
     
@@ -106,18 +114,24 @@ export class BaseAgent {
 
   protected async generateResponse(query: string, isTrendQuery: boolean, additionalLog: string = ''): Promise<string> {
     const summary = buildAnchoredSummary(this.context);
-    const hasData = hasRequiredAnchoredData(this.context).ok;
-    
+    const portfolioOk = hasRequiredAnchoredData(this.context).ok;
+    const lifestyleOk = hasLifestyleAnchors(this.context);
+    const partialLifestyle = portfolioOk && !lifestyleOk && !isTrendQuery;
+
     const fullPrompt = `
 ${this.systemPrompt}
 
 [Mode]
 This query is flagged as: ${isTrendQuery ? "TREND & WORLD KNOWLEDGE QUERY" : "STRICT FINANCIAL QUERY"}
-If Trend Query and no data: Answer based on trend insights but explicitly state "현재 재무 데이터가 없어 트렌드 중심으로 분석합니다."
-If Financial Query and no data: You should have been hard-gated, but if you reached here, return [REASON: NO_DATA].
+If Trend Query and no portfolio: Answer based on trend insights but explicitly state "현재 재무 데이터가 없어 트렌드 중심으로 분석합니다."
+If Financial Query and no portfolio: You should have been hard-gated, but if you reached here, return [REASON: NO_DATA].
 
 [Anchored Data Summary]
-Data Present: ${hasData}
+Portfolio present: ${portfolioOk}
+Expense/cashflow present: ${lifestyleOk}
+${partialLifestyle ? `[ANALYSIS_MODE]
+PARTIAL_ANALYSIS: 포트폴리오 스냅샷만으로 비중·리스크·전략·종합 진단은 가능. 생활비 적합성·월 투자여력·현금버퍼는 데이터 부족으로 정밀 판단 불가임을 반드시 구분해 기술.
+` : ''}
 ${JSON.stringify(summary, null, 2)}
 
 ${additionalLog ? `[Previous Analysis]\n${additionalLog}\n` : ''}
