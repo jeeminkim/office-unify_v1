@@ -1,0 +1,23 @@
+{
+  "name": "jimin-ai-office",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Discord + Supabase multi-agent investment office bot",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.16.0",
+    "@supabase/supabase-js": "^2.56.0",
+    "discord.js": "^14.22.1",
+    "dotenv": "^17.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  }
+}
