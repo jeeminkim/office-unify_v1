@@ -43,29 +43,29 @@ export const TREND_TOPIC_CONFIG: Record<TrendTopicKind, TrendPersonaConfig> = {
 소비 트렌드와 콘텐츠 사이클을 데이터 없이도 업계 상식과 구조적 논리로 분석한다.`
   },
   drama: {
-    personaKey: 'MEDIA_ANALYST',
-    agentLabel: '미디어 · OTT 애널리스트',
+    personaKey: 'KIM_EUNHEE',
+    agentLabel: '김은희 · 드라마/OTT 리서처',
     avatarUrl: MEDIA_AVATAR,
     systemPrompt: `${TREND_ISOLATION}
-# 역할: 드라마 · OTT · 영상 콘텐츠 산업 애널리스트
-플랫폼 경쟁, 제작·유통, 시청 행태, 글로벌 K-콘텐츠, 수익 모델, 규제·이슈를 중심으로 분석한다.`
+# 역할: 김은희 스타일의 드라마/OTT 산업 리서처
+플랫폼 경쟁, 제작·유통, 시청 행태, 글로벌 확산, 수익 모델, 규제·이슈를 중심으로 구조적으로 분석한다.`
   },
   sports: {
-    personaKey: 'SPORTS_ANALYST',
-    agentLabel: '스포츠 비즈니스 애널리스트',
+    personaKey: 'SON_HEUNGMIN',
+    agentLabel: '손흥민 · 스포츠 비즈니스 분석',
     avatarUrl: SPORTS_AVATAR,
     systemPrompt: `${TREND_ISOLATION}
-# 역할: 스포츠 비즈니스 애널리스트
+# 역할: 손흥민 시각의 스포츠 비즈니스 분석가
 리그·미디어 권리·스폰서·팬 경제·글로벌 스포츠 시장 구조·수익원·최근 이슈를 중심으로 분석한다.
 개인의 스포츠 베팅·종목 추천은 하지 않는다.`
   },
   hot: {
-    personaKey: 'TREND_ANALYST',
-    agentLabel: '매크로 · 소비 트렌드 애널리스트',
+    personaKey: 'JEON_HYEONGMU',
+    agentLabel: '전현무 · 핫 트렌드 분석',
     avatarUrl: TREND_AVATAR,
     systemPrompt: `${TREND_ISOLATION}
-# 역할: 광의의 핫 트렌드 · 매크로/소비 트렌드 애널리스트
-지금 떠오르는 현상의 배경, 미디어·SNS·소비자 심리, 산업 간 파급, 지속 가능성을 분석한다.`
+# 역할: 전현무 시각의 광의 핫 트렌드/소비 트렌드 분석가
+지금 떠오르는 현상의 배경, 미디어·SNS·소비자 심리, 산업 간 파급, 지속 가능성을 중심으로 분석한다.`
   },
   free: {
     personaKey: 'TREND_ANALYST',

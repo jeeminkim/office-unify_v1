@@ -34,7 +34,6 @@ export function loadPanelState(): { channelId: string, messageId: string } | nul
     try {
         const data = fs.readFileSync(STATE_FILE, 'utf-8');
         const parsed = JSON.parse(data);
-        // Backward compatibility: old format { channelId, messageId }
         if (parsed?.channelId && parsed?.messageId) {
             return { channelId: parsed.channelId, messageId: parsed.messageId };
         }
@@ -60,7 +59,6 @@ export async function ensureMainPanelOnBoot(client: Client, defaultChannelId?: s
         logger.error('BOOT', 'main panel restore failed');
         return null;
     }
-    // Restart announcement is represented by the main panel itself.
     logger.info('BOOT', 'restart announcement ensured', {
         channelId: panelMessage.channel.id,
         panelMessageId: panelMessage.id
@@ -96,7 +94,7 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
 
     logger.info('PANEL', `Channel lookup for ${targetChannelId} started...`);
     const channel = await client.channels.fetch(targetChannelId).catch(() => null) as TextChannel;
-    
+
     if (!channel) {
         logger.error('PANEL', 'Target channel resolution failed! (Missing Access or Channel Deleted)', { channelId: targetChannelId });
         updateHealth(s => {
@@ -107,10 +105,9 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
         });
         return null;
     }
-    
+
     updateHealth(s => s.discord.targetChannelResolved = true);
 
-    // 1. Try editing existing message
     if (state && state.messageId && state.channelId === channel.id) {
         logger.info('PANEL', 'Checking old message validity...', { messageId: state.messageId });
         const oldMsg = await channel.messages.fetch(state.messageId).catch(() => null);
@@ -120,7 +117,6 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
             messageId: state.messageId
         });
         if (oldMsg) {
-            // Edit existing
             const editedMsg = await oldMsg.edit(getMainPanel()).catch(e => {
                 logger.error('PANEL', 'Failed to edit old message. Recreate fallback triggered.', { error: e.message });
                 return null;
@@ -144,7 +140,6 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
         }
     }
 
-    // 2. Recreate fallback - send a pristine message in the known channel
     logger.info('PANEL', 'Recreating new main panel in target channel.');
     const newMsg = await channel.send(getMainPanel()).catch(e => {
         logger.error('PANEL', 'Failed to send new panel message', { error: e.message });
@@ -157,7 +152,7 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
             channelId: channel.id,
             messageId: newMsg.id
         });
-        savePanelState(channel.id, newMsg.id); // 🔥 Instantly replace state
+        savePanelState(channel.id, newMsg.id);
         logger.info('BOOT', 'main panel state saved', {
             channelId: channel.id,
             messageId: newMsg.id
@@ -172,7 +167,6 @@ export async function restoreOrBuildMainPanel(client: Client, defaultChannelId?:
         return newMsg;
     }
 
-    // Worst case fallback
     updateHealth(s => {
         s.panels.restoreSucceeded = false;
         s.panels.lastPanelAction = 'recreate_completely_failed';
@@ -211,16 +205,54 @@ export function getMainPanel() {
     return { embeds: [embed], components: [row] };
 }
 
+/** 1차: 일반계좌 중심 · 전체 합산 · 매매 · 더보기(고급) */
 export function getPortfolioPanel() {
-    const embed = new EmbedBuilder().setTitle("📊 포트폴리오 관리").setDescription("현재 보유 자산을 등록/수정합니다.").setColor('#3498db');
+    const embed = new EmbedBuilder()
+      .setTitle('📊 포트폴리오')
+      .setDescription(
+        [
+          '**기본**은 **일반계좌** 기준입니다.',
+          '전체 합산·퇴직연금·계좌별 조회는 **더보기**에서 선택하세요.',
+          '',
+          '· **포트폴리오 보기** — 일반계좌만',
+          '· **전체 자산 보기** — 일반 + 퇴직연금 합산(총액 중심)'
+        ].join('\n')
+      )
+      .setColor('#3498db');
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('panel:portfolio:view').setLabel('📒 포트폴리오 보기').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('panel:portfolio:view:all').setLabel('🌐 전체 자산 보기').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('panel:portfolio:add').setLabel('➕ 종목 추가').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('panel:portfolio:view').setLabel('📋 내 포트폴리오 조회').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('panel:portfolio:delete').setLabel('❌ 종목 삭제').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('panel:portfolio:risk').setLabel('🔄 비중 분석 요청').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId('panel:portfolio:delete').setLabel('➖ 종목 매도').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('panel:portfolio:more').setLabel('⚙️ 더보기').setStyle(ButtonStyle.Secondary)
     );
     const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('panel:main:reinstall').setLabel('🔙 메인으로').setStyle(ButtonStyle.Secondary)
+    );
+    return { embeds: [embed], components: [row, row2] };
+}
+
+/** 고급: 퇴직연금·계좌별·계좌관리·비중분석·다른 계좌 매매 */
+export function getPortfolioMorePanel() {
+    const embed = new EmbedBuilder()
+      .setTitle('⚙️ 포트폴리오 · 더보기')
+      .setDescription(
+        [
+          '퇴직연금·계좌별 조회·계좌 관리는 여기서 진행합니다.',
+          '채팅: `!내계좌` · `!계좌추가 이름 유형`'
+        ].join('\n')
+      )
+      .setColor('#2980b9');
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('panel:portfolio:view:retirement').setLabel('🧾 퇴직연금 보기').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('panel:portfolio:view:pick').setLabel('🗂 계좌별 보기').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('panel:portfolio:accounts').setLabel('🏦 계좌 관리').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('panel:portfolio:risk').setLabel('🔄 비중 분석').setStyle(ButtonStyle.Primary)
+    );
+    const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('panel:portfolio:add:other').setLabel('➕ 다른 계좌에 매수').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('panel:portfolio:delete:other').setLabel('➖ 다른 계좌에서 매도').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('panel:main:portfolio').setLabel('🔙 포트폴리오 메인').setStyle(ButtonStyle.Secondary)
     );
     return { embeds: [embed], components: [row, row2] };
 }

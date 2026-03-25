@@ -1,9 +1,38 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, WebhookClient, Message, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Interaction, Events, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType } from 'discord.js';
+import {
+    Client,
+    GatewayIntentBits,
+    WebhookClient,
+    Message,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    EmbedBuilder,
+    Interaction,
+    Events,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    InteractionType,
+    StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder
+} from 'discord.js';
 import { logger, updateHealth, startHeartbeat } from './logger';
-import { RayDalioAgent, JYPAgent, JamesSimonsAgent, PeterDruckerAgent, StanleyDruckenmillerAgent } from './agents';
+import { RayDalioAgent, JYPAgent, JamesSimonsAgent, PeterDruckerAgent, StanleyDruckenmillerAgent, HindenburgAgent } from './agents';
 import { createClient } from '@supabase/supabase-js';
-import { ensureMainPanelOnBoot, savePanelState, loadPanelState, getMainPanel, getPortfolioPanel, getFinancePanel, getAIPanel, getTrendPanel, getSettingsPanel, getNoDataButtons } from './panelManager';
+import {
+    ensureMainPanelOnBoot,
+    savePanelState,
+    loadPanelState,
+    getMainPanel,
+    getPortfolioPanel,
+    getPortfolioMorePanel,
+    getFinancePanel,
+    getAIPanel,
+    getTrendPanel,
+    getSettingsPanel,
+    getNoDataButtons
+} from './panelManager';
 import { buildPortfolioSnapshot } from './portfolioService';
 import { resolveInstrumentMetadata } from './instrumentRegistry';
 import {
@@ -12,6 +41,23 @@ import {
     TREND_TOPIC_CONFIG,
     type TrendTopicKind
 } from './trendAnalysis';
+import { learnBehaviorFromSnapshots, learnBehaviorFromTrades, loadUserProfile } from './profileService';
+import { saveAnalysisFeedbackHistory, type FeedbackType } from './feedbackService';
+import {
+    recordBuyTrade,
+    recordSellTrade,
+    findPortfolioRowForSymbol,
+    findPortfolioRowInAccount,
+    findFirstRetirementAccount,
+    listUserAccounts,
+    createAccount,
+    getOrCreateDefaultAccountId,
+    GENERAL_ACCOUNT_NAME
+} from './tradeService';
+import { buildPortfolioDiscordMessage, accountTypeLabelKo } from './portfolioUx';
+import type { PortfolioSnapshot } from './portfolioService';
+import { maybeStoreDailyPortfolioSnapshotHistory } from './snapshotService';
+import { decideOrchestratorRoute, logOrchestratorDecision } from './orchestrator';
 
 logger.info('BOOT', 'index initialization started');
 
@@ -67,9 +113,130 @@ function formatKrw(v: number): string {
     return `${Math.round(v).toLocaleString('ko-KR')}원`;
 }
 
+type PersonaKey = 'RAY' | 'HINDENBURG' | 'SIMONS' | 'DRUCKER' | 'CIO' | 'JYP' | 'TREND' | 'OPEN_TOPIC';
+
+function detectFinancialIntent(query: string): boolean {
+    // 금융/포트폴리오 맥락을 명시적으로 요구한 경우만 포트폴리오 토론으로 라우팅.
+    return /(포트폴리오|비중|리스크|손익|평단|리밸런싱|투자 전략|종합 진단|현금버퍼|월 투자여력|자산배분)/i.test(query);
+}
+
+function guessAnalysisTypeFromTrigger(triggerCustomId: string | undefined, userQuery: string): string {
+    const t = triggerCustomId || '';
+    if (t.includes('panel:portfolio:risk') || /(리스크|변동성|위험)/i.test(userQuery)) return 'portfolio_risk';
+    if (t.includes('panel:ai:strategy')) return 'portfolio_strategy';
+    if (t.includes('panel:ai:full')) return 'portfolio_full_diagnosis';
+    if (t.includes('panel:trend:')) return `trend_${t.split(':').pop() || 'unknown'}`;
+    if (t.includes('open_topic')) return 'open_topic';
+    // default
+    return detectFinancialIntent(userQuery) ? 'portfolio_financial' : 'open_topic';
+}
+
+function toOpinionSummary(text: string, maxLen = 220): string {
+    const t = (text || '').trim();
+    if (!t) return '';
+    return t.length <= maxLen ? t : t.slice(0, maxLen) + '…';
+}
+
+function getFeedbackButtonsRow(chatHistoryId: string, analysisType: string, personaKey: PersonaKey): ActionRowBuilder<ButtonBuilder> {
+    const mk = (feedbackType: FeedbackType, label: string, style: ButtonStyle) =>
+        new ButtonBuilder()
+            .setCustomId(`feedback:save:${chatHistoryId}:${feedbackType}:${personaKey}`)
+            .setLabel(label)
+            .setStyle(style);
+
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+        mk('TRUSTED', '좋았어요(Trust)', ButtonStyle.Primary),
+        mk('ADOPTED', '채택(Adopt)', ButtonStyle.Success),
+        mk('BOOKMARKED', '저장(Bookmark)', ButtonStyle.Secondary),
+        mk('DISLIKED', '별로예요(Dislike)', ButtonStyle.Danger)
+    );
+}
+
+function getPersonaColumnKey(personaKey: PersonaKey): 'ray_advice' | 'key_risks' | 'key_actions' | 'jyp_insight' | 'simons_opportunity' | 'drucker_decision' | 'cio_decision' | 'jyp_weekly_report' | 'summary' | 'trend_text' {
+    switch (personaKey) {
+        case 'RAY': return 'ray_advice';
+        case 'HINDENBURG': return 'key_risks';
+        case 'JYP': return 'jyp_insight';
+        case 'SIMONS': return 'simons_opportunity';
+        case 'DRUCKER': return 'drucker_decision';
+        case 'CIO': return 'cio_decision';
+        case 'TREND': return 'ray_advice'; // trend은 ray_advice 컬럼에 텍스트를 저장
+        case 'OPEN_TOPIC': return 'jyp_insight'; // open topic은 기본적으로 jyp_insight에 저장
+        default: return 'jyp_insight';
+    }
+}
+
+function personaKeyToPersonaName(personaKey: PersonaKey): string {
+    switch (personaKey) {
+        case 'RAY': return 'Ray Dalio (PB)';
+        case 'HINDENBURG': return 'HINDENBURG_ANALYST';
+        case 'JYP': return 'JYP (Analyst)';
+        case 'SIMONS': return 'James Simons (Quant)';
+        case 'DRUCKER': return 'Peter Drucker (COO)';
+        case 'CIO': return 'Stanley Druckenmiller (CIO)';
+        case 'TREND': return 'Trend Analyst';
+        case 'OPEN_TOPIC': return 'Open Topic Analyst';
+        default: return 'Unknown';
+    }
+}
+
+async function safeInsertChatHistoryAndGetId(payload: any, retryWithoutExtendedColumns = true): Promise<string | null> {
+    try {
+        const { data, error } = await supabase
+            .from('chat_history')
+            .insert(payload)
+            .select('id')
+            .maybeSingle();
+        if (error) throw error;
+        return data?.id || null;
+    } catch (e: any) {
+        if (!retryWithoutExtendedColumns) throw e;
+
+        logger.warn('DB', 'chat_history insert fallback triggered', {
+            message: e?.message || String(e),
+            retryWithoutExtendedColumns
+        });
+
+        // Fallback: remove extended columns to match legacy schema.
+        const retryPayload: any = { ...payload };
+        delete retryPayload.debate_type;
+        delete retryPayload.summary;
+        delete retryPayload.key_risks;
+        delete retryPayload.key_actions;
+
+        // Ensure required legacy columns exist.
+        const basePayload: any = {
+            user_id: retryPayload.user_id,
+            user_query: retryPayload.user_query,
+            ray_advice: retryPayload.ray_advice,
+            jyp_insight: retryPayload.jyp_insight,
+            simons_opportunity: retryPayload.simons_opportunity,
+            drucker_decision: retryPayload.drucker_decision,
+            cio_decision: retryPayload.cio_decision,
+            jyp_weekly_report: retryPayload.jyp_weekly_report
+        };
+
+        const { data: retryData, error: retryError } = await supabase
+            .from('chat_history')
+            .insert(basePayload)
+            .select('id')
+            .maybeSingle();
+
+        if (retryError) {
+            logger.error('DB', 'chat_history insert fallback failed', { message: retryError?.message || String(retryError) });
+            return null;
+        }
+        return retryData?.id || null;
+    }
+}
+
 function getDiscordUserId(user: { id: string }): string {
     return user.id;
 }
+
+/** 고급 매수/매도: 모달 직전에 선택한 계좌 (단일 프로세스 가정) */
+const pendingBuyAccountId = new Map<string, string>();
+const pendingSellAccountId = new Map<string, string>();
 
 function normalizeFlowType(value: string): string | null {
     const valid = ['income', 'fixed_expense', 'saving', 'investment', 'debt_payment', 'other'];
@@ -109,6 +276,139 @@ function logSchemaSafeInsertFailure(table: string, payload: Record<string, unkno
         errorCode: error?.code || null,
         hint: isSchemaMismatchError(error) ? 'column mismatch suspected: check DB schema and payload keys' : null
     });
+}
+
+type PortfolioQueryUiMode = 'default' | 'all' | 'retirement' | 'account';
+
+async function runPortfolioQueryFromButton(
+    interaction: any,
+    discordUserId: string,
+    uiMode: PortfolioQueryUiMode,
+    opts: {
+        accountId?: string;
+        accountName?: string;
+        accountType?: string;
+        orchestratorCustomId: string;
+    }
+): Promise<void> {
+    await safeDeferReply(interaction, { flags: 64 });
+
+    const orch = decideOrchestratorRoute({ customId: opts.orchestratorCustomId });
+    logOrchestratorDecision(orch, { discordUserId, source: opts.orchestratorCustomId });
+
+    let snapshot: PortfolioSnapshot;
+    if (uiMode === 'default') {
+        logger.info('UI', 'default account view selected', { discordUserId });
+        snapshot = await buildPortfolioSnapshot(discordUserId, { scope: 'DEFAULT' });
+    } else if (uiMode === 'all') {
+        logger.info('UI', 'aggregate asset view selected', { discordUserId });
+        snapshot = await buildPortfolioSnapshot(discordUserId, { scope: 'ALL' });
+    } else {
+        if (!opts.accountId) {
+            await safeEditReply(interaction, '계좌를 찾을 수 없습니다.', 'portfolio:no_account');
+            return;
+        }
+        if (uiMode === 'retirement') {
+            logger.info('UI', 'retirement account view selected', { discordUserId, accountId: opts.accountId });
+        } else {
+            logger.info('UI', 'account-specific view selected', { discordUserId, accountId: opts.accountId });
+        }
+        snapshot = await buildPortfolioSnapshot(discordUserId, { scope: 'ACCOUNT', accountId: opts.accountId });
+    }
+
+    if (snapshot.summary.position_count === 0) {
+        const emptyMsg =
+            uiMode === 'default'
+                ? '일반계좌에 조회할 보유 종목이 없습니다.'
+                : uiMode === 'all'
+                  ? '합산할 포지션이 없습니다.'
+                  : '선택한 계좌에 조회할 보유 종목이 없습니다.';
+        await safeEditReply(interaction, emptyMsg, 'portfolio:empty');
+        return;
+    }
+
+    let snapshotFooter: 'saved' | 'duplicate' | 'none' = 'none';
+    try {
+        if (uiMode === 'all') {
+            const stored = await maybeStoreDailyPortfolioSnapshotHistory(discordUserId, snapshot, {
+                accountId: null,
+                snapshotKind: 'aggregate'
+            });
+            if (stored) void learnBehaviorFromSnapshots(discordUserId);
+            snapshotFooter = stored ? 'saved' : 'duplicate';
+        } else {
+            const accId =
+                uiMode === 'default' ? await getOrCreateDefaultAccountId(discordUserId) : opts.accountId!;
+            const stored = await maybeStoreDailyPortfolioSnapshotHistory(discordUserId, snapshot, {
+                accountId: accId,
+                snapshotKind: 'account'
+            });
+            if (stored) void learnBehaviorFromSnapshots(discordUserId);
+            snapshotFooter = stored ? 'saved' : 'duplicate';
+        }
+    } catch {
+        snapshotFooter = 'none';
+    }
+
+    logger.info('UI', 'snapshot status shown', { discordUserId, snapshotFooter, uiMode });
+
+    const viewModeForUx: 'default' | 'all' | 'retirement' | 'account' =
+        uiMode === 'retirement' ? 'retirement' : uiMode === 'account' ? 'account' : uiMode;
+
+    const text = buildPortfolioDiscordMessage(snapshot, {
+        viewMode: viewModeForUx,
+        generalAccountName: GENERAL_ACCOUNT_NAME,
+        accountDisplayName: opts.accountName,
+        accountTypeLabel: opts.accountType ? accountTypeLabelKo(opts.accountType) : undefined,
+        snapshotFooter,
+        hideAggregateAccountBreakdown: uiMode === 'all'
+    });
+
+    await safeEditReply(interaction, text, 'portfolio:query:success');
+}
+
+/** 계좌별 보기 — 에페머럴 메시지 + select 응답 */
+async function runPortfolioQueryFromAccountSelect(interaction: any, discordUserId: string, accountId: string): Promise<void> {
+    await interaction.deferUpdate();
+    const rows = await listUserAccounts(discordUserId);
+    const acct = rows.find(a => a.id === accountId);
+    if (!acct) {
+        await interaction.editReply({ content: '계좌를 찾을 수 없습니다.', components: [] });
+        return;
+    }
+
+    logger.info('UI', 'account-specific view selected', { discordUserId, accountId });
+
+    const snapshot = await buildPortfolioSnapshot(discordUserId, { scope: 'ACCOUNT', accountId });
+    if (snapshot.summary.position_count === 0) {
+        await interaction.editReply({ content: '선택한 계좌에 조회할 보유 종목이 없습니다.', components: [] });
+        return;
+    }
+
+    let snapshotFooter: 'saved' | 'duplicate' | 'none' = 'none';
+    try {
+        const stored = await maybeStoreDailyPortfolioSnapshotHistory(discordUserId, snapshot, {
+            accountId,
+            snapshotKind: 'account'
+        });
+        if (stored) void learnBehaviorFromSnapshots(discordUserId);
+        snapshotFooter = stored ? 'saved' : 'duplicate';
+    } catch {
+        snapshotFooter = 'none';
+    }
+
+    logger.info('UI', 'snapshot status shown', { discordUserId, snapshotFooter, uiMode: 'account' });
+
+    const text = buildPortfolioDiscordMessage(snapshot, {
+        viewMode: 'account',
+        generalAccountName: GENERAL_ACCOUNT_NAME,
+        accountDisplayName: acct.account_name,
+        accountTypeLabel: accountTypeLabelKo(acct.account_type),
+        snapshotFooter,
+        hideAggregateAccountBreakdown: false
+    });
+
+    await interaction.editReply({ content: text.slice(0, 1990), components: [] });
 }
 
 async function safeEditReply(interaction: any, content: string, context: string) {
@@ -220,6 +520,31 @@ async function safeUpdate(interaction: any, payload: any, context: string): Prom
     });
 }
 
+let __dbSchemaChecked = false;
+async function checkDbSchemaCompatibilityOnce(): Promise<void> {
+    if (__dbSchemaChecked) return;
+    __dbSchemaChecked = true;
+    logger.info('DB', 'DB schema check started');
+    try {
+        // Table existence checks (small selects)
+        await supabase.from('user_profile').select('discord_user_id').limit(1);
+        await supabase.from('analysis_feedback_history').select('id').limit(1);
+        // Column existence checks
+        await supabase.from('chat_history').select('debate_type,summary,key_risks,key_actions').limit(1);
+        await supabase.from('accounts').select('id').limit(1);
+        await supabase.from('trade_history').select('purchase_currency').limit(1);
+        await supabase.from('portfolio_snapshot_history').select('id').limit(1);
+        await supabase.from('portfolio').select('account_id,purchase_currency').limit(1);
+
+        logger.info('DB', 'DB schema check passed');
+    } catch (e: any) {
+        logger.error('DB', 'DB schema check failed', {
+            message: e?.message || String(e)
+        });
+        logger.warn('DB', 'DB missing column fallback triggered');
+    }
+}
+
 function extractWeeklyReport(jypText: string): string | null {
     if (!jypText) return null;
     const text = jypText.replace(/\r\n/g, '\n');
@@ -269,10 +594,11 @@ async function runWeeklyReportSchedulerCheck() {
     const now = new Date();
     const targetFriday = getThisWeekFridayKST(now);
     try {
+        // Overall gating: last time any weekly_report was generated
         const { data, error } = await supabase
             .from('chat_history')
             .select('created_at')
-            .not('jyp_weekly_report', 'is', null)
+            .eq('user_query', 'weekly_investment_report')
             .order('created_at', { ascending: false })
             .limit(1);
 
@@ -293,30 +619,167 @@ async function runWeeklyReportSchedulerCheck() {
             return;
         }
 
-        const jyp = new JYPAgent();
-        await jyp.initializeContext('system');
-        const jypRes = await jyp.inspire('이번 주 K-Culture 트렌드 주간 리포트를 생성해줘', true, '[Scheduler]');
-        const extractedReport = extractWeeklyReport(jypRes);
-        if (!extractedReport) {
-            logger.warn('SCHEDULER', 'weekly report skipped');
+        // Weekly window (previous Friday -> this Friday)
+        const weekStart = new Date(targetFriday.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const weekStartIso = weekStart.toISOString();
+
+        const { data: activeRows, error: activeUsersError } = await supabase
+            .from('chat_history')
+            .select('user_id')
+            .gte('created_at', weekStartIso)
+            .neq('user_id', 'system')
+            .limit(2000);
+
+        if (activeUsersError) {
+            logger.error('SCHEDULER', 'weekly report active user query failed', activeUsersError);
             return;
         }
 
-        const payload = {
-            user_id: 'system',
-            user_query: 'weekly_kculture_report',
-            jyp_insight: jypRes,
-            jyp_weekly_report: extractedReport,
-            created_at: new Date().toISOString()
-        };
-        const { error: insertError } = await supabase.from('chat_history').insert(payload);
-        if (insertError) {
-            logger.error('SCHEDULER', 'weekly report insert failed', {
-                message: insertError?.message,
-                keys: Object.keys(payload),
-                details: insertError
+        const uniqueUserIds = Array.from(
+            new Set((activeRows || []).map(r => String(r.user_id)).filter(Boolean))
+        ).slice(0, 10);
+
+        logger.info('SCHEDULER', 'weekly report generating for users', { count: uniqueUserIds.length, weekStartIso });
+
+        const jyp = new JYPAgent(); // reuse single agent for report generation (isTrendQuery=true bypasses anchored gate)
+
+        for (const discordUserId of uniqueUserIds) {
+            // Skip if already generated this week for that user
+            const { data: existing, error: existingErr } = await supabase
+                .from('chat_history')
+                .select('id')
+                .eq('user_id', discordUserId)
+                .eq('user_query', 'weekly_investment_report')
+                .gte('created_at', weekStartIso)
+                .limit(1);
+            if (existingErr) {
+                logger.warn('SCHEDULER', 'weekly report per-user exists check failed', { discordUserId, message: existingErr?.message || String(existingErr) });
+                continue;
+            }
+            if (existing && existing.length > 0) {
+                continue;
+            }
+
+            const [recentChatsRes, recentFeedbackRes, profile] = await Promise.all([
+                supabase
+                    .from('chat_history')
+                    .select('summary,key_risks,key_actions,debate_type')
+                    .eq('user_id', discordUserId)
+                    .gte('created_at', weekStartIso)
+                    .order('created_at', { ascending: false })
+                    .limit(20),
+                supabase
+                    .from('analysis_feedback_history')
+                    .select('persona_name,feedback_type,opinion_summary,opinion_text,analysis_type,topic_tags')
+                    .eq('discord_user_id', discordUserId)
+                    .gte('created_at', weekStartIso)
+                    .order('created_at', { ascending: false })
+                    .limit(50),
+                loadUserProfile(discordUserId)
+            ]);
+
+            const recentChats = recentChatsRes.data || [];
+            const recentFeedback = recentFeedbackRes.data || [];
+
+            const chatSummaries = recentChats
+                .map((c: any) => c.summary || '')
+                .filter(Boolean)
+                .slice(0, 10);
+
+            const usedChatFields = chatSummaries.length > 0;
+            const fallbackChatText = !usedChatFields
+                ? recentChats
+                    .map((c: any) => c.key_risks || c.key_actions || '')
+                    .filter(Boolean)
+                    .slice(0, 6)
+                    .join('\\n---\\n')
+                : '';
+
+            if (!usedChatFields) {
+                logger.info('REPORT', 'fallback summarization used', { discordUserId });
+            }
+
+            logger.info('REPORT', 'chat_history summary fields used', {
+                discordUserId,
+                usedChatFields,
+                chatSummariesCount: chatSummaries.length
             });
-            return;
+
+            const topPreferredPersonas = profile.preferred_personas || [];
+            const topAvoidedPersonas = profile.avoided_personas || [];
+            const favoredStyles = profile.favored_analysis_styles || [];
+
+            logger.info('REPORT', 'user preference signals applied', {
+                discordUserId,
+                topPreferredPersonas,
+                topAvoidedPersonasCount: topAvoidedPersonas.length,
+                favoredStyles: favoredStyles.slice(0, 5),
+                profileHasRiskTolerance: !!profile.risk_tolerance,
+                profileHasFavoredStyles: profile.favored_analysis_styles?.length > 0
+            });
+
+            const reportContext = {
+                user_profile: {
+                    risk_tolerance: profile.risk_tolerance,
+                    investment_style: profile.investment_style,
+                    preferred_personas: profile.preferred_personas,
+                    avoided_personas: profile.avoided_personas,
+                    favored_analysis_styles: profile.favored_analysis_styles
+                },
+                feedback_signals: {
+                    topPreferredPersonas,
+                    topAvoidedPersonas,
+                    favoredStyles
+                },
+                recent_chat_summaries: usedChatFields ? chatSummaries : null,
+                recent_chat_fallback_text: usedChatFields ? null : fallbackChatText
+            };
+
+            logger.info('REPORT', 'weekly summary generated', { discordUserId });
+
+            const weeklyPrompt = `
+You MUST output exactly in Korean.
+
+Weekly Investment Report
+
+[CONTEXT]
+${JSON.stringify(reportContext, null, 2)}
+
+Rules:
+- 반드시 아래 섹션을 정확히 이 순서로 출력하라.
+  1) Executive Summary
+  2) Consensus View
+  3) Diverging Opinions
+  4) Key Risks
+  5) Opportunities
+  6) Recommended Actions
+  7) User Preference Insight
+- recent_chat_summaries / key_risks / key_actions에서 나온 내용을 우선 활용하고, 비어 있으면 fallback을 쓰되 그 사실을 한 줄로 명시하라.
+- User Preference Insight에는 preferred_personas / favored_analysis_styles / avoided_personas가 반영되었음을 확인 가능한 문장으로 작성하라.
+`;
+
+            const reportText = await jyp.inspire(weeklyPrompt, true, '[Scheduler]');
+
+            const payload: any = {
+                user_id: discordUserId,
+                user_query: 'weekly_investment_report',
+                debate_type: 'weekly_investment_report',
+                jyp_weekly_report: reportText,
+                ray_advice: null,
+                jyp_insight: null,
+                simons_opportunity: null,
+                drucker_decision: null,
+                cio_decision: null,
+                summary: null,
+                key_risks: null,
+                key_actions: null,
+                created_at: new Date().toISOString()
+            };
+
+            const insertedId = await safeInsertChatHistoryAndGetId(payload, true);
+            if (!insertedId) {
+                logger.warn('REPORT', 'weekly report insert skipped (schema fallback or failed)', { discordUserId });
+            }
         }
 
         logger.info('SCHEDULER', 'weekly report generated');
@@ -358,7 +821,14 @@ function chunkDiscordBody(text: string, chunkSize: number): string[] {
     return chunks.length ? chunks : [''];
 }
 
-async function broadcastAgentResponse(userId: string, agentName: string, avatarURL: string, content: string, sourceInteraction: Interaction | Message) {
+async function broadcastAgentResponse(
+    userId: string,
+    agentName: string,
+    avatarURL: string,
+    content: string,
+    sourceInteraction: Interaction | Message,
+    feedbackRow?: ActionRowBuilder<ButtonBuilder> | null
+) {
     let finalContent = content;
     let components: ActionRowBuilder<ButtonBuilder>[] = [];
 
@@ -391,17 +861,24 @@ async function broadcastAgentResponse(userId: string, agentName: string, avatarU
             if (piece.length > DISCORD_CONTENT_MAX) {
                 piece = piece.slice(0, DISCORD_CONTENT_MAX - 1) + '…';
             }
+            const componentsToSend = i === 0
+                ? [
+                    ...(components.length ? components : []),
+                    ...(feedbackRow ? [feedbackRow] : [])
+                  ]
+                : undefined;
+
             if (useWebhook) {
                 await webhook.send({
                     content: piece,
                     username: agentName,
                     avatarURL: avatarURL || defaultAvatar,
-                    components: i === 0 && components.length ? components : undefined
+                    components: componentsToSend && componentsToSend.length ? componentsToSend : undefined
                 });
             } else {
                 await (sourceInteraction as any).channel.send({
                     content: piece,
-                    components: i === 0 && components.length ? components : undefined
+                    components: componentsToSend && componentsToSend.length ? componentsToSend : undefined
                 });
             }
         }
@@ -513,25 +990,30 @@ async function runTrendAnalysis(
 
         logger.info('AI', 'Gemini call started');
         const text = await generateTrendSpecialistResponse(topic, userQuery);
-        await broadcastAgentResponse(userId, cfg.agentLabel, cfg.avatarUrl, text, sourceInteraction);
         logger.info('AI', 'Gemini call completed');
 
-        const chatHistoryPayload = {
+        const analysisType = `trend_${topic}`;
+        const chatHistoryPayload: any = {
             user_id: userId,
             user_query: userQuery,
+            debate_type: analysisType,
             ray_advice: text,
             jyp_insight: null as string | null,
             simons_opportunity: null as string | null,
             drucker_decision: null as string | null,
             cio_decision: null as string | null,
-            jyp_weekly_report: null as string | null
+            jyp_weekly_report: null as string | null,
+            summary: toOpinionSummary(text, 900),
+            key_risks: null,
+            key_actions: null
         };
-        const { error: dbError } = await supabase.from('chat_history').insert(chatHistoryPayload);
-        if (dbError) {
-            logger.error('DB', '[chat_history][insert] trend failed', { message: dbError?.message });
-        } else {
-            logger.info('DB', 'chat_history insert success (trend)');
-        }
+
+        const chatHistoryId = await safeInsertChatHistoryAndGetId(chatHistoryPayload, true);
+        const feedbackRow = chatHistoryId ? getFeedbackButtonsRow(chatHistoryId, analysisType, 'TREND') : null;
+
+        await broadcastAgentResponse(userId, cfg.agentLabel, cfg.avatarUrl, text, sourceInteraction, feedbackRow);
+
+        if (chatHistoryId) logger.info('DB', 'chat_history insert success (trend)', { chatHistoryId });
     } catch (err: any) {
         logger.error('ROUTER', '트렌드 분석 에러: ' + err.message, err);
     }
@@ -542,7 +1024,7 @@ async function runPortfolioDebate(userId: string, userQuery: string, sourceInter
     try {
         logger.info('AI', 'portfolio debate route selected', { discordUserId: userId });
         const mode = await loadUserMode(userId);
-        const snapshot = await buildPortfolioSnapshot(userId);
+        const snapshot = await buildPortfolioSnapshot(userId, { scope: 'ALL' });
         const anchorState = await getFinancialAnchorState(userId);
         const triggerId: string | undefined = sourceInteraction?.customId;
         const hasPortfolio = anchorState.hasPortfolio || snapshot.summary.position_count > 0;
@@ -594,20 +1076,20 @@ async function runPortfolioDebate(userId: string, userQuery: string, sourceInter
 
         logger.info('AI', 'Gemini call started');
         const ray = new RayDalioAgent();
-        const jyp = new JYPAgent();
+        const hindenburg = new HindenburgAgent();
         const simons = new JamesSimonsAgent();
         const drucker = new PeterDruckerAgent();
         const cio = new StanleyDruckenmillerAgent();
 
         await Promise.all([
             ray.initializeContext(userId),
-            jyp.initializeContext(userId),
+            hindenburg.initializeContext(userId),
             simons.initializeContext(userId),
             drucker.initializeContext(userId),
             cio.initializeContext(userId)
         ]);
         ray.setPortfolioSnapshot(snapshot.positions);
-        jyp.setPortfolioSnapshot(snapshot.positions);
+        hindenburg.setPortfolioSnapshot(snapshot.positions);
         simons.setPortfolioSnapshot(snapshot.positions);
         drucker.setPortfolioSnapshot(snapshot.positions);
         cio.setPortfolioSnapshot(snapshot.positions);
@@ -630,78 +1112,322 @@ async function runPortfolioDebate(userId: string, userQuery: string, sourceInter
                       '- 지출·현금흐름을 입력하면 위 항목을 정밀화할 수 있다.'
                   ].join('\n')
                 : '';
-        const effectiveQuery = `${userQuery}\n\n${modePrompt}\n\n${snapshotPrompt}${partialScope ? `\n\n${partialScope}\n` : ''}`;
-        const rayRes = await broadcastAgentResponse(
-            userId,
-            'Ray Dalio (PB)',
-            'https://upload.wikimedia.org/wikipedia/commons/4/4e/Ray_Dalio_at_the_World_Economic_Forum_%28cropped%29.jpg',
-            await ray.analyze(effectiveQuery, false),
-            sourceInteraction
-        );
+
+        const profile = await loadUserProfile(userId);
+        logger.info('PROFILE', 'user profile applied', {
+            discordUserId: userId,
+            risk_tolerance: profile.risk_tolerance,
+            investment_style: profile.investment_style,
+            favored_analysis_styles: profile.favored_analysis_styles?.slice(0, 5)
+        });
+
+        const profilePromptParts: string[] = [];
+        if (profile.risk_tolerance) profilePromptParts.push(`risk_tolerance=${profile.risk_tolerance}`);
+        if (profile.investment_style) profilePromptParts.push(`investment_style=${profile.investment_style}`);
+        if (profile.favored_analysis_styles?.length) profilePromptParts.push(`favored_analysis_styles=${profile.favored_analysis_styles.join(',')}`);
+        if (profile.preferred_personas?.length) profilePromptParts.push(`preferred_personas=${profile.preferred_personas.join(',')}`);
+        if (profile.avoided_personas?.length) profilePromptParts.push(`avoided_personas=${profile.avoided_personas.join(',')}`);
+        if (profile.personalization_notes) profilePromptParts.push(`personalization_notes=${profile.personalization_notes}`);
+
+        const profilePrompt = profilePromptParts.length
+            ? `[USER PERSONALIZATION CONTEXT]\n${profilePromptParts.join('\n')}\n\n`
+            : '';
+
+        const baseQuery = `${profilePrompt}${modePrompt}\n\n${userQuery}\n\n${snapshotPrompt}${partialScope ? `\n\n${partialScope}\n` : ''}`;
+
+        const favored = profile.favored_analysis_styles || [];
+        const styleDirectives: string[] = [];
+        if (favored.includes('risk-heavy') || favored.includes('risk-focused')) {
+            styleDirectives.push('[STYLE:risk-heavy]\n- 모든 페르소나는 먼저 DOWNside(최악/리스크) 시나리오를 제시하고, 그 다음에 구조/대응/관측지표로 이어가라.');
+        }
+        if (favored.includes('data-driven') || favored.includes('numeric-centric')) {
+            styleDirectives.push('[STYLE:data-driven]\n- 모든 페르소나는 가능한 한 수치/확률/구간(예: ~범위, %가능성)을 최소 1개 이상 포함해라.');
+        }
+        if (favored.includes('action-oriented') || favored.includes('execution-oriented')) {
+            styleDirectives.push('[STYLE:action-oriented]\n- 모든 페르소나는 결론 말미에 반드시 실행 체크리스트(3개 이하)를 제공하라.');
+        }
+        const styleDirectiveBlock = styleDirectives.length ? `\n\n[FAVORED_ANALYSIS_STYLES]\n${styleDirectives.join('\n')}` : '';
+
+        const preferredNamesForBias = profile.preferred_personas || [];
+        const avoidedNamesForBias = profile.avoided_personas || [];
+        const personaBiasDirective = (k: PersonaKey) => {
+            const n = personaKeyToPersonaName(k);
+            const isPreferred = preferredNamesForBias.includes(n);
+            const isAvoided = avoidedNamesForBias.includes(n);
+            if (isPreferred) {
+                return `[PERSONA_BIAS]\npreferred_persona=true\n응답을 더 길게(핵심 bullet 5개 이상) 작성하고 요약(summary)에도 우선 반영하라.\n`;
+            }
+            if (isAvoided) {
+                return `[PERSONA_BIAS]\npreferred_persona=false\n응답은 간결하게(핵심 bullet 2개 이하) 하고 하단/후순위로 작성하라.\n`;
+            }
+            return '';
+        };
+
+        const rayQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('RAY')}`;
+        const hindenburgQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('HINDENBURG')}`;
+        const simonsQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('SIMONS')}`;
+        const druckerQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('DRUCKER')}`;
+        const cioQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('CIO')}`;
+
+        // 1) Gemini 결과를 먼저 계산
+        const rayRes = await ray.analyze(rayQuery, false);
         if (rayRes?.includes('[REASON: NO_DATA]')) {
             logger.warn('AI', 'Ray Dalio aborted due to NO_DATA at logic layer');
             return;
         }
+        logger.info('AGENT', 'Hindenburg analysis started', { userId });
+        const hindenburgRes = await hindenburg.analyze(hindenburgQuery, false);
+        const simonsRes = await simons.strategize(simonsQuery, false, `[Ray]\n${rayRes}\n[Hindenburg]\n${hindenburgRes}`);
+        const druckerCombinedLog = `${personaBiasDirective('DRUCKER')}${styleDirectiveBlock}\n[Ray]\n${rayRes}\n[Hindenburg]\n${hindenburgRes}\n[Simons]\n${simonsRes}`;
+        const druckerRes = await drucker.summarizeAndGenerateActions(false, druckerCombinedLog);
+        const cioCombinedLog = `${personaBiasDirective('CIO')}${styleDirectiveBlock}\n[Ray]\n${rayRes}\n[Hindenburg]\n${hindenburgRes}\n[Simons]\n${simonsRes}\n[Drucker]\n${druckerRes}`;
+        const cioRes = await cio.decide(false, cioCombinedLog);
 
-        const jypRes = await broadcastAgentResponse(
-            userId,
-            'JYP (Analyst)',
-            'https://upload.wikimedia.org/wikipedia/commons/4/44/Park_Jin-young_at_WCG_2020.png',
-            await jyp.inspire(effectiveQuery, false, rayRes),
-            sourceInteraction
-        );
-        const simonsRes = await broadcastAgentResponse(
-            userId,
-            'James Simons (Quant)',
-            'https://upload.wikimedia.org/wikipedia/commons/4/46/Jim_Simons.jpg',
-            await simons.strategize(effectiveQuery, false, `[Ray]\n${rayRes}\n[JYP]\n${jypRes}`),
-            sourceInteraction
-        );
-        const druckerRes = await broadcastAgentResponse(
-            userId,
-            'Peter Drucker (COO)',
-            'https://upload.wikimedia.org/wikipedia/commons/0/00/Peter_Drucker_circa_1980.jpg',
-            await drucker.summarizeAndGenerateActions(false, `[Ray]\n${rayRes}\n[JYP]\n${jypRes}\n[Simons]\n${simonsRes}`),
-            sourceInteraction
-        );
-        const cioRes = await broadcastAgentResponse(
-            userId,
-            'Stanley Druckenmiller (CIO)',
-            'https://upload.wikimedia.org/wikipedia/commons/0/0f/Stanley_Druckenmiller.jpg',
-            await cio.decide(false, `[Ray]\n${rayRes}\n[JYP]\n${jypRes}\n[Simons]\n${simonsRes}\n[Drucker]\n${druckerRes}`),
-            sourceInteraction
-        );
+        const analysisType = guessAnalysisTypeFromTrigger(triggerId, userQuery);
 
-        logger.info('AI', 'Gemini call completed');
-        const weeklyReport = extractWeeklyReport(jypRes);
+        // Persona bias: preferred personas는 상단/요약에 우선 반영, avoided personas는 하단/요약에서 제외
+        const preferredNames = profile.preferred_personas || [];
+        const avoidedNames = profile.avoided_personas || [];
+        const keyOrder: PersonaKey[] = ['HINDENBURG', 'RAY', 'SIMONS', 'DRUCKER', 'CIO'];
+        const scoreForKey = (k: PersonaKey) => {
+            const n = personaKeyToPersonaName(k);
+            const pi = preferredNames.indexOf(n);
+            if (pi >= 0) return 10000 - pi;
+            const ai = avoidedNames.indexOf(n);
+            if (ai >= 0) return -10000 - ai;
+            return 0;
+        };
+        const orderedKeys = [...keyOrder].sort((a, b) => scoreForKey(b) - scoreForKey(a));
+        const preferredSummaryKey = orderedKeys.find(k => preferredNames.includes(personaKeyToPersonaName(k))) || 'CIO';
+        const preferredSummarySource =
+            preferredSummaryKey === 'HINDENBURG' ? hindenburgRes :
+                preferredSummaryKey === 'RAY' ? rayRes :
+                    preferredSummaryKey === 'SIMONS' ? simonsRes :
+                        preferredSummaryKey === 'DRUCKER' ? druckerRes :
+                            cioRes;
 
-        const chatHistoryPayload = {
+        // 2) chat_history를 먼저 insert해서 id를 확보 (feedback 연결 목적)
+        const chatHistoryPayload: any = {
             user_id: userId,
             user_query: userQuery,
+            debate_type: analysisType,
             ray_advice: rayRes,
-            jyp_insight: jypRes,
+            jyp_insight: null,
             simons_opportunity: simonsRes,
             drucker_decision: druckerRes,
             cio_decision: cioRes,
-            jyp_weekly_report: weeklyReport
+            jyp_weekly_report: null,
+            summary: toOpinionSummary(preferredSummarySource, 1000),
+            key_risks: toOpinionSummary(hindenburgRes, 1500),
+            key_actions: toOpinionSummary(druckerRes, 1500)
         };
         logger.info('DB', 'chat_history payload preview', {
             keys: Object.keys(chatHistoryPayload),
-            hasWeeklyReport: !!weeklyReport
+            hasWeeklyReport: false
         });
-        const { error: dbError } = await supabase.from('chat_history').insert(chatHistoryPayload);
-        if (dbError) {
-            logger.error('DB', '[chat_history][insert] failed', {
-                message: dbError?.message,
-                keys: Object.keys(chatHistoryPayload),
-                hasWeeklyReport: !!weeklyReport,
-                details: dbError
-            });
-        } else {
-            logger.info('DB', 'chat_history insert success');
+
+        const chatHistoryId = await safeInsertChatHistoryAndGetId(chatHistoryPayload, true);
+        if (chatHistoryId) logger.info('DB', 'chat_history insert success', { chatHistoryId });
+
+        logger.info('AI', 'Gemini call completed');
+
+        // 3) 확보한 chat_history_id로 feedback 버튼을 붙여서 전송
+        const feedbackRay = chatHistoryId ? getFeedbackButtonsRow(chatHistoryId, analysisType, 'RAY') : null;
+        const feedbackHindenburg = chatHistoryId ? getFeedbackButtonsRow(chatHistoryId, analysisType, 'HINDENBURG') : null;
+        const feedbackSimons = chatHistoryId ? getFeedbackButtonsRow(chatHistoryId, analysisType, 'SIMONS') : null;
+        const feedbackDrucker = chatHistoryId ? getFeedbackButtonsRow(chatHistoryId, analysisType, 'DRUCKER') : null;
+        const feedbackCio = chatHistoryId ? getFeedbackButtonsRow(chatHistoryId, analysisType, 'CIO') : null;
+
+        const resultByKey: Record<PersonaKey, string> = {
+            RAY: rayRes,
+            HINDENBURG: hindenburgRes,
+            SIMONS: simonsRes,
+            DRUCKER: druckerRes,
+            CIO: cioRes,
+            JYP: '',
+            TREND: '',
+            OPEN_TOPIC: ''
+        };
+
+        const metaByKey: Partial<Record<PersonaKey, { agentName: string; avatarUrl: string }>> = {
+            RAY: {
+                agentName: 'Ray Dalio (PB)',
+                avatarUrl: 'https://upload.wikimedia.org/wikipedia/commons/4/4e/Ray_Dalio_at_the_World_Economic_Forum_%28cropped%29.jpg'
+            },
+            HINDENBURG: {
+                agentName: 'HINDENBURG_ANALYST',
+                avatarUrl: 'https://upload.wikimedia.org/wikipedia/commons/e/e3/Albert_Einstein_Head.png'
+            },
+            SIMONS: {
+                agentName: 'James Simons (Quant)',
+                avatarUrl: 'https://upload.wikimedia.org/wikipedia/commons/4/46/Jim_Simons.jpg'
+            },
+            DRUCKER: {
+                agentName: 'Peter Drucker (COO)',
+                avatarUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/00/Peter_Drucker_circa_1980.jpg'
+            },
+            CIO: {
+                agentName: 'Stanley Druckenmiller (CIO)',
+                avatarUrl: 'https://upload.wikimedia.org/wikipedia/commons/0/0f/Stanley_Druckenmiller.jpg'
+            }
+        };
+
+        const feedbackByKey: Partial<Record<PersonaKey, ActionRowBuilder<ButtonBuilder> | null>> = {
+            RAY: feedbackRay,
+            HINDENBURG: feedbackHindenburg,
+            SIMONS: feedbackSimons,
+            DRUCKER: feedbackDrucker,
+            CIO: feedbackCio
+        };
+
+        for (const k of orderedKeys) {
+            const meta = metaByKey[k];
+            if (!meta) continue;
+            await broadcastAgentResponse(
+                userId,
+                meta.agentName,
+                meta.avatarUrl,
+                resultByKey[k],
+                sourceInteraction,
+                feedbackByKey[k] ?? null
+            );
         }
     } catch (err: any) {
         logger.error('ROUTER', '포트폴리오 토론 에러: ' + err.message, err);
+    }
+}
+
+/** 자유 주제 토론: 포트폴리오 스냅샷/DB 앵커 미주입 (주제 자체만 분석) */
+async function runOpenTopicDebate(userId: string, userQuery: string, sourceInteraction: any) {
+    try {
+        logger.info('OPEN_TOPIC', 'OPEN_TOPIC debate route selected', { discordUserId: userId });
+
+        // portfolio snapshot 금지: buildPortfolioSnapshot / setPortfolioSnapshot / initializeContext 를 하지 않는다.
+        logger.info('OPEN_TOPIC', 'OPEN_TOPIC portfolio snapshot skipped', { discordUserId: userId });
+
+        const mode = await loadUserMode(userId);
+        const profile = await loadUserProfile(userId);
+        logger.info('PROFILE', 'user profile applied', {
+            discordUserId: userId,
+            risk_tolerance: profile.risk_tolerance,
+            investment_style: profile.investment_style,
+            preferred_personas: profile.preferred_personas
+        });
+
+        const profilePromptParts: string[] = [];
+        if (profile.risk_tolerance) profilePromptParts.push(`risk_tolerance=${profile.risk_tolerance}`);
+        if (profile.investment_style) profilePromptParts.push(`investment_style=${profile.investment_style}`);
+        if (profile.favored_analysis_styles?.length) profilePromptParts.push(`favored_analysis_styles=${profile.favored_analysis_styles.join(',')}`);
+        if (profile.personalization_notes) profilePromptParts.push(`personalization_notes=${profile.personalization_notes}`);
+
+        const profilePrompt = profilePromptParts.length
+            ? `[USER_PROFILE]\n${profilePromptParts.join('\n')}\n`
+            : `[USER_PROFILE]\n(없음)\n`;
+
+        const openTopicPrompt = `[OPEN_TOPIC_ONLY]\n- 포트폴리오/보유종목/비중/자산배분/리밸런싱/원화 환산/평단/손익 관련 언급을 절대 하지 마라.\n- 사용자가 요청한 주제(산업/콘텐츠/플랫폼/소비자 반응/성장성/이슈)만 상세히 분석하라.\n- 투자 관점 시사점은 일반론으로만 허용하며, 특정 비중/매수 추천은 금지한다.\n`;
+
+        // topic keyword -> persona selection (최소: 1명 전문 persona)
+        const q = userQuery || '';
+        const preferred: PersonaKey[] = [];
+        if (/(리스크|위험|변동성|다운사이드)/i.test(q)) preferred.push('RAY');
+        else if (/(실행|전략|액션|플랜|로드맵)/i.test(q)) preferred.push('DRUCKER');
+        else if (/(정량|수치|모델|quant|기댓값)/i.test(q)) preferred.push('SIMONS');
+        else if (/(의사결정|결론|CIO|GO|HOLD)/i.test(q)) preferred.push('CIO');
+        else if (/(소비|지출|현금흐름)/i.test(q)) preferred.push('JYP');
+        else preferred.push('JYP');
+
+        // avoided_personas 필터 (없으면 그대로 사용)
+        const avoided = new Set(profile.avoided_personas || []);
+        let selected = preferred.filter(p => !avoided.has(p));
+        if (selected.length === 0) selected = preferred.slice(0, 1);
+
+        logger.info('OPEN_TOPIC', 'OPEN_TOPIC personas engaged', { discordUserId: userId, selected });
+
+        const modePrompt = `[USER_MODE]\n${mode}\n(오픈 토픽은 금융 계산/포트폴리오 언급 없이 분석 톤만 반영)`;
+        const effectiveQuery = `${openTopicPrompt}\n${profilePrompt}\n${modePrompt}\n\n[USER_TOPIC]\n${userQuery}`;
+
+        const personas: Partial<Record<PersonaKey, any>> = {
+            RAY: new RayDalioAgent(),
+            JYP: new JYPAgent(),
+            SIMONS: new JamesSimonsAgent(),
+            DRUCKER: new PeterDruckerAgent(),
+            CIO: new StanleyDruckenmillerAgent()
+        };
+
+        const forbiddenKeywords = ['포트폴리오', '비중', '보유종목', '리밸런싱'];
+        const filterForbiddenFinancialKeywords = (text: string, personaKey: PersonaKey): string => {
+            const t = String(text || '');
+            const found = forbiddenKeywords.find(k => t.includes(k));
+            if (!found) return t;
+
+            logger.warn('OPEN_TOPIC', 'OPEN_TOPIC forbidden financial keyword detected', {
+                discordUserId: userId,
+                personaKey,
+                keyword: found
+            });
+
+            const filtered = t
+                .split('\n')
+                .filter(line => !forbiddenKeywords.some(k => line.includes(k)))
+                .join('\n')
+                .trim();
+
+            return filtered || '요청하신 주제 분야 중심으로만 답변합니다.';
+        };
+
+        // isTrendQuery=true로 validateAndGenerate의 NO_DATA 하드게이트를 우회
+        const results: Partial<Record<PersonaKey, string>> = {};
+        for (const p of selected) {
+            const agent = personas[p];
+            const rawText = await (p === 'RAY'
+                ? agent.analyze(effectiveQuery, true)
+                : p === 'JYP'
+                    ? agent.inspire(effectiveQuery, true, '')
+                    : p === 'SIMONS'
+                        ? agent.strategize(effectiveQuery, true, '')
+                        : p === 'DRUCKER'
+                            ? agent.summarizeAndGenerateActions(true, '')
+                            : agent.decide(true, ''));
+            results[p] = filterForbiddenFinancialKeywords(rawText, p);
+        }
+
+        const debateType = 'open_topic';
+        const chatHistoryPayload: any = {
+            user_id: userId,
+            user_query: userQuery,
+            debate_type: debateType,
+            ray_advice: results.RAY ?? null,
+            jyp_insight: results.JYP ?? null,
+            simons_opportunity: results.SIMONS ?? null,
+            drucker_decision: results.DRUCKER ?? null,
+            cio_decision: results.CIO ?? null,
+            jyp_weekly_report: null as string | null,
+            summary: toOpinionSummary(String(results[selected[0]] || ''), 1000),
+            key_risks: toOpinionSummary(String(results.RAY || ''), 1000),
+            key_actions: toOpinionSummary(String(results.DRUCKER || ''), 1000)
+        };
+
+        const chatHistoryId = await safeInsertChatHistoryAndGetId(chatHistoryPayload, true);
+        if (chatHistoryId) logger.info('DB', 'chat_history insert success (open_topic)', { chatHistoryId });
+
+        const analysisType = guessAnalysisTypeFromTrigger(undefined, userQuery);
+        for (const p of selected) {
+            const feedbackRow = chatHistoryId ? getFeedbackButtonsRow(chatHistoryId, analysisType, p) : null;
+            const label = personaKeyToPersonaName(p);
+            const avatarURL = p === 'JYP'
+                ? 'https://upload.wikimedia.org/wikipedia/commons/4/44/Park_Jin-young_at_WCG_2020.png'
+                : p === 'RAY'
+                    ? 'https://upload.wikimedia.org/wikipedia/commons/4/4e/Ray_Dalio_at_the_World_Economic_Forum_%28cropped%29.jpg'
+                    : p === 'SIMONS'
+                        ? 'https://upload.wikimedia.org/wikipedia/commons/4/46/Jim_Simons.jpg'
+                        : p === 'DRUCKER'
+                            ? 'https://upload.wikimedia.org/wikipedia/commons/0/00/Peter_Drucker_circa_1980.jpg'
+                            : 'https://upload.wikimedia.org/wikipedia/commons/0/0f/StanleyDruckenmiller.jpg';
+
+            await broadcastAgentResponse(userId, label, avatarURL, String(results[p] || ''), sourceInteraction, feedbackRow);
+        }
+    } catch (err: any) {
+        logger.error('ROUTER', '오픈 토픽 토론 에러: ' + err.message, err);
     }
 }
 
@@ -771,22 +1497,68 @@ client.on('messageCreate', async (message: Message) => {
         if (qty === null || price === null) return message.reply("❌ 수량과 평단가는 숫자로 입력해주세요.");
 
         await supabase.from('stocks').upsert({ symbol: normalizedSymbol, name: displayName, sector });
-        const { error } = await supabase.from('portfolio').insert({
-            discord_user_id: getDiscordUserId(message.author),
-            symbol: normalizedSymbol,
-            display_name: displayName,
-            quote_symbol: quoteSymbol,
-            exchange,
-            market,
-            currency,
-            avg_purchase_price: price,
-            quantity: qty
-        });
-        if (error) {
-            logger.error('DATABASE', 'Supabase insert failure', error);
-            return message.reply(`❌ 등록 실패: ${error.message}`);
+        try {
+            await recordBuyTrade({
+                discordUserId: getDiscordUserId(message.author),
+                symbol: normalizedSymbol,
+                displayName,
+                quoteSymbol,
+                exchange,
+                market: market === 'US' ? 'US' : 'KR',
+                currency: currency === 'USD' ? 'USD' : 'KRW',
+                purchaseCurrency: market === 'US' ? (currency === 'USD' ? 'USD' : 'KRW') : 'KRW',
+                quantity: qty,
+                pricePerUnit: price,
+                memo: '!종목추가'
+            });
+            void learnBehaviorFromTrades(getDiscordUserId(message.author));
+        } catch (e: any) {
+            logger.error('DATABASE', 'trade buy record failure', e);
+            return message.reply(`❌ 등록 실패: ${e?.message || String(e)}`);
         }
-        return message.reply(`✅ **${displayName}(${quoteSymbol})** 종목 추가 완료!`);
+        return message.reply(`✅ **${displayName}(${quoteSymbol})** 종목 추가 완료! (거래 원장 반영)`);
+    }
+
+    if (message.content.startsWith('!계좌추가')) {
+        const parts = message.content.trim().split(/\s+/);
+        if (parts.length < 2) {
+            return message.reply('❌ 사용법: `!계좌추가 [계좌이름] [TAXABLE|RETIREMENT|PENSION|ISA|OTHER]`');
+        }
+        const accountName = parts[1];
+        const typeRaw = (parts[2] || 'OTHER').toUpperCase();
+        const allowed = new Set(['TAXABLE', 'RETIREMENT', 'PENSION', 'ISA', 'OTHER']);
+        const accountType = (allowed.has(typeRaw) ? typeRaw : 'OTHER') as
+            | 'TAXABLE'
+            | 'RETIREMENT'
+            | 'PENSION'
+            | 'ISA'
+            | 'OTHER';
+        try {
+            await createAccount({
+                discordUserId: getDiscordUserId(message.author),
+                accountName,
+                accountType
+            });
+            logger.info('ACCOUNT', 'account applied to portfolio/trade', { accountName, accountType });
+            return message.reply(
+                `✅ 계좌 **${accountName}** (${accountType}) 생성 완료. **${GENERAL_ACCOUNT_NAME}**는 자동 생성되며 미지정 매수 시 해당 계좌에 반영됩니다.`
+            );
+        } catch (e: any) {
+            return message.reply(`❌ 계좌 생성 실패: ${e?.message || String(e)}`);
+        }
+    }
+
+    if (message.content.startsWith('!내계좌')) {
+        const uid = getDiscordUserId(message.author);
+        const { data, error } = await supabase
+            .from('accounts')
+            .select('account_name, account_type, id')
+            .eq('discord_user_id', uid)
+            .order('created_at', { ascending: true });
+        if (error) return message.reply(`❌ 조회 실패: ${error.message}`);
+        if (!data?.length) return message.reply('등록된 계좌가 없습니다. `!계좌추가` 로 추가하세요.');
+        const lines = data.map(a => `- **${a.account_name}** (${a.account_type}) \`${a.id}\``);
+        return message.reply(['**내 계좌 목록**', ...lines].join('\n'));
     }
 
     if (message.content.startsWith('!지출추가')) {
@@ -827,18 +1599,25 @@ client.on('messageCreate', async (message: Message) => {
     }
 
     if (message.content.startsWith('!토론')) {
+        const orch = decideOrchestratorRoute({ messagePrefix: message.content });
+        logOrchestratorDecision(orch, { source: '!토론' });
         const userQuery = message.content.replace('!토론', '').trim() || '현재 내 상황을 점검해줘.';
         const isTrend = isTrendQueryCheck(userQuery);
+        const isFinancial = detectFinancialIntent(userQuery);
 
         const statusText = isTrend
             ? '📌 **트렌드·주제 분석 중…** (포트폴리오 스냅샷 미사용)'
-            : '📊 **포트폴리오·소비·현금흐름 기준 재무 분석 중...**';
+            : isFinancial
+                ? '📊 **포트폴리오 기반 재무 분석 토론 중...**'
+                : '📌 **자유 주제 분석 중…** (포트폴리오 스냅샷 미사용)';
 
         const loadingMsg = await message.reply(statusText);
         if (isTrend) {
             await runTrendAnalysis(message.author.id, userQuery, loadingMsg, 'free', undefined);
-        } else {
+        } else if (isFinancial) {
             await runPortfolioDebate(message.author.id, userQuery, loadingMsg);
+        } else {
+            await runOpenTopicDebate(message.author.id, userQuery, loadingMsg);
         }
         await loadingMsg.delete().catch(() => {});
     }
@@ -875,6 +1654,97 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 s.interactions.lastInteractionType = 'button';
                 s.interactions.lastCustomId = cid;
             });
+
+            // Feedback button handler: analysis feedback를 누적 저장
+            if (cid.startsWith('feedback:save:')) {
+                await safeDeferReply(interaction, { flags: 64 });
+                try {
+                    const parts = cid.split(':');
+                    // feedback:save:${chatHistoryId}:${feedbackType}:${personaKey}
+                    const chatHistoryId = parts[2];
+                    const feedbackTypeRaw = parts[3];
+                    const personaKeyRaw = parts[4];
+
+                    const discordUserId = getDiscordUserId(interaction.user);
+                    const feedbackType = String(feedbackTypeRaw || '').toUpperCase() as FeedbackType;
+                    const personaKey = String(personaKeyRaw || '') as PersonaKey;
+
+                    if (!chatHistoryId || !feedbackType || !personaKey) {
+                        await safeEditReply(interaction, '❌ 피드백 처리 실패(파라미터 누락).', 'feedback:save:invalid');
+                        return;
+                    }
+
+                    logger.info('PROFILE', 'feedback button clicked', {
+                        discordUserId,
+                        chatHistoryId,
+                        feedbackType,
+                        personaKey
+                    });
+
+                    let chatRow: any = null;
+                    try {
+                        const { data, error } = await supabase
+                            .from('chat_history')
+                            .select('id,user_id,debate_type,user_query,ray_advice,key_risks,key_actions,jyp_insight,simons_opportunity,drucker_decision,cio_decision,summary')
+                            .eq('id', chatHistoryId)
+                            .maybeSingle();
+                        if (error) throw error;
+                        chatRow = data;
+                    } catch (selErr: any) {
+                        logger.warn('DB', 'chat_history select fallback triggered', {
+                            discordUserId,
+                            message: selErr?.message || String(selErr)
+                        });
+                        const { data, error } = await supabase
+                            .from('chat_history')
+                            .select('id,user_id,debate_type,user_query,ray_advice,jyp_insight,simons_opportunity,drucker_decision,cio_decision')
+                            .eq('id', chatHistoryId)
+                            .maybeSingle();
+                        if (error) throw error;
+                        chatRow = data;
+                    }
+
+                    if (!chatRow) {
+                        await safeEditReply(interaction, '❌ 연결된 분석 기록을 찾을 수 없습니다(만료/삭제).', 'feedback:save:not_found');
+                        return;
+                    }
+                    if (String(chatRow.user_id) !== String(discordUserId)) {
+                        await safeEditReply(interaction, '❌ 본인 분석에 대한 피드백만 저장할 수 있습니다.', 'feedback:save:unauthorized');
+                        return;
+                    }
+
+                    const columnKey = getPersonaColumnKey(personaKey);
+                    let opinionText = String((chatRow as any)[columnKey] || '');
+                    if (!opinionText && columnKey === 'key_risks') {
+                        // schema 미스매치 fallback: HINDENBURG는 key_risks 대신 ray_advice에 저장됐을 수 있음
+                        opinionText = String(chatRow?.ray_advice || '');
+                    }
+                    if (!opinionText) {
+                        await safeEditReply(interaction, '❌ 해당 페르소나 응답을 찾지 못했습니다.', 'feedback:save:no_opinion');
+                        return;
+                    }
+
+                    const opinionSummary = toOpinionSummary(opinionText, 220);
+                    const analysisType = String(chatRow.debate_type || 'unknown');
+                    const personaName = personaKeyToPersonaName(personaKey);
+
+                    await saveAnalysisFeedbackHistory({
+                        discordUserId,
+                        chatHistoryId,
+                        analysisType,
+                        personaName,
+                        opinionSummary,
+                        opinionText,
+                        feedbackType
+                    });
+
+                    await safeEditReply(interaction, `✅ 피드백 저장 완료: ${feedbackType}`, 'feedback:save:success');
+                } catch (e: any) {
+                    logger.error('PROFILE', 'feedback save handler failed', { error: e?.message || String(e) });
+                    await safeEditReply(interaction, `❌ 피드백 저장 실패 (시스템 로그 기록됨).`, 'feedback:save:failure');
+                }
+                return;
+            }
 
             if (cid.startsWith('panel:main:')) {
                 logger.info('INTERACTION', 'handler branch entered', {
@@ -923,7 +1793,10 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                     });
                     return;
                 }
-                if (cid === 'panel:main:portfolio') await safeUpdate(interaction, getPortfolioPanel(), 'panel:main:portfolio');
+                if (cid === 'panel:main:portfolio') {
+                    logger.info('UI', 'portfolio panel rendered', { variant: 'main' });
+                    await safeUpdate(interaction, getPortfolioPanel(), 'panel:main:portfolio');
+                }
                 else if (cid === 'panel:main:finance') await safeUpdate(interaction, getFinancePanel(), 'panel:main:finance');
                 else if (cid === 'panel:main:ai') await safeUpdate(interaction, getAIPanel(), 'panel:main:ai');
                 else if (cid === 'panel:main:settings') await safeUpdate(interaction, getSettingsPanel(), 'panel:main:settings');
@@ -963,8 +1836,176 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 return;
             }
 
+            if (cid === 'panel:portfolio:more') {
+                logger.info('UI', 'portfolio panel rendered', { variant: 'more' });
+                await safeUpdate(interaction, getPortfolioMorePanel(), 'panel:portfolio:more');
+                return;
+            }
+
+            if (cid === 'panel:portfolio:accounts') {
+                await safeDeferReply(interaction, { flags: 64 });
+                const discordUserId = getDiscordUserId(interaction.user);
+                try {
+                    const rows = await listUserAccounts(discordUserId);
+                    if (!rows.length) {
+                        await safeEditReply(
+                            interaction,
+                            '등록된 계좌가 없습니다. 채팅에서 `!계좌추가 계좌이름 유형`으로 추가할 수 있습니다.',
+                            'panel:portfolio:accounts:empty'
+                        );
+                        return;
+                    }
+                    const lines = rows.map(a => {
+                        const isGen = a.account_name === GENERAL_ACCOUNT_NAME;
+                        const badge = isGen
+                            ? '[기본]'
+                            : a.account_type === 'RETIREMENT' || a.account_type === 'PENSION'
+                              ? '[퇴직연금]'
+                              : `[${accountTypeLabelKo(a.account_type)}]`;
+                        return `· **${a.account_name}** ${badge}`;
+                    });
+                    const text = ['**내 계좌**', '', ...lines, '', `_일반계좌가 기본 매매·조회 계좌입니다._`].join('\n');
+                    await safeEditReply(interaction, text, 'panel:portfolio:accounts:ok');
+                } catch (e: any) {
+                    await safeEditReply(interaction, `계좌 목록을 불러오지 못했습니다.`, 'panel:portfolio:accounts:err');
+                }
+                return;
+            }
+
+            if (cid === 'panel:portfolio:view:pick') {
+                const discordUserId = getDiscordUserId(interaction.user);
+                try {
+                    const rows = await listUserAccounts(discordUserId);
+                    if (!rows.length) {
+                        await interaction.reply({
+                            content: '등록된 계좌가 없습니다. `!계좌추가`로 먼저 추가해 주세요.',
+                            ephemeral: true
+                        });
+                        return;
+                    }
+                    const select = new StringSelectMenuBuilder()
+                        .setCustomId('select:portfolio:account')
+                        .setPlaceholder('조회할 계좌 선택')
+                        .addOptions(
+                            rows.slice(0, 25).map(a =>
+                                new StringSelectMenuOptionBuilder()
+                                    .setLabel(`${a.account_name} (${accountTypeLabelKo(a.account_type)})`.slice(0, 100))
+                                    .setValue(a.id)
+                            )
+                        );
+                    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+                    await interaction.reply({
+                        content: '계좌를 선택하면 해당 계좌만 조회합니다.',
+                        components: [row],
+                        ephemeral: true
+                    });
+                    logger.info('UI', 'advanced account selector used', { purpose: 'view_by_account' });
+                } catch (e: any) {
+                    await interaction.reply({ content: '계좌 목록을 불러오지 못했습니다.', ephemeral: true }).catch(() => {});
+                }
+                return;
+            }
+
+            if (cid === 'panel:portfolio:view:retirement') {
+                const discordUserId = getDiscordUserId(interaction.user);
+                try {
+                    const r = await findFirstRetirementAccount(discordUserId);
+                    if (!r) {
+                        await safeDeferReply(interaction, { flags: 64 });
+                        await safeEditReply(
+                            interaction,
+                            '퇴직연금 계좌가 없습니다. `!계좌추가 퇴직연금계좌 RETIREMENT`로 추가하거나 **계좌 관리**를 이용하세요.',
+                            'panel:portfolio:view:retirement:none'
+                        );
+                        return;
+                    }
+                    await runPortfolioQueryFromButton(interaction, discordUserId, 'retirement', {
+                        accountId: r.id,
+                        accountName: r.account_name,
+                        accountType: r.account_type,
+                        orchestratorCustomId: cid
+                    });
+                } catch (e: any) {
+                    (interaction as any).__localErrorHandled = true;
+                    await safeDeferReply(interaction, { flags: 64 }).catch(() => {});
+                    await safeEditReply(interaction, '조회 처리 중 오류가 발생했습니다.', 'panel:portfolio:view:retirement:ex').catch(() => {});
+                }
+                return;
+            }
+
+            if (cid === 'panel:portfolio:add:other') {
+                const discordUserId = getDiscordUserId(interaction.user);
+                try {
+                    const rows = await listUserAccounts(discordUserId);
+                    if (!rows.length) {
+                        await interaction.reply({
+                            content: '등록된 계좌가 없습니다. 먼저 `!계좌추가`로 계좌를 만든 뒤 이용하세요.',
+                            ephemeral: true
+                        });
+                        return;
+                    }
+                    const select = new StringSelectMenuBuilder()
+                        .setCustomId('select:portfolio:buy')
+                        .setPlaceholder('매수를 반영할 계좌')
+                        .addOptions(
+                            rows.slice(0, 25).map(a =>
+                                new StringSelectMenuOptionBuilder()
+                                    .setLabel(`${a.account_name} (${accountTypeLabelKo(a.account_type)})`.slice(0, 100))
+                                    .setValue(a.id)
+                            )
+                        );
+                    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+                    await interaction.reply({
+                        content: '계좌를 고른 뒤 입력 창이 열립니다.',
+                        components: [row],
+                        ephemeral: true
+                    });
+                    logger.info('UI', 'advanced account selector used', { purpose: 'buy' });
+                } catch (e: any) {
+                    await interaction.reply({ content: '계좌 목록을 불러오지 못했습니다.', ephemeral: true }).catch(() => {});
+                }
+                return;
+            }
+
+            if (cid === 'panel:portfolio:delete:other') {
+                const discordUserId = getDiscordUserId(interaction.user);
+                try {
+                    const rows = await listUserAccounts(discordUserId);
+                    if (!rows.length) {
+                        await interaction.reply({
+                            content: '등록된 계좌가 없습니다.',
+                            ephemeral: true
+                        });
+                        return;
+                    }
+                    const select = new StringSelectMenuBuilder()
+                        .setCustomId('select:portfolio:sell')
+                        .setPlaceholder('매도할 계좌')
+                        .addOptions(
+                            rows.slice(0, 25).map(a =>
+                                new StringSelectMenuOptionBuilder()
+                                    .setLabel(`${a.account_name} (${accountTypeLabelKo(a.account_type)})`.slice(0, 100))
+                                    .setValue(a.id)
+                            )
+                        );
+                    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+                    await interaction.reply({
+                        content: '계좌를 고른 뒤 매도 입력 창이 열립니다.',
+                        components: [row],
+                        ephemeral: true
+                    });
+                    logger.info('UI', 'advanced account selector used', { purpose: 'sell' });
+                } catch (e: any) {
+                    await interaction.reply({ content: '계좌 목록을 불러오지 못했습니다.', ephemeral: true }).catch(() => {});
+                }
+                return;
+            }
+
             if (cid === 'panel:portfolio:add') {
-                const modal = new ModalBuilder().setCustomId('modal:portfolio:add').setTitle('📈 신규 종목 등록');
+                pendingBuyAccountId.delete(getDiscordUserId(interaction.user));
+                pendingSellAccountId.delete(getDiscordUserId(interaction.user));
+                logger.info('UI', 'trade modal opened', { flow: 'buy_default' });
+                const modal = new ModalBuilder().setCustomId('modal:portfolio:add').setTitle('➕ 종목 추가 (일반계좌)');
                 modal.addComponents(
                     new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('symbol').setLabel("심볼 (티커)").setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('qty').setLabel("수량").setStyle(TextInputStyle.Short)),
@@ -1007,88 +2048,16 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 return;
             }
 
-            if (cid === 'panel:portfolio:view') {
-                logger.info('INTERACTION', 'portfolio view branch start', {
-                    interactionId: interaction.id,
-                    customId: interaction.customId
-                });
+            if (cid === 'panel:portfolio:view' || cid === 'panel:portfolio:view:all') {
+                const isAll = cid === 'panel:portfolio:view:all';
+                const discordUserId = getDiscordUserId(interaction.user);
                 try {
-                    await safeDeferReply(interaction, { flags: 64 });
-                    logger.info('INTERACTION', 'portfolio view defer success', {
-                        interactionId: interaction.id,
-                        customId: interaction.customId
-                    });
-                    const discordUserId = getDiscordUserId(interaction.user);
-                    logger.info('PORTFOLIO', 'portfolio view requested', {
-                        interactionId: interaction.id,
+                    await runPortfolioQueryFromButton(
+                        interaction,
                         discordUserId,
-                        username: interaction.user.username,
-                        customId: interaction.customId
-                    });
-                    logger.info('PORTFOLIO', 'portfolio select query params', {
-                        discordUserId: interaction.user.id
-                    });
-
-                    const { data, error } = await supabase
-                        .from('portfolio')
-                        .select('*')
-                        .or(`discord_user_id.eq.${discordUserId},user_id.eq.${discordUserId}`);
-
-                    logger.info('PORTFOLIO', 'portfolio select completed', {
-                        discordUserId,
-                        rowCount: data?.length ?? 0,
-                        firstRows: (data ?? []).slice(0, 5).map((r: any) => ({
-                            discord_user_id: r.discord_user_id,
-                            user_id: r.user_id,
-                            symbol: r.symbol,
-                            quantity: r.quantity
-                        }))
-                    });
-
-                    if (error) {
-                        logger.error('DATABASE', 'Supabase select failure: portfolio', {
-                            table: 'portfolio',
-                            column: 'discord_user_id',
-                            discordUserId,
-                            message: error.message
-                        });
-                        await safeEditReply(interaction, `포트폴리오 조회 중 오류가 발생했습니다: ${error.message}`, 'panel:portfolio:view:db_failure');
-                        return;
-                    }
-
-                    if (!data || data.length === 0) {
-                        logger.warn('PORTFOLIO', 'portfolio empty for current user', { discordUserId });
-                        await safeEditReply(interaction, '조회된 포트폴리오가 없습니다.', 'panel:portfolio:view:empty');
-                        logger.info('INTERACTION', 'handler branch returning', {
-                            interactionId: interaction.id,
-                            customId: interaction.customId
-                        });
-                        return;
-                    }
-
-                    const snapshot = await buildPortfolioSnapshot(discordUserId);
-                    const lines = snapshot.positions.map((p, i) => {
-                        const label = p.display_name || p.symbol || p.quote_symbol || 'UNKNOWN';
-                        const code = p.quote_symbol || p.symbol;
-                        return [
-                            `${i + 1}) ${label} (${code})`,
-                            `- 수량: ${p.quantity}`,
-                            `- 평단: ${p.avg_purchase_price} ${p.currency}`,
-                            `- 현재가: ${p.current_price} ${p.price_currency}`,
-                            `- 평가액: ${formatKrw(p.market_value_krw)}`,
-                            `- 비중: ${p.weight_pct}%`,
-                            `- 손익: ${formatKrw(p.pnl_krw)} (${p.return_pct}%)`
-                        ].join('\n');
-                    });
-                    const header = [
-                        '**[포트폴리오 요약]**',
-                        `총 평가액: ${formatKrw(snapshot.summary.total_market_value_krw)}`,
-                        `총 손익: ${formatKrw(snapshot.summary.total_pnl_krw)} (${snapshot.summary.total_return_pct}%)`,
-                        `KR/US 비중: ${snapshot.summary.domestic_weight_pct}% / ${snapshot.summary.us_weight_pct}%`,
-                        '',
-                        '**[보유 종목]**'
-                    ].join('\n');
-                    await safeEditReply(interaction, `${header}\n${lines.join('\n\n')}`, 'panel:portfolio:view:success');
+                        isAll ? 'all' : 'default',
+                        { orchestratorCustomId: cid }
+                    );
                 } catch (e: any) {
                     (interaction as any).__localErrorHandled = true;
                     logger.error('INTERACTION', 'portfolio view local catch', {
@@ -1098,23 +2067,36 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                         interactionUserId: interaction.user.id
                     });
                     if (interaction.deferred || interaction.replied) {
-                        await safeEditReply(interaction, '포트폴리오 조회 처리 중 예기치 못한 오류가 발생했습니다.', 'panel:portfolio:view:exception');
+                        await safeEditReply(interaction, '포트폴리오 조회 처리 중 오류가 발생했습니다.', 'panel:portfolio:view:exception');
                     } else {
-                        await safeReplyOrFollowUp(interaction, { content: '포트폴리오 조회 처리 중 예기치 못한 오류가 발생했습니다.', flags: 64 }, 'panel:portfolio:view:exception_unacked');
+                        await safeReplyOrFollowUp(interaction, { content: '포트폴리오 조회 처리 중 오류가 발생했습니다.', flags: 64 }, 'panel:portfolio:view:exception_unacked');
                     }
                 }
-                logger.info('INTERACTION', 'portfolio view branch return', {
-                    interactionId: interaction.id,
-                    customId: interaction.customId
-                });
                 return;
             }
 
             if (cid === 'panel:portfolio:delete') {
-                const modal = new ModalBuilder().setCustomId('modal:portfolio:delete').setTitle('❌ 보유 종목 삭제');
+                pendingBuyAccountId.delete(getDiscordUserId(interaction.user));
+                pendingSellAccountId.delete(getDiscordUserId(interaction.user));
+                logger.info('UI', 'trade modal opened', { flow: 'sell_default' });
+                const modal = new ModalBuilder().setCustomId('modal:portfolio:delete').setTitle('➖ 종목 매도 (일반계좌)');
                 modal.addComponents(
                     new ActionRowBuilder<TextInputBuilder>().addComponents(
-                        new TextInputBuilder().setCustomId('symbol').setLabel("삭제할 심볼").setStyle(TextInputStyle.Short)
+                        new TextInputBuilder().setCustomId('symbol').setLabel('심볼 (티커)').setStyle(TextInputStyle.Short)
+                    ),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('qty')
+                            .setLabel('매도 수량 (비우면 전량)')
+                            .setStyle(TextInputStyle.Short)
+                            .setRequired(false)
+                    ),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('sell_price')
+                            .setLabel('매도 단가 (비우면 평단가)')
+                            .setStyle(TextInputStyle.Short)
+                            .setRequired(false)
                     )
                 );
                 await interaction.showModal(modal);
@@ -1147,6 +2129,69 @@ client.on('interactionCreate', async (interaction: Interaction) => {
             }
         }
 
+        if (interaction.isStringSelectMenu()) {
+            const sid = interaction.customId;
+            const discordUserId = getDiscordUserId(interaction.user);
+            updateHealth(s => {
+                s.interactions.lastInteractionAt = new Date().toISOString();
+                s.interactions.lastInteractionType = 'string_select';
+                s.interactions.lastCustomId = sid;
+            });
+
+            if (sid === 'select:portfolio:account') {
+                const accountId = interaction.values[0];
+                try {
+                    await runPortfolioQueryFromAccountSelect(interaction, discordUserId, accountId);
+                } catch (e: any) {
+                    logger.error('INTERACTION', 'select portfolio account failed', e);
+                    await interaction.editReply({ content: '조회 중 오류가 발생했습니다.', components: [] }).catch(() => {});
+                }
+                return;
+            }
+
+            if (sid === 'select:portfolio:buy') {
+                const accountId = interaction.values[0];
+                pendingBuyAccountId.set(discordUserId, accountId);
+                logger.info('UI', 'trade modal opened', { flow: 'buy_advanced' });
+                const modal = new ModalBuilder().setCustomId('modal:portfolio:add').setTitle('➕ 종목 추가 (선택 계좌)');
+                modal.addComponents(
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('symbol').setLabel("심볼 (티커)").setStyle(TextInputStyle.Short)),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('qty').setLabel("수량").setStyle(TextInputStyle.Short)),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('price').setLabel("평균 매수 단가").setStyle(TextInputStyle.Short))
+                );
+                await interaction.showModal(modal);
+                return;
+            }
+
+            if (sid === 'select:portfolio:sell') {
+                const accountId = interaction.values[0];
+                pendingSellAccountId.set(discordUserId, accountId);
+                logger.info('UI', 'trade modal opened', { flow: 'sell_advanced' });
+                const modal = new ModalBuilder().setCustomId('modal:portfolio:delete').setTitle('➖ 종목 매도 (선택 계좌)');
+                modal.addComponents(
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(
+                        new TextInputBuilder().setCustomId('symbol').setLabel('심볼 (티커)').setStyle(TextInputStyle.Short)
+                    ),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('qty')
+                            .setLabel('매도 수량 (비우면 전량)')
+                            .setStyle(TextInputStyle.Short)
+                            .setRequired(false)
+                    ),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('sell_price')
+                            .setLabel('매도 단가 (비우면 평단가)')
+                            .setStyle(TextInputStyle.Short)
+                            .setRequired(false)
+                    )
+                );
+                await interaction.showModal(modal);
+                return;
+            }
+        }
+
         if (interaction.type === InteractionType.ModalSubmit) {
             const cid = interaction.customId;
             logger.info('INTERACTION', 'interaction received', {
@@ -1173,11 +2218,20 @@ client.on('interactionCreate', async (interaction: Interaction) => {
             }
 
             if (cid === 'modal:ai:ask') {
+                const orch = decideOrchestratorRoute({ modalId: cid });
+                logOrchestratorDecision(orch, { source: 'modal:ai:ask' });
                 const query = interaction.fields.getTextInputValue('query');
-                const statusText = '📊 **포트폴리오·소비·현금흐름 기준 재무 분석 중...**';
+                const isFinancial = detectFinancialIntent(query);
+                const statusText = isFinancial
+                    ? '📊 **포트폴리오 기반 재무 분석 중...**'
+                    : '📌 **자유 주제 분석 중…** (포트폴리오 스냅샷 미사용)';
                 await safeDeferReply(interaction, { flags: 64 });
                 await safeEditReplyPayload(interaction, { content: statusText }, `${cid}:status`);
-                await runPortfolioDebate(interaction.user.id, query, interaction);
+                if (isFinancial) {
+                    await runPortfolioDebate(interaction.user.id, query, interaction);
+                } else {
+                    await runOpenTopicDebate(interaction.user.id, query, interaction);
+                }
                 return;
             }
 
@@ -1194,8 +2248,8 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                     const displayName = resolved?.displayName || rawInput;
                     const quoteSymbol = resolved?.quoteSymbol || symbol;
                     const exchange = resolved?.exchange || null;
-                    const market = resolved?.market || 'KR';
-                    const currency = resolved?.currency || 'KRW';
+                    const market = (resolved?.market === 'US' ? 'US' : 'KR') as 'KR' | 'US';
+                    const currency = (resolved?.currency === 'USD' ? 'USD' : 'KRW') as 'KRW' | 'USD';
                     const qty = parsePositiveAmount(interaction.fields.getTextInputValue('qty'));
                     const price = parsePositiveAmount(interaction.fields.getTextInputValue('price'));
                     if (!qty || !price) {
@@ -1211,73 +2265,49 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                         quantity: qty,
                         avgPurchasePrice: price
                     });
-                    const upsertPayloadPreview = {
-                        discord_user_id: discordUserId,
+                    logger.info('PORTFOLIO', 'trade buy payload', {
+                        discordUserId,
                         symbol,
-                        display_name: displayName,
-                        quote_symbol: quoteSymbol,
-                        exchange,
                         market,
                         currency,
-                        avg_purchase_price: price,
-                        quantity: qty
-                    };
-                    logger.info('PORTFOLIO', 'portfolio upsert payload', {
-                        payload: upsertPayloadPreview
+                        quantity: qty,
+                        pricePerUnit: price
                     });
 
                     await supabase.from('stocks').upsert({ symbol, name: displayName, sector: 'Unknown' });
-                    const { data: existingRows, error: readError } = await supabase
-                        .from('portfolio')
-                        .select('id,quantity,avg_purchase_price,discord_user_id,user_id')
-                        .or(`discord_user_id.eq.${discordUserId},user_id.eq.${discordUserId}`)
-                        .eq('symbol', symbol)
-                        .limit(50);
-                    if (readError) {
-                        logger.error('PORTFOLIO', 'portfolio upsert error response sent', {
-                            discordUserId: interaction.user.id,
-                            symbol,
-                            message: readError.message
-                        });
-                        await safeEditReply(interaction, `❌ 조회 에러: ${readError.message}`, 'modal:portfolio:add:read_error');
-                        return;
-                    }
-                    const rows = existingRows || [];
-                    const aggregatedQty = rows.reduce((acc: number, r: any) => acc + Number(r.quantity || 0), 0);
-                    const aggregatedCost = rows.reduce((acc: number, r: any) => acc + (Number(r.quantity || 0) * Number(r.avg_purchase_price || 0)), 0);
-                    const nextQuantity = aggregatedQty + qty;
-                    const nextAvg = nextQuantity > 0 ? ((aggregatedCost + (qty * price)) / nextQuantity) : price;
-                    const upsertRes = await supabase
-                        .from('portfolio')
-                        .upsert({
-                            discord_user_id: discordUserId,
-                            symbol,
-                            display_name: displayName,
-                            quote_symbol: quoteSymbol,
-                            exchange,
-                            market,
-                            currency,
-                            quantity: nextQuantity,
-                            avg_purchase_price: nextAvg,
-                            updated_at: new Date().toISOString()
-                        }, { onConflict: 'discord_user_id,symbol' })
-                        .select('id');
-                    const error = upsertRes.error;
-                    if (error) {
-                        logger.error('PORTFOLIO', 'portfolio upsert error response sent', {
-                            discordUserId: interaction.user.id,
-                            symbol,
-                            message: error.message
-                        });
-                        await safeEditReply(interaction, `❌ 저장 실패: ${error.message}`, 'modal:portfolio:add:db_error');
-                        return;
-                    }
+                    const buyOverride = pendingBuyAccountId.get(discordUserId);
+                    if (buyOverride) pendingBuyAccountId.delete(discordUserId);
+                    const accountsForLabel = await listUserAccounts(discordUserId);
+                    const accLabel =
+                        buyOverride != null
+                            ? accountsForLabel.find(a => a.id === buyOverride)?.account_name ?? '선택 계좌'
+                            : GENERAL_ACCOUNT_NAME;
+
+                    await recordBuyTrade({
+                        discordUserId,
+                        accountId: buyOverride,
+                        symbol,
+                        displayName,
+                        quoteSymbol,
+                        exchange,
+                        market,
+                        currency,
+                        purchaseCurrency: market === 'US' ? (currency === 'USD' ? 'USD' : 'KRW') : 'KRW',
+                        quantity: qty,
+                        pricePerUnit: price,
+                        fee: 0,
+                        memo: 'modal:portfolio:add'
+                    });
                     logger.info('PORTFOLIO', 'portfolio upsert completed', {
                         discordUserId,
-                        symbol,
-                        affectedRows: upsertRes.data?.length ?? 0
+                        symbol
                     });
-                    await safeEditReply(interaction, `✅ **${displayName} (${quoteSymbol})** 저장 완료!`, 'modal:portfolio:add:success');
+                    void learnBehaviorFromTrades(discordUserId);
+                    await safeEditReply(
+                        interaction,
+                        `✅ **${accLabel}**에 반영됨\n**${displayName}** · ${qty}주 · 단가 ${price}\n거래 기록 저장됨`,
+                        'modal:portfolio:add:success'
+                    );
                     logger.info('PORTFOLIO', 'portfolio upsert success response sent', {
                         discordUserId: interaction.user.id,
                         symbol
@@ -1299,30 +2329,94 @@ client.on('interactionCreate', async (interaction: Interaction) => {
             }
 
             if (cid === 'modal:portfolio:delete') {
-                const symbol = normalizeSymbol(interaction.fields.getTextInputValue('symbol'));
-                const discordUserId = getDiscordUserId(interaction.user);
-                const { data, error } = await supabase
-                    .from('portfolio')
-                    .delete()
-                    .or(`discord_user_id.eq.${discordUserId},user_id.eq.${discordUserId}`)
-                    .eq('symbol', symbol)
-                    .select('id');
-                if (error) {
-                    logger.error('PORTFOLIO', 'portfolio delete failed', { discordUserId, symbol, message: error.message });
-                    await safeReplyOrFollowUp(interaction, { content: `❌ 삭제 중 오류가 발생했습니다: ${error.message}`, ephemeral: true }, 'modal:portfolio:delete:failure');
-                    return;
+                await safeDeferReply(interaction, { flags: 64 });
+                try {
+                    const symbol = normalizeSymbol(interaction.fields.getTextInputValue('symbol'));
+                    const qtyRaw = (interaction.fields.getTextInputValue('qty') || '').trim();
+                    const priceRaw = (interaction.fields.getTextInputValue('sell_price') || '').trim();
+                    const discordUserId = getDiscordUserId(interaction.user);
+
+                    const sellOverride = pendingSellAccountId.get(discordUserId);
+                    if (sellOverride) pendingSellAccountId.delete(discordUserId);
+
+                    const found = sellOverride
+                        ? await findPortfolioRowInAccount(discordUserId, symbol, sellOverride)
+                        : await findPortfolioRowForSymbol(discordUserId, symbol);
+                    if (!found) {
+                        logger.warn('PORTFOLIO', 'sell target not found', { discordUserId, symbol });
+                        await safeEditReply(interaction, '해당 심볼은 현재 등록되어 있지 않습니다.', 'modal:portfolio:delete:not_found');
+                        return;
+                    }
+
+                    const maxQty = Number(found.row.quantity || 0);
+                    if (!Number.isFinite(maxQty) || maxQty <= 0) {
+                        await safeEditReply(interaction, '보유 수량이 없습니다.', 'modal:portfolio:delete:empty');
+                        return;
+                    }
+                    let finalQty: number;
+                    if (qtyRaw) {
+                        const pq = parsePositiveAmount(qtyRaw);
+                        if (pq === null) {
+                            await safeEditReply(interaction, '매도 수량은 0보다 큰 숫자여야 합니다.', 'modal:portfolio:delete:bad_qty');
+                            return;
+                        }
+                        finalQty = pq;
+                    } else {
+                        finalQty = maxQty;
+                    }
+                    if (!finalQty || finalQty <= 0 || !Number.isFinite(finalQty)) {
+                        await safeEditReply(interaction, '매도 수량을 확인해 주세요.', 'modal:portfolio:delete:bad_qty');
+                        return;
+                    }
+                    if (finalQty > maxQty) {
+                        await safeEditReply(interaction, `매도 수량이 보유(${maxQty})를 초과합니다.`, 'modal:portfolio:delete:qty_overflow');
+                        return;
+                    }
+
+                    const avg = Number(found.row.avg_purchase_price || 0);
+                    const sellPrice = priceRaw ? parsePositiveAmount(priceRaw) : avg;
+                    if (sellPrice === null || sellPrice <= 0) {
+                        await safeEditReply(interaction, '매도 단가를 확인해 주세요.', 'modal:portfolio:delete:bad_price');
+                        return;
+                    }
+
+                    const { realizedPnlKrw } = await recordSellTrade({
+                        discordUserId,
+                        accountId: found.accountId,
+                        symbol,
+                        sellQuantity: finalQty,
+                        sellPricePerUnit: sellPrice,
+                        fee: 0,
+                        memo: 'modal:portfolio:delete'
+                    });
+                    void learnBehaviorFromTrades(discordUserId);
+
+                    const { count } = await supabase
+                        .from('portfolio')
+                        .select('id', { count: 'exact', head: true })
+                        .or(`discord_user_id.eq.${discordUserId},user_id.eq.${discordUserId}`);
+
+                    logger.info('PORTFOLIO', 'portfolio sell completed', {
+                        discordUserId,
+                        symbol,
+                        sellQty: finalQty,
+                        realizedPnlKrw,
+                        remainPositions: count ?? 0
+                    });
+
+                    const accRows = await listUserAccounts(discordUserId);
+                    const sellAccName =
+                        accRows.find(a => a.id === found.accountId)?.account_name ?? GENERAL_ACCOUNT_NAME;
+
+                    await safeEditReply(
+                        interaction,
+                        `✅ **${sellAccName}**에서 매도 반영\n**${symbol}** ${finalQty}주 · 실현손익(추정) **${Math.round(realizedPnlKrw).toLocaleString('ko-KR')}원**`,
+                        'modal:portfolio:delete:success'
+                    );
+                } catch (e: any) {
+                    logger.error('PORTFOLIO', 'portfolio sell failed', { message: e?.message });
+                    await safeEditReply(interaction, `❌ 매도 처리 실패: ${e?.message || 'unknown'}`, 'modal:portfolio:delete:failure');
                 }
-                if (!data || data.length === 0) {
-                    logger.warn('PORTFOLIO', 'portfolio delete target not found', { discordUserId, symbol });
-                    await safeReplyOrFollowUp(interaction, { content: '해당 심볼은 현재 등록되어 있지 않습니다.', ephemeral: true }, 'modal:portfolio:delete:not_found');
-                    return;
-                }
-                const { count } = await supabase
-                    .from('portfolio')
-                    .select('id', { count: 'exact', head: true })
-                    .or(`discord_user_id.eq.${discordUserId},user_id.eq.${discordUserId}`);
-                logger.info('PORTFOLIO', 'portfolio deleted', { discordUserId, symbol, deletedRows: data.length, remainCount: count ?? 0 });
-                await safeReplyOrFollowUp(interaction, { content: `✅ 삭제 완료: **${symbol}**\n남은 보유 종목 수: **${count ?? 0}**\n'내 포트폴리오 조회' 버튼으로 확인해 주세요.`, ephemeral: true }, 'modal:portfolio:delete:success');
                 return;
             }
 
@@ -1428,6 +2522,9 @@ client.once(Events.ClientReady, async (c) => {
         s.discord.botTag = c.user.tag;
         s.discord.guildCount = c.guilds.cache.size;
     });
+
+    // DB schema compatibility check (tables/columns existence)
+    await checkDbSchemaCompatibilityOnce();
 
     // Startup restore + announcement
     await ensureMainPanelOnBoot(client);
