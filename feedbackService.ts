@@ -11,7 +11,7 @@ export type FeedbackType = 'TRUSTED' | 'ADOPTED' | 'BOOKMARKED' | 'DISLIKED' | '
 
 export async function saveAnalysisFeedbackHistory(params: {
   discordUserId: string;
-  chatHistoryId: string;
+  chatHistoryId: number;
   analysisType: string;
   personaName: string;
   opinionSummary: string;

@@ -58,6 +58,10 @@ import { buildPortfolioDiscordMessage, accountTypeLabelKo } from './portfolioUx'
 import type { PortfolioSnapshot } from './portfolioService';
 import { maybeStoreDailyPortfolioSnapshotHistory } from './snapshotService';
 import { decideOrchestratorRoute, logOrchestratorDecision } from './orchestrator';
+import { loadPersonaMemory } from './personaMemoryService';
+import { buildPersonaPromptContext, buildBaseAnalysisContext } from './analysisContextService';
+import { runAnalysisPipeline } from './analysisPipelineService';
+import { ingestPersonaFeedback } from './feedbackIngestionService';
 
 logger.info('BOOT', 'index initialization started');
 
@@ -137,7 +141,7 @@ function toOpinionSummary(text: string, maxLen = 220): string {
     return t.length <= maxLen ? t : t.slice(0, maxLen) + '…';
 }
 
-function getFeedbackButtonsRow(chatHistoryId: string, analysisType: string, personaKey: PersonaKey): ActionRowBuilder<ButtonBuilder> {
+function getFeedbackButtonsRow(chatHistoryId: number, analysisType: string, personaKey: PersonaKey): ActionRowBuilder<ButtonBuilder> {
     const mk = (feedbackType: FeedbackType, label: string, style: ButtonStyle) =>
         new ButtonBuilder()
             .setCustomId(`feedback:save:${chatHistoryId}:${feedbackType}:${personaKey}`)
@@ -180,7 +184,7 @@ function personaKeyToPersonaName(personaKey: PersonaKey): string {
     }
 }
 
-async function safeInsertChatHistoryAndGetId(payload: any, retryWithoutExtendedColumns = true): Promise<string | null> {
+async function safeInsertChatHistoryAndGetId(payload: any, retryWithoutExtendedColumns = true): Promise<number | null> {
     try {
         const { data, error } = await supabase
             .from('chat_history')
@@ -188,7 +192,9 @@ async function safeInsertChatHistoryAndGetId(payload: any, retryWithoutExtendedC
             .select('id')
             .maybeSingle();
         if (error) throw error;
-        return data?.id || null;
+        const idRaw = data?.id;
+        const idNum = typeof idRaw === 'number' ? idRaw : Number(idRaw);
+        return Number.isFinite(idNum) ? idNum : null;
     } catch (e: any) {
         if (!retryWithoutExtendedColumns) throw e;
 
@@ -226,7 +232,9 @@ async function safeInsertChatHistoryAndGetId(payload: any, retryWithoutExtendedC
             logger.error('DB', 'chat_history insert fallback failed', { message: retryError?.message || String(retryError) });
             return null;
         }
-        return retryData?.id || null;
+        const idRaw = retryData?.id;
+        const idNum = typeof idRaw === 'number' ? idRaw : Number(idRaw);
+        return Number.isFinite(idNum) ? idNum : null;
     }
 }
 
@@ -993,6 +1001,16 @@ async function runTrendAnalysis(
         logger.info('AI', 'Gemini call completed');
 
         const analysisType = `trend_${topic}`;
+        const profile = await loadUserProfile(userId);
+        const baseContext = buildBaseAnalysisContext({
+            discordUserId: userId,
+            analysisType,
+            userQuery,
+            mode: undefined,
+            userProfile: profile,
+            snapshotSummary: null,
+            snapshotPositionsCount: undefined
+        });
         const chatHistoryPayload: any = {
             user_id: userId,
             user_query: userQuery,
@@ -1009,6 +1027,21 @@ async function runTrendAnalysis(
         };
 
         const chatHistoryId = await safeInsertChatHistoryAndGetId(chatHistoryPayload, true);
+        if (chatHistoryId) {
+            await runAnalysisPipeline({
+                discordUserId: userId,
+                chatHistoryId,
+                analysisType,
+                personaOutputs: [
+                    {
+                        personaKey: 'TREND',
+                        personaName: personaKeyToPersonaName('TREND'),
+                        responseText: text
+                    }
+                ],
+                baseContext
+            });
+        }
         const feedbackRow = chatHistoryId ? getFeedbackButtonsRow(chatHistoryId, analysisType, 'TREND') : null;
 
         await broadcastAgentResponse(userId, cfg.agentLabel, cfg.avatarUrl, text, sourceInteraction, feedbackRow);
@@ -1163,11 +1196,34 @@ async function runPortfolioDebate(userId: string, userQuery: string, sourceInter
             return '';
         };
 
-        const rayQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('RAY')}`;
-        const hindenburgQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('HINDENBURG')}`;
-        const simonsQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('SIMONS')}`;
-        const druckerQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('DRUCKER')}`;
-        const cioQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('CIO')}`;
+        // Phase 1: persona_memory 반영 (프롬프트 대규모 변경 없이, 짧은 지시문만 덧붙임)
+        const memoryKeys: PersonaKey[] = ['RAY', 'HINDENBURG', 'SIMONS', 'DRUCKER', 'CIO'];
+        const memoryByKey = new Map<PersonaKey, string>();
+        await Promise.all(
+            memoryKeys.map(async k => {
+                const personaName = personaKeyToPersonaName(k);
+                const personaMemory = await loadPersonaMemory(userId, personaName);
+                const personaPromptCtx = buildPersonaPromptContext({
+                    personaKey: k,
+                    personaName,
+                    personaMemory,
+                    baseContext: {}
+                });
+                memoryByKey.set(k, personaPromptCtx.memory_directive);
+            })
+        );
+
+        const rayMemory = memoryByKey.get('RAY') ?? '';
+        const hindenburgMemory = memoryByKey.get('HINDENBURG') ?? '';
+        const simonsMemory = memoryByKey.get('SIMONS') ?? '';
+        const druckerMemory = memoryByKey.get('DRUCKER') ?? '';
+        const cioMemory = memoryByKey.get('CIO') ?? '';
+
+        const rayQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('RAY')}${rayMemory ? `\n\n${rayMemory}` : ''}`;
+        const hindenburgQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('HINDENBURG')}${hindenburgMemory ? `\n\n${hindenburgMemory}` : ''}`;
+        const simonsQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('SIMONS')}${simonsMemory ? `\n\n${simonsMemory}` : ''}`;
+        const druckerQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('DRUCKER')}${druckerMemory ? `\n\n${druckerMemory}` : ''}`;
+        const cioQuery = `${baseQuery}${styleDirectiveBlock}\n\n${personaBiasDirective('CIO')}${cioMemory ? `\n\n${cioMemory}` : ''}`;
 
         // 1) Gemini 결과를 먼저 계산
         const rayRes = await ray.analyze(rayQuery, false);
@@ -1228,6 +1284,33 @@ async function runPortfolioDebate(userId: string, userQuery: string, sourceInter
 
         const chatHistoryId = await safeInsertChatHistoryAndGetId(chatHistoryPayload, true);
         if (chatHistoryId) logger.info('DB', 'chat_history insert success', { chatHistoryId });
+
+        if (chatHistoryId) {
+            const baseContext = buildBaseAnalysisContext({
+                discordUserId: userId,
+                analysisType,
+                userQuery,
+                mode,
+                userProfile: profile,
+                snapshotSummary: snapshot.summary,
+                snapshotPositionsCount: snapshot.positions.length,
+                partialScope: partialScope || undefined
+            });
+
+            await runAnalysisPipeline({
+                discordUserId: userId,
+                chatHistoryId,
+                analysisType,
+                personaOutputs: [
+                    { personaKey: 'RAY', personaName: personaKeyToPersonaName('RAY'), responseText: rayRes },
+                    { personaKey: 'HINDENBURG', personaName: personaKeyToPersonaName('HINDENBURG'), responseText: hindenburgRes },
+                    { personaKey: 'SIMONS', personaName: personaKeyToPersonaName('SIMONS'), responseText: simonsRes },
+                    { personaKey: 'DRUCKER', personaName: personaKeyToPersonaName('DRUCKER'), responseText: druckerRes },
+                    { personaKey: 'CIO', personaName: personaKeyToPersonaName('CIO'), responseText: cioRes }
+                ],
+                baseContext
+            });
+        }
 
         logger.info('AI', 'Gemini call completed');
 
@@ -1346,6 +1429,22 @@ async function runOpenTopicDebate(userId: string, userQuery: string, sourceInter
         const modePrompt = `[USER_MODE]\n${mode}\n(오픈 토픽은 금융 계산/포트폴리오 언급 없이 분석 톤만 반영)`;
         const effectiveQuery = `${openTopicPrompt}\n${profilePrompt}\n${modePrompt}\n\n[USER_TOPIC]\n${userQuery}`;
 
+        // Phase 1: persona_memory 반영 (각 페르소나별로 짧은 메모리 지시문만 덧붙임)
+        const memoryByKey = new Map<PersonaKey, string>();
+        await Promise.all(
+            selected.map(async p => {
+                const personaName = personaKeyToPersonaName(p);
+                const personaMemory = await loadPersonaMemory(userId, personaName);
+                const personaPromptCtx = buildPersonaPromptContext({
+                    personaKey: p,
+                    personaName,
+                    personaMemory,
+                    baseContext: {}
+                });
+                memoryByKey.set(p, personaPromptCtx.memory_directive);
+            })
+        );
+
         const personas: Partial<Record<PersonaKey, any>> = {
             RAY: new RayDalioAgent(),
             JYP: new JYPAgent(),
@@ -1379,12 +1478,14 @@ async function runOpenTopicDebate(userId: string, userQuery: string, sourceInter
         const results: Partial<Record<PersonaKey, string>> = {};
         for (const p of selected) {
             const agent = personas[p];
+            const memoryDirective = memoryByKey.get(p) ?? '';
+            const personaQuery = memoryDirective ? `${effectiveQuery}\n\n${memoryDirective}` : effectiveQuery;
             const rawText = await (p === 'RAY'
-                ? agent.analyze(effectiveQuery, true)
+                ? agent.analyze(personaQuery, true)
                 : p === 'JYP'
-                    ? agent.inspire(effectiveQuery, true, '')
+                    ? agent.inspire(personaQuery, true, '')
                     : p === 'SIMONS'
-                        ? agent.strategize(effectiveQuery, true, '')
+                        ? agent.strategize(personaQuery, true, '')
                         : p === 'DRUCKER'
                             ? agent.summarizeAndGenerateActions(true, '')
                             : agent.decide(true, ''));
@@ -1411,6 +1512,32 @@ async function runOpenTopicDebate(userId: string, userQuery: string, sourceInter
         if (chatHistoryId) logger.info('DB', 'chat_history insert success (open_topic)', { chatHistoryId });
 
         const analysisType = guessAnalysisTypeFromTrigger(undefined, userQuery);
+
+        if (chatHistoryId) {
+            const baseContext = buildBaseAnalysisContext({
+                discordUserId: userId,
+                analysisType,
+                userQuery,
+                mode,
+                userProfile: profile,
+                snapshotSummary: null,
+                snapshotPositionsCount: undefined,
+                partialScope: undefined
+            });
+
+            await runAnalysisPipeline({
+                discordUserId: userId,
+                chatHistoryId,
+                analysisType,
+                personaOutputs: selected.map(p => ({
+                    personaKey: p,
+                    personaName: personaKeyToPersonaName(p),
+                    responseText: String(results[p] || '')
+                })),
+                baseContext
+            });
+        }
+
         for (const p of selected) {
             const feedbackRow = chatHistoryId ? getFeedbackButtonsRow(chatHistoryId, analysisType, p) : null;
             const label = personaKeyToPersonaName(p);
@@ -1661,7 +1788,7 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 try {
                     const parts = cid.split(':');
                     // feedback:save:${chatHistoryId}:${feedbackType}:${personaKey}
-                    const chatHistoryId = parts[2];
+                    const chatHistoryIdRaw = parts[2];
                     const feedbackTypeRaw = parts[3];
                     const personaKeyRaw = parts[4];
 
@@ -1669,7 +1796,8 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                     const feedbackType = String(feedbackTypeRaw || '').toUpperCase() as FeedbackType;
                     const personaKey = String(personaKeyRaw || '') as PersonaKey;
 
-                    if (!chatHistoryId || !feedbackType || !personaKey) {
+                    const chatHistoryId = Number(chatHistoryIdRaw);
+                    if (!Number.isFinite(chatHistoryId) || !feedbackType || !personaKey) {
                         await safeEditReply(interaction, '❌ 피드백 처리 실패(파라미터 누락).', 'feedback:save:invalid');
                         return;
                     }
@@ -1737,6 +1865,21 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                         opinionText,
                         feedbackType
                     });
+
+                    // Phase 1: claim_feedback + persona_memory 학습 루프 연결 (best-effort)
+                    try {
+                        await ingestPersonaFeedback({
+                            discordUserId,
+                            chatHistoryId,
+                            analysisType,
+                            personaName,
+                            feedbackType,
+                            feedbackNote: null,
+                            opinionText
+                        });
+                    } catch {
+                        // 기존 UX(analysis_feedback_history 저장 성공) 자체는 유지되어야 함
+                    }
 
                     await safeEditReply(interaction, `✅ 피드백 저장 완료: ${feedbackType}`, 'feedback:save:success');
                 } catch (e: any) {
