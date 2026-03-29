@@ -40,9 +40,19 @@
 - [ ] `chat_history_id` 연계 상태 확인 (null 허용 경로 포함)
 
 ## 5. feedback 저장 확인 항목
+- [ ] 버튼 `customId`가 `feedback:save:{chatHistoryId}:{analysisType}:{feedbackType}:{personaKey}` 형태인지 확인 (`index.ts`)
+- [ ] 클릭 시 `interactionCreate` → `FEEDBACK` 로그(`feedback button clicked` → `feedback history saved` → `feedback ingestion result`) 순으로 남는지 확인
 - [ ] `analysis_feedback_history`에 persona/analysis_type/opinion 저장
-- [ ] `mapped_claim_id`, `mapping_method`, `mapping_score` 저장 확인
+- [ ] `mapped_claim_id`, `mapping_method`, `mapping_score` 저장 확인(매핑 성공 시)
 - [ ] `claim_feedback` unique 제약으로 중복 방어 확인
+- [ ] 동일 버튼 연타 시 duplicate UX + `duplicate ignored` 로그
+- [ ] 피드백이 붙은 분석 메시지가 **봇 채널 메시지**로 전송됨(webhook만 사용 시 버튼이 동작하지 않을 수 있음 — `broadcastAgentResponse` 참고)
+
+## 5b. 피드백 소프트 보정 (포트폴리오 토론)
+- [ ] `FEEDBACK_CALIBRATION` / `applied` 로그 및 `safetyFloorTriggered` 동작(RAY/HINDENBURG downside)
+- [ ] `persona_memory.confidence_calibration` 필드 누적(피드백·claim_feedback 반영 후)
+- [ ] CIO trace `feedback_adjustment_meta` (best-effort)
+- [ ] 결론(GO/HOLD 등)이 아닌 **서술/우선순위 힌트** 수준만 변경되는지(게이트·veto 미완화)
 
 ## 6. persona_memory load 확인 항목
 - [ ] 해당 persona row 미존재 시 empty memory fallback

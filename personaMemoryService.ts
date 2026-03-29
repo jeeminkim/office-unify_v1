@@ -163,6 +163,24 @@ function mergeKeywordWeights(current: any, newKeywords: string[]): any {
   return { ...(current || {}), keywords: merged };
 }
 
+/** 피드백 기반 calibration 숫자 — 의사결정 가드 완화용이 아니라 소프트 가중치만. */
+function clampCal(v: number): number {
+  return Math.max(-0.1, Math.min(0.1, v));
+}
+
+function mergeRecordEMA(
+  prev: Record<string, number> | undefined,
+  deltas: Record<string, number>,
+  retain: number
+): Record<string, number> {
+  const out: Record<string, number> = { ...(prev || {}) };
+  for (const [k, d] of Object.entries(deltas)) {
+    const oldV = out[k] ?? 0;
+    out[k] = clampCal(oldV * retain + d * (1 - retain));
+  }
+  return out;
+}
+
 export async function refreshPersonaMemoryFromFeedback(
   discordUserId: string,
   personaName: string
@@ -223,11 +241,18 @@ export async function refreshPersonaMemoryFromFeedback(
         if (claimIds.length) {
           const { data: claims, error: claimErr } = await supabase
             .from('analysis_claims')
-            .select('id,persona_name,claim_text')
+            .select(
+              'id,persona_name,claim_text,claim_type,evidence_scope,has_numeric_anchor,is_actionable,is_downside_focused'
+            )
             .in('id', claimIds);
           if (!claimErr && claims?.length) {
             const claimById = new Map<string, any>();
             for (const c of claims) claimById.set(String(c.id), c);
+            const typeDeltas: Record<string, number> = {};
+            const scopeDeltas: Record<string, number> = {};
+            let numericW = 0;
+            let actionableW = 0;
+            let downsideW = 0;
             for (const cb of claimFbRows) {
               const claim = claimById.get(String(cb.claim_id));
               if (!claim) continue;
@@ -237,7 +262,43 @@ export async function refreshPersonaMemoryFromFeedback(
               const kws = extractKeywords(String(claim.claim_text || ''));
               if (posTypes.has(ft)) acceptedKeywords.push(...kws);
               if (negTypes.has(ft)) rejectedKeywords.push(...kws);
+
+              const w = posTypes.has(ft) ? 1 : negTypes.has(ft) ? -1 : 0;
+              if (w === 0) continue;
+              const ct = String(claim.claim_type || 'OTHER');
+              const es = String(claim.evidence_scope || 'GENERAL');
+              typeDeltas[ct] = (typeDeltas[ct] || 0) + w * 0.02;
+              scopeDeltas[es] = (scopeDeltas[es] || 0) + w * 0.015;
+              if (claim.has_numeric_anchor) numericW += w * 0.008;
+              if (claim.is_actionable) actionableW += w * 0.008;
+              if (claim.is_downside_focused) downsideW += w * 0.006;
             }
+
+            const pcal = current.confidence_calibration || {};
+            const mergedCal: Record<string, unknown> = {
+              ...pcal,
+              preferred_claim_types: mergeRecordEMA(
+                (pcal as any).preferred_claim_types,
+                typeDeltas,
+                0.82
+              ),
+              preferred_evidence_scopes: mergeRecordEMA(
+                (pcal as any).preferred_evidence_scopes,
+                scopeDeltas,
+                0.82
+              ),
+              numeric_anchor_bias: clampCal(
+                Number((pcal as any).numeric_anchor_bias || 0) * 0.88 + numericW * 0.12
+              ),
+              actionable_bias: clampCal(
+                Number((pcal as any).actionable_bias || 0) * 0.88 + actionableW * 0.12
+              ),
+              downside_bias: clampCal(
+                Number((pcal as any).downside_bias || 0) * 0.88 + downsideW * 0.12
+              ),
+              conservatism_floor: 0.05
+            };
+            (current as any).__mergedCalibration = mergedCal;
           }
         }
       }
@@ -250,16 +311,23 @@ export async function refreshPersonaMemoryFromFeedback(
     const styleUnique = capArray(Array.from(new Set(styleTags)), 10);
     const evidenceUnique = capArray(Array.from(new Set(evidenceScopes)), 10);
 
+    const mergedCalibration =
+      (current as any).__mergedCalibration !== undefined
+        ? ((current as any).__mergedCalibration as Record<string, unknown>)
+        : current.confidence_calibration || {};
+
     const next: PersonaMemory = {
       ...current,
       accepted_patterns: mergeKeywordWeights(current.accepted_patterns, acceptedUnique),
       rejected_patterns: mergeKeywordWeights(current.rejected_patterns, rejectedUnique),
       style_bias: { ...(current.style_bias || {}), tags: styleUnique },
       evidence_preferences: { ...(current.evidence_preferences || {}), scopes: evidenceUnique },
+      confidence_calibration: mergedCalibration,
       last_feedback_summary: topSummary,
       last_refreshed_at: new Date().toISOString(),
       memory_version: (current.memory_version ?? 1) + 1
     };
+    delete (current as any).__mergedCalibration;
 
     await upsertPersonaMemory(next);
     logger.info('MEMORY', 'persona memory refreshed', {

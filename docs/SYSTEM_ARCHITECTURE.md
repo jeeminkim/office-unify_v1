@@ -13,8 +13,8 @@
 
 ## 계층 구조 (Phase 1 리팩토링)
 1. **Interaction** (`src/interactions/`)
-   - `interactionRouter.ts`: 피드백 버튼·메인 패널(`panel:main:*`) 선처리 후 `index.ts`는 나머지 분기만 유지
-   - `feedbackInteractionHandler.ts`: Discord 응답만; `runFeedbackAppService` 위임
+   - `interactionRouter.ts`: 메인 패널(`panel:main:*`) 등 선처리(`feedback:save:*`는 **`index.ts`에서 직접 처리** — `saveAnalysisFeedbackHistory` / `ingestPersonaFeedback` 호출)
+   - `feedbackInteractionHandler.ts`: 레거시 보관(현재 피드백 버튼은 `index.ts` 핸들러 사용)
    - `panelInteractionHandler.ts`: 메인 패널 네비게이션(트렌드 서브패널 포함)
 2. **Application** (`src/application/`)
    - `runPortfolioDebateAppService.ts` / `runTrendAnalysisAppService.ts` / `runOpenTopicDebateAppService.ts`: 금융·트렌드·오픈토픽 분석 오케스트레이션(LLM, `runAnalysisPipeline` 호출); 포트폴리오 토론은 `runDecisionEngineAppService`(Phase 2) 후행
@@ -63,10 +63,17 @@
 - 실패 시 분석 응답/기존 저장 경로는 유지되며, 로그에 `DECISION_ENGINE` 스코프로 기록된다.
 - Discord: `index.runPortfolioDebate`가 결정 요약 문자열을 추가 브로드캐스트(짧은 섹션, 실행 없음).
 
+### 4b) 피드백 → 소프트 보정 (포트폴리오 토론, 제한적)
+- **저장 이후**: `analysis_feedback_history` / `claim_feedback` / `refreshPersonaMemoryFromFeedback`가 `persona_memory.confidence_calibration`에 `preferred_claim_types`, `preferred_evidence_scopes`, `numeric_anchor_bias`, `actionable_bias`, `downside_bias`, `conservatism_floor` 등을 **소량(대략 ±0.1 범위)** 누적한다.
+- **실행 시(토론)**: Ray~Drucker 응답 텍스트에서 `extractClaimsByContract`로 in-memory claim을 뽑고 `buildFeedbackDecisionSignal`로 점수 블렌드에 소프트 Δ를 적용한다. **RAY/HINDENBURG + downside-focused**인 경우 사용자 비선호로 **원 점수보다 낮아지지 않게** floor를 적용한다.
+- **CIO 직전**: 보정 힌트는 **프롬프트 블록**으로만 주입되며, CIO는 Priority / Timing / Conviction / Monitoring 서술에 반영하도록 유도한다. **NO_DATA·valuation·quote 실패·Phase2 veto 경로는 피드백으로 완화하지 않는다**(코드상 별도 게이트 유지).
+- **추적**: CIO 페르소나의 `analysis_generation_trace.memory_snapshot`에 `feedback_adjustment_meta`가 붙을 수 있다(스키마 변경 없음).
+
 ### 4) 저장 및 피드백 루프
-- 사용자가 피드백 버튼을 누르면 Discord는 `index.ts` → `interactionRouter` → `feedbackInteractionHandler` → `runFeedbackAppService` 순으로 위임한다.
-- 저장소 접근은 `src/repositories/*`에서 **Supabase 쿼리만** 수행한다(예: `chatHistoryRepository`, `claimRepository`, `feedbackRepository`). 10분 중복 윈도·프로필 집계 등 판단은 `feedbackService`/`runFeedbackAppService`에 둔다.
-- `analysis_feedback_history` 및 `claim_feedback` 기록, `feedbackIngestionService.ts`의 claim 매핑은 기존과 동일하다.
+- **버튼 `customId`**: `feedback:save:{chatHistoryId}:{analysisType}:{feedbackType}:{personaKey}` (`getFeedbackButtonsRow` in `index.ts`).
+- **처리 순서**: 버튼 클릭 → `interactionCreate` → `safeDeferReply` → `handleFeedbackSaveButtonInteraction` → `saveAnalysisFeedbackHistory`(`feedbackService.ts`) → `ingestPersonaFeedback`(`feedbackIngestionService.ts`, claim 매핑·`claim_feedback`). 동일 `feedbackType` 연타는 서비스 계층 중복 방어 + UX 메시지.
+- **Discord 전송**: 분석 응답에 버튼·기타 **MessageComponent**가 붙는 경우 `broadcastAgentResponse`는 **Incoming Webhook이 아니라 봇이 채널에 `channel.send`** 한정으로 붙인다. Webhook 메시지는 interaction 소유권/컴포넌트 안정성 측면에서 불리할 수 있음.
+- 저장소 접근은 `src/repositories/*`에서 **Supabase 쿼리만** 수행한다(예: `chatHistoryRepository`, `claimRepository`, `feedbackRepository`).
 - `personaMemoryService.ts`가 피드백 이력을 집계해 `persona_memory`를 갱신한다.
 
 ## Discord -> Index -> Pipeline -> LLM -> Supabase 흐름
@@ -89,9 +96,9 @@
 
 ## 주요 소스 파일 간 관계
 - `index.ts`
-  - Discord 진입·interaction/message 라우팅·defer/reply 안정화·일부 use-case의 얇은 래퍼(분석 본문은 application으로 이전됨)
+  - Discord 진입·interaction/message 라우팅·defer/reply 안정화·**`feedback:save:*` 버튼 핸들러**·`broadcastAgentResponse`(분석 본문은 application으로 이전됨)
 - `src/interactions/interactionRouter.ts`
-  - 피드백·메인 패널 버튼 선 라우팅
+  - 메인 패널 등 선 라우팅(피드백 버튼은 `index.ts`에서 처리)
 - `src/discord/analysisFormatting.ts`
   - 공통 응답 정규화·분석 타입 추정 등(토론/데이터센터에서 공유)
 - `panelManager.ts`

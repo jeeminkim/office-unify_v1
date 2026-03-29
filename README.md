@@ -20,7 +20,25 @@ npm start
 pm2 start dist/index.js --name ai-office --interpreter node
 pm2 logs ai-office
 pm2 restart ai-office
+pm2 stop ai-office
 ```
+
+- **`pm2 stop ai-office`**: 프로세스를 멈춤(목록에는 남음). 다시 띄우려면 `pm2 start ai-office`.
+- **`pm2 delete ai-office`**: PM2 목록에서 완전히 제거(필요할 때만).
+
+### Node가 종료되지 않을 때 (Windows)
+
+1. 먼저 **PM2**를 쓰는 경우: `pm2 stop ai-office` 후 `pm2 list`로 상태 확인.
+2. 터미널에서 직접 띄운 경우: 해당 창에서 **`Ctrl+C`**.
+3. 그래도 남아 있으면 PID 확인 후 **가능하면 정상 종료부터**:
+   ```powershell
+   Get-Process -Name node -ErrorAction SilentlyContinue
+   taskkill /PID <PID>
+   ```
+4. 응답 없을 때만 **강제 종료** (마지막 수단):
+   ```powershell
+   taskkill /PID <PID> /F
+   ```
 
 ## Supabase Schema Apply
 
@@ -97,6 +115,22 @@ pm2 logs ai-office
 - Portfolio identity key is `discord_user_id`
 - Mode setting is persisted in `user_settings`
 - Main panel state file is `state/discord-panel.json`
+
+## Feedback buttons (Discord)
+
+- **customId 형식**: `feedback:save:{chatHistoryId}:{analysisType}:{feedbackType}:{personaKey}`  
+  (`TRUSTED` | `ADOPTED` | `BOOKMARKED` | `DISLIKED` 등 — `analysisTypes.ts`의 `FeedbackType`과 정합)
+- **처리 흐름**: 버튼 클릭 → `interactionCreate` → `safeDeferReply` → `saveAnalysisFeedbackHistory` → `ingestPersonaFeedback` → (가능 시) `claim_feedback` + `persona_memory` 갱신
+- **전송 방식**: 피드백 버튼이 붙은 분석 메시지는 **Incoming Webhook이 아니라 봇 채널 메시지**(`channel.send`)로 보낸다. Webhook으로 붙인 컴포넌트는 interaction/소유권 측면에서 실패하거나 불안정할 수 있다.
+- **중복**: 동일 조건 연타 시 `analysis_feedback_history` 또는 `claim_feedback` 단계에서 duplicate로 막히고, 사용자에게 구분 메시지가 간다.
+- **운영 확인**: `FEEDBACK` 스코프 로그(`feedback button clicked`, `feedback history saved`, `feedback ingestion result`, `duplicate ignored`, `handler failed`) 및 Supabase에서 `analysis_feedback_history` / `claim_feedback` 행 확인 — `docs/OPERATIONS_RUNBOOK.md`, `docs/TEST_CHECKLIST.md` 참고
+
+### Feedback → 의사결정 소프트 보정 (포트폴리오 5인 토론)
+
+- **목적**: 저장된 피드백·claim 메타로 **claim 가중(소폭)** 및 CIO 종합 시 **우선순위/모니터링 서술**만 보정. **NO_DATA 게이트·시세/밸류에이션 가드·Phase2 veto·GO/HOLD 결론 자체를 뒤집지 않음.**
+- **구현**: `persona_memory.confidence_calibration` 누적 → `buildFeedbackDecisionSignal`이 claim별 Δ를 **최대 +0.07 / 최소 −0.05**로 clamp → RAY/HINDENBURG의 downside-focused claim은 **baseline 이하 하향 금지**(safety floor).
+- **관측**: `FEEDBACK_CALIBRATION` 로그 `applied`; CIO `analysis_generation_trace`에 `feedback_adjustment_meta` JSON(best-effort).
+- **Discord**: 위원회 결정 요약 아래 **이탤릭 한 줄** 안내(과도한 개인화 문구 없음).
 
 ## Docs
 

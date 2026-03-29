@@ -20,7 +20,7 @@
 
 ## 현재 구조의 아쉬운 점
 - **`index.ts` 집중도** (부분화됨, 2026-03-28 기준)
-  - 피드백·메인 패널 네비게이션은 `interactionRouter`/`panelInteractionHandler`로 분리
+  - 피드백 버튼(`feedback:save:*`)은 `index.ts`에서 직접 처리·저장; 메인 패널 네비게이션은 `interactionRouter`/`panelInteractionHandler`로 분리
   - 금융 5인 토론·트렌드·오픈 토픽의 LLM·`chat_history`·`runAnalysisPipeline` 경로는 `run*AppService`로 이동; `index`는 게이트·`broadcastAgentResponse` 위주
   - 포트폴리오 매매·모달·계좌 select 등은 `src/interactions/portfolioInteractionHandler.ts`로 분리(로직은 기존과 동일, `index.ts`는 위임만)
 - **persona 역할놀이 중심 설계의 한계** (Phase 2에서 일부 보강)

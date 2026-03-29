@@ -36,7 +36,9 @@ import { buildPortfolioSnapshot } from './portfolioService';
 import { resolveInstrumentMetadata } from './instrumentRegistry';
 import { trendTopicFromCustomId, type TrendTopicKind } from './trendAnalysis';
 import { learnBehaviorFromSnapshots, learnBehaviorFromTrades, loadUserProfile } from './profileService';
-import type { FeedbackType } from './feedbackService';
+import { saveAnalysisFeedbackHistory, type FeedbackType } from './feedbackService';
+import { ingestPersonaFeedback } from './feedbackIngestionService';
+import { findChatHistoryById } from './src/repositories/chatHistoryRepository';
 import {
     recordBuyTrade,
     recordSellTrade,
@@ -123,10 +125,28 @@ function formatKrw(v: number): string {
     return `${Math.round(v).toLocaleString('ko-KR')}원`;
 }
 
+/** `analysis_claims.persona_name` / `src/discord/analysisFormatting.ts` 과 동일 계열로 맞춤 (claim 매핑 정합성). */
+function personaKeyToDisplayNameForFeedback(personaKey: string): string {
+    const k = personaKey as PersonaKey;
+    switch (k) {
+        case 'RAY': return 'Ray Dalio (PB)';
+        case 'HINDENBURG': return 'HINDENBURG_ANALYST';
+        case 'JYP': return 'JYP (Analyst)';
+        case 'SIMONS': return 'James Simons (Quant)';
+        case 'DRUCKER': return 'Peter Drucker (COO)';
+        case 'CIO': return 'Stanley Druckenmiller (CIO)';
+        case 'TREND': return 'Trend Analyst';
+        case 'OPEN_TOPIC': return 'Open Topic Analyst';
+        case 'THIEL': return 'Peter Thiel (Data Center)';
+        case 'HOT_TREND': return '전현무 · 핫 트렌드 분석';
+        default: return personaKey || 'Unknown';
+    }
+}
+
 function getFeedbackButtonsRow(chatHistoryId: number, analysisType: string, personaKey: PersonaKey): ActionRowBuilder<ButtonBuilder> {
     const mk = (feedbackType: FeedbackType, label: string, style: ButtonStyle) =>
         new ButtonBuilder()
-            .setCustomId(`feedback:save:${chatHistoryId}:${feedbackType}:${personaKey}`)
+            .setCustomId(`feedback:save:${chatHistoryId}:${analysisType}:${feedbackType}:${personaKey}`)
             .setLabel(label)
             .setStyle(style);
 
@@ -867,15 +887,22 @@ async function broadcastAgentResponse(
                   ]
                 : undefined;
 
-            if (useWebhook) {
+            const hasInteractiveComponents = !!(componentsToSend && componentsToSend.length);
+            const useWebhookForThisPart = useWebhook && !hasInteractiveComponents;
+
+            if (useWebhookForThisPart) {
                 await webhook.send({
                     content: piece,
                     username: agentName,
                     avatarURL: avatarURL || defaultAvatar,
-                    components: componentsToSend && componentsToSend.length ? componentsToSend : undefined
+                    components: undefined
                 });
             } else {
-                await (sourceInteraction as any).channel.send({
+                const ch = (sourceInteraction as any).channel;
+                if (!ch) {
+                    throw new Error('broadcastAgentResponse: no channel on sourceInteraction');
+                }
+                await ch.send({
                     content: piece,
                     components: componentsToSend && componentsToSend.length ? componentsToSend : undefined
                 });
@@ -1085,7 +1112,10 @@ async function runPortfolioDebate(userId: string, userQuery: string, sourceInter
             );
         }
         if (result.decisionArtifact) {
-            const summary = formatDecisionSummaryForDiscord(result.decisionArtifact);
+            let summary = formatDecisionSummaryForDiscord(result.decisionArtifact);
+            if (result.feedbackCalibrationLine) {
+                summary += `\n\n_${result.feedbackCalibrationLine}_`;
+            }
             await broadcastAgentResponse(
                 userId,
                 '투자위원회 · 결정 요약',
@@ -1305,6 +1335,133 @@ client.on('messageCreate', async (message: Message) => {
     }
 });
 
+async function handleFeedbackSaveButtonInteraction(interaction: any): Promise<void> {
+    const cid = interaction.customId as string;
+    const discordUserId = getDiscordUserId(interaction.user);
+    await safeDeferReply(interaction, { flags: 64 });
+
+    const prefix = 'feedback:save:';
+    const rest = cid.slice(prefix.length);
+    const m = /^(\d+):([^:]+):(TRUSTED|ADOPTED|BOOKMARKED|DISLIKED|REJECTED):([A-Z0-9_]+)$/.exec(rest);
+    if (!m) {
+        logger.warn('FEEDBACK', 'invalid feedback customId', { cid });
+        await safeEditReply(interaction, '피드백 저장 중 오류 발생', 'feedback:failure');
+        return;
+    }
+
+    const chatHistoryId = Number(m[1]);
+    const analysisType = m[2];
+    const feedbackType = m[3] as FeedbackType;
+    const personaKey = m[4];
+
+    if (!Number.isFinite(chatHistoryId) || chatHistoryId <= 0) {
+        await safeEditReply(interaction, '피드백 저장 중 오류 발생', 'feedback:failure');
+        return;
+    }
+
+    logger.info('FEEDBACK', 'feedback button clicked', {
+        chatHistoryId,
+        analysisType,
+        feedbackType,
+        personaKey,
+        discordUserId
+    });
+
+    const personaName = personaKeyToDisplayNameForFeedback(personaKey);
+
+    try {
+        const chatRow = await findChatHistoryById(chatHistoryId);
+        if (!chatRow) {
+            await safeEditReply(interaction, '연결된 분석 기록을 찾을 수 없습니다.', 'feedback:not_found');
+            return;
+        }
+        if (String((chatRow as any).user_id) !== String(discordUserId)) {
+            await safeEditReply(interaction, '본인 분석에 대한 피드백만 저장할 수 있습니다.', 'feedback:forbidden');
+            return;
+        }
+
+        const saveResult = await saveAnalysisFeedbackHistory({
+            discordUserId,
+            chatHistoryId,
+            analysisType,
+            personaName,
+            opinionSummary: `button:${feedbackType}`,
+            opinionText: `button:${feedbackType}`,
+            feedbackType,
+            feedbackNote: null,
+            topicTags: []
+        });
+
+        if (saveResult.duplicate) {
+            logger.warn('FEEDBACK', 'duplicate ignored', {
+                scope: 'analysis_feedback_history',
+                chatHistoryId,
+                analysisType,
+                feedbackType,
+                personaKey,
+                discordUserId
+            });
+            await safeEditReply(interaction, '이미 같은 피드백이 저장되어 있습니다.', 'feedback:duplicate');
+            return;
+        }
+
+        logger.info('FEEDBACK', 'feedback history saved', {
+            chatHistoryId,
+            analysisType,
+            feedbackType,
+            personaName,
+            discordUserId
+        });
+
+        const ingestResult = await ingestPersonaFeedback({
+            discordUserId,
+            chatHistoryId,
+            analysisType,
+            personaName,
+            feedbackType,
+            opinionText: `button:${feedbackType}`,
+            feedbackNote: null
+        });
+
+        logger.info('FEEDBACK', 'feedback ingestion result', {
+            chatHistoryId,
+            analysisType,
+            feedbackType,
+            personaName,
+            duplicate: ingestResult.duplicate,
+            mappedCount: ingestResult.mappedCount,
+            bestClaimId: ingestResult.bestClaimId,
+            mappingMethod: ingestResult.mappingMethod,
+            discordUserId
+        });
+
+        if (ingestResult.duplicate) {
+            logger.warn('FEEDBACK', 'duplicate ignored', {
+                scope: 'claim_feedback',
+                chatHistoryId,
+                analysisType,
+                feedbackType,
+                personaKey,
+                discordUserId
+            });
+            await safeEditReply(interaction, '이미 반영된 피드백입니다.', 'feedback:claim_duplicate');
+            return;
+        }
+
+        await safeEditReply(interaction, `피드백 저장 완료: ${feedbackType}`, 'feedback:success');
+    } catch (e: any) {
+        logger.error('FEEDBACK', 'handler failed', {
+            message: e?.message || String(e),
+            chatHistoryId,
+            analysisType,
+            feedbackType,
+            personaKey,
+            discordUserId
+        });
+        await safeEditReply(interaction, '피드백 저장 중 오류 발생', 'feedback:failure');
+    }
+}
+
 const portfolioInteractionDeps = {
     getDiscordUserId,
     pendingBuyAccountId,
@@ -1366,6 +1523,11 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 s.interactions.lastInteractionType = 'button';
                 s.interactions.lastCustomId = cid;
             });
+
+            if (cid.startsWith('feedback:save:')) {
+                await handleFeedbackSaveButtonInteraction(interaction);
+                return;
+            }
 
             const routedEarly = await routeEarlyButtonInteraction({
                 interaction,

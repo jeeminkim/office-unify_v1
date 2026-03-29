@@ -75,6 +75,21 @@ pm2 restart ai-office
   - defer/route/chunking 경로 로그 확인
   - panel state(`state/discord-panel.json`) 손상 여부 점검
 
+### 6.1 피드백 버튼(분석 응답 하단) 운영 검증
+1. 분석 1회 실행 후 응답에 피드백 버튼이 보이는지 확인
+2. 버튼 클릭 시 **에페메럴** 응답이 오고, 로그에 `FEEDBACK` / `feedback button clicked` 가 남는지 확인
+3. Supabase `analysis_feedback_history`에 새 행(해당 `chat_history_id`, `analysis_type`, `feedback_type`, `persona_name`)이 생겼는지 확인
+4. claim 매핑이 된 경우 `claim_feedback`에 반영됐는지 확인(unique `(discord_user_id, claim_id, feedback_type)`)
+5. **동일 버튼을 짧은 간격으로 연타** → `duplicate ignored` 로그 및 사용자 메시지(이미 저장/이미 반영) 확인
+6. 피드백이 붙은 메시지가 **webhook 전용이 아닌** 일반 채널 메시지인지 확인(버튼이 실제로 눌리는지 — `README.md` “Feedback buttons” 절 참고)
+
+### 6.2 피드백 소프트 보정(포트폴리오 토론)
+1. 포트폴리오 토론 완료 후 로그에 `FEEDBACK_CALIBRATION` / `applied`가 **페르소나당** 남는지 확인(`claimCount`, `avgBaseScore`, `avgAdjustedScore`, `safetyFloorTriggered`).
+2. Supabase `persona_memory.confidence_calibration` JSON에 선호 claim_type / evidence_scope 키가 누적되는지(피드백·claim_feedback 반영 후 `refreshPersonaMemoryFromFeedback` 경로).
+3. CIO 행 `analysis_generation_trace`에서 `memory_snapshot.feedback_adjustment_meta` 존재 여부(스키마 확장 없이 JSON 내부 필드).
+4. **비기능 요구**: NO_DATA로 차단된 세션에서 보정이 게이트를 우회하지 않는지(동일 조건 재현 시 여전히 차단).
+5. 위원회 결정 요약 메시지에 **이탤릭 한 줄** 피드백 안내가 붙는지(과도한 문구 없음).
+
 ## 7. OpenAI/Gemini 장애 및 fallback 점검
 - 확인 순서
   1. `OPENAI_API_KEY` 존재

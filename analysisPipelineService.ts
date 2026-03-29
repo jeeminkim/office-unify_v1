@@ -79,6 +79,8 @@ export async function persistAnalysisArtifacts(params: {
   responseText: string;
   baseContext?: any;
   memorySnapshot?: PersonaMemory;
+  /** CIO trace에만 병합: 피드백 소프트 보정 메타(새 테이블 없음) */
+  feedbackAdjustmentMeta?: Record<string, unknown> | null;
   providerName?: string;
   modelName?: string;
   estimatedCostUsd?: number;
@@ -114,13 +116,18 @@ export async function persistAnalysisArtifacts(params: {
     baseContext: baseContext ?? {}
   });
 
+  const memoryForTrace =
+    params.feedbackAdjustmentMeta && params.personaKey === 'CIO'
+      ? { ...(personaMemory as any), feedback_adjustment_meta: params.feedbackAdjustmentMeta }
+      : personaMemory;
+
   await saveGenerationTraceBestEffort({
     discordUserId,
     chatHistoryId,
     analysisType,
     personaName,
     inputContextHash,
-    memorySnapshot: personaMemory,
+    memorySnapshot: memoryForTrace,
     evidenceSnapshot: evidenceBundle,
     outputSummary: String(claims?.[0]?.claim_summary || null),
     providerName: params.providerName ?? null,
@@ -181,6 +188,8 @@ export async function runAnalysisPipeline(params: {
     estimatedCostUsd?: number;
   }>;
   baseContext?: any;
+  /** CIO persona trace memory_snapshot에만 합류 */
+  feedbackAdjustmentMetaForCio?: Record<string, unknown> | null;
 }): Promise<void> {
   const { personaOutputs } = params;
   for (const p of personaOutputs) {
@@ -192,6 +201,8 @@ export async function runAnalysisPipeline(params: {
       personaName: p.personaName,
       responseText: p.responseText,
       baseContext: params.baseContext,
+      feedbackAdjustmentMeta:
+        p.personaKey === 'CIO' ? params.feedbackAdjustmentMetaForCio ?? null : null,
       providerName: p.providerName,
       modelName: p.modelName,
       estimatedCostUsd: p.estimatedCostUsd

@@ -37,7 +37,13 @@
 
 ## 2026-03-29
 
+### Fixed
+- Discord 피드백 버튼: `customId`에 `analysis_type` 포함(`feedback:save:{chatHistoryId}:{analysisType}:{feedbackType}:{personaKey}`), `interactionCreate`에서 `feedback:save:*` 선처리 후 `saveAnalysisFeedbackHistory` → `ingestPersonaFeedback`; 인터랙티브 컴포넌트가 있을 때는 `broadcastAgentResponse`가 **webhook 대신 채널 봇 메시지**로 전송해 버튼 상호작용 안정화 (`index.ts`, `src/interactions/interactionRouter.ts`에서 중복 라우팅 제거)
+
 ### Added
+- 피드백 기반 **소프트 보정**: `confidence_calibration`에 `preferred_claim_types` / `preferred_evidence_scopes` / 바이어스 필드 누적(`personaMemoryService.refreshPersonaMemoryFromFeedback` + `claim_feedback`·`analysis_claims` 메타)
+- `src/services/feedbackDecisionCalibrationService.ts` — `buildFeedbackDecisionSignal`, CIO 직전 프롬프트 블록, `analysis_generation_trace.memory_snapshot.feedback_adjustment_meta`(CIO 행만)
+- 포트폴리오 토론: Ray~Drucker 응답에서 in-memory claim 추출 → 보정 시그널 → CIO `decide` 입력에 힌트만 추가; Discord 결정 요약에 한 줄 부가
 - Phase 2 의사결정 엔진(실행 없음): `src/contracts/decisionContract.ts`, `riskPolicyContract.ts`, `src/policies/committeeWeightsPolicy.ts`, `decisionThresholdPolicy.ts`, `src/services/committeeDecisionService.ts`, `riskVetoService.ts`, `decisionEngineService.ts`, `src/application/runDecisionEngineAppService.ts`, `src/repositories/decisionArtifactRepository.ts`
 - `claimRepository.listClaimsForChatHistory` — 결정 엔진이 동일 분석의 claim을 참조
 - DB append-only SQL: `docs/sql/append_phase2_decision_tables.sql` (`decision_artifacts`, `committee_vote_logs`)
@@ -53,6 +59,7 @@
 
 ### Docs
 - `SYSTEM_ARCHITECTURE.md`, `SYSTEM_REVIEW.md`, `DATABASE_SCHEMA.md`, `TEST_CHECKLIST.md`, `ROADMAP.md`, `DOCUMENTATION_POLICY.md`, `README.md`, `OPERATIONS_RUNBOOK.md`, `CHANGELOG.md`
+- 피드백 버튼 `customId`/Discord 전송 방식(`webhook` vs bot message)·운영 검증 절차: `README.md`, `SYSTEM_ARCHITECTURE.md`, `DATABASE_SCHEMA.md`, `OPERATIONS_RUNBOOK.md`, `TEST_CHECKLIST.md`, `SYSTEM_REVIEW.md`
 
 ## 2026-03-28
 

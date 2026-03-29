@@ -39,6 +39,10 @@
   - `mapped_claim_id`
   - `mapping_method`
   - `mapping_score`
+- **Discord 버튼 경로(운영)**:
+  - 버튼 `customId`: `feedback:save:{chat_history_id}:{analysis_type}:{feedback_type}:{persona_key}` (`index.ts`의 `getFeedbackButtonsRow`).
+  - 클릭 시 `index.ts` → `saveAnalysisFeedbackHistory` → `ingestPersonaFeedback` → (성공 시) `claim_feedback` 반영 시도. `persona_name`은 `analysis_claims`와 맞추기 위해 기존 페르소나 표시명 계열과 동일하게 매핑한다.
+  - 동일 사용자·짧은 시간 내 동일 `feedback_type` 연타는 서비스 계층에서 duplicate 처리.
 
 ### `user_profile`
 - 용도: 개인화 신호 저장
@@ -83,6 +87,7 @@
 
 ### `persona_memory`
 - 용도: 페르소나별 누적 선호/비선호/스타일 bias 저장
+- JSON `confidence_calibration`(코드 기준): `preferred_claim_types`, `preferred_evidence_scopes`, `numeric_anchor_bias`, `actionable_bias`, `downside_bias`, `conservatism_floor` 등 — 피드백·`claim_feedback`에서 **소량** 누적(의사결정 게이트 완화용 아님)
 - 참조 코드: `personaMemoryService.ts`
 
 ### `analysis_claims`
@@ -105,6 +110,7 @@
 
 ### `analysis_generation_trace`
 - 용도: 생성 컨텍스트/결과 요약/모델 메타 저장
+- `memory_snapshot`: 페르소나 메모리 스냅샷; **CIO** 행에는 `feedback_adjustment_meta`가 포함될 수 있음(피드백 소프트 보정 감사용, 스키마 컬럼 추가 없음)
 - `chat_history_id`: 운영 DB 기준 `integer` FK → 코드 타입 `number | null` (`src/types/dbSchemaContract.ts`의 `AnalysisGenerationTraceInsertContract`)
 - 확장 컬럼:
   - `provider_name`, `model_name`, `estimated_cost_usd` (migration 반영 시)

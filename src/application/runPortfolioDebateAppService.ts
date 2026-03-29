@@ -11,7 +11,7 @@ import { loadPersonaMemory } from '../../personaMemoryService';
 import { buildPersonaPromptContext, buildBaseAnalysisContext } from '../../analysisContextService';
 import { runAnalysisPipeline } from '../../analysisPipelineService';
 import { generateWithPersonaProvider } from '../../llmProviderService';
-import type { PersonaKey } from '../../analysisTypes';
+import type { PersonaKey, PersonaMemory } from '../../analysisTypes';
 import { logger, updateHealth } from '../../logger';
 import { insertChatHistoryWithLegacyFallback } from '../repositories/chatHistoryRepository';
 import {
@@ -21,6 +21,14 @@ import {
   personaKeyToPersonaName,
   toOpinionSummary
 } from '../discord/analysisFormatting';
+import { extractClaimsByContract } from '../contracts/claimContract';
+import {
+  aggregateFeedbackAdjustmentMeta,
+  buildCioCalibrationPromptBlock,
+  buildFeedbackCalibrationDiscordLine,
+  buildFeedbackDecisionSignal,
+  type FeedbackDecisionSignal
+} from '../services/feedbackDecisionCalibrationService';
 import type { DecisionArtifact } from '../contracts/decisionContract';
 import { runDecisionEngineAppService } from './runDecisionEngineAppService';
 
@@ -44,6 +52,8 @@ export type RunPortfolioDebateAppResult =
       segments: PortfolioDebateSegment[];
       /** Phase 2 구조화 결정(저장 실패 시 null 가능) */
       decisionArtifact: DecisionArtifact | null;
+      /** 피드백 소프트 보정 한 줄(결론 강제 없음) */
+      feedbackCalibrationLine: string | null;
     };
 
 function requiresLifestyleAnchorsForTrigger(customId?: string): boolean {
@@ -193,12 +203,16 @@ export async function runPortfolioDebateAppService(params: {
       return '';
     };
 
+    const analysisType = guessAnalysisTypeFromTrigger(triggerCustomId, userQuery);
+
     const memoryKeys: PersonaKey[] = ['RAY', 'HINDENBURG', 'SIMONS', 'DRUCKER', 'CIO'];
     const memoryByKey = new Map<PersonaKey, string>();
+    const personaMemoryByKey = new Map<PersonaKey, PersonaMemory>();
     await Promise.all(
       memoryKeys.map(async k => {
         const personaName = personaKeyToPersonaName(k);
         const personaMemory = await loadPersonaMemory(userId, personaName);
+        personaMemoryByKey.set(k, personaMemory);
         const personaPromptCtx = buildPersonaPromptContext({
           personaKey: k,
           personaName,
@@ -256,11 +270,50 @@ export async function runPortfolioDebateAppService(params: {
     const druckerCombinedLog = `${personaBiasDirective('DRUCKER')}${styleDirectiveBlock}\n[Ray]\n${rayRes}\n[Hindenburg]\n${hindenburgRes}\n[Simons]\n${simonsRes}`;
     const druckerResRaw = await drucker.summarizeAndGenerateActions(false, druckerCombinedLog);
     const druckerRes = normalizeProviderOutputForDiscord({ text: druckerResRaw, provider: 'gemini', personaKey: 'DRUCKER' });
-    const cioCombinedLog = `${personaBiasDirective('CIO')}${styleDirectiveBlock}\n[Ray]\n${rayRes}\n[Hindenburg]\n${hindenburgRes}\n[Simons]\n${simonsRes}\n[Drucker]\n${druckerRes}`;
+
+    const preCioPersonas: PersonaKey[] = ['RAY', 'HINDENBURG', 'SIMONS', 'DRUCKER'];
+    const feedbackSignals: FeedbackDecisionSignal[] = [];
+    const segmentText: Record<PersonaKey, string> = {
+      RAY: rayRes,
+      HINDENBURG: hindenburgRes,
+      SIMONS: simonsRes,
+      DRUCKER: druckerRes,
+      CIO: '',
+      JYP: '',
+      TREND: '',
+      OPEN_TOPIC: '',
+      THIEL: '',
+      HOT_TREND: ''
+    };
+    for (const pk of preCioPersonas) {
+      const pn = personaKeyToPersonaName(pk);
+      const pm = personaMemoryByKey.get(pk)!;
+      const extracted = extractClaimsByContract({
+        responseText: segmentText[pk],
+        analysisType,
+        personaName: pn
+      });
+      feedbackSignals.push(
+        buildFeedbackDecisionSignal({
+          discordUserId: userId,
+          analysisType,
+          personaName: pn,
+          personaKey: pk,
+          claims: extracted.claims,
+          personaMemory: pm
+        })
+      );
+    }
+    const cioCalibBlock = buildCioCalibrationPromptBlock(feedbackSignals);
+    const feedbackAdjustmentMetaForCio = aggregateFeedbackAdjustmentMeta(feedbackSignals, analysisType);
+    const feedbackCalibrationLine = buildFeedbackCalibrationDiscordLine(feedbackSignals);
+
+    let cioCombinedLog = `${personaBiasDirective('CIO')}${styleDirectiveBlock}\n[Ray]\n${rayRes}\n[Hindenburg]\n${hindenburgRes}\n[Simons]\n${simonsRes}\n[Drucker]\n${druckerRes}`;
+    if (cioCalibBlock.trim()) {
+      cioCombinedLog += `\n\n${cioCalibBlock}`;
+    }
     const cioResRaw = await cio.decide(false, cioCombinedLog);
     const cioRes = normalizeProviderOutputForDiscord({ text: cioResRaw, provider: 'gemini', personaKey: 'CIO' });
-
-    const analysisType = guessAnalysisTypeFromTrigger(triggerCustomId, userQuery);
 
     const preferredNames = profile.preferred_personas || [];
     const avoidedNames = profile.avoided_personas || [];
@@ -324,6 +377,7 @@ export async function runPortfolioDebateAppService(params: {
         discordUserId: userId,
         chatHistoryId,
         analysisType,
+        feedbackAdjustmentMetaForCio,
         personaOutputs: [
           { personaKey: 'RAY', personaName: personaKeyToPersonaName('RAY'), responseText: rayRes, providerName: 'gemini', modelName: 'gemini-2.5-flash' },
           {
@@ -436,7 +490,8 @@ export async function runPortfolioDebateAppService(params: {
       chatHistoryId,
       orderedKeys,
       segments,
-      decisionArtifact
+      decisionArtifact,
+      feedbackCalibrationLine
     };
   } catch (err: any) {
     logger.error('ROUTER', '포트폴리오 토론 에러: ' + err.message, err);
