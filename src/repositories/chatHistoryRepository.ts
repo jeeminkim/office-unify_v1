@@ -60,17 +60,18 @@ export async function insertChatHistoryWithLegacyFallback(
   }
 }
 
+/** 운영 DB에 `debate_type` 컬럼이 없을 수 있어 select에 포함하지 않는다. 분석 유형은 호출측(예: 피드백 customId)에서 전달. */
 export async function findChatHistoryById(id: number): Promise<ChatHistoryRowContract | null> {
   const primary = await repoSupabase
     .from('chat_history')
-    .select('id,user_id,debate_type,user_query,ray_advice,key_risks,key_actions,jyp_insight,simons_opportunity,drucker_decision,cio_decision,summary')
+    .select('id,user_id,user_query,ray_advice,key_risks,key_actions,jyp_insight,simons_opportunity,drucker_decision,cio_decision,summary')
     .eq('id', id)
     .maybeSingle();
   if (!primary.error && primary.data) return primary.data as any;
 
   const fallback = await repoSupabase
     .from('chat_history')
-    .select('id,user_id,debate_type,user_query,ray_advice,jyp_insight,simons_opportunity,drucker_decision,cio_decision')
+    .select('id,user_id,user_query,ray_advice,jyp_insight,simons_opportunity,drucker_decision,cio_decision')
     .eq('id', id)
     .maybeSingle();
   if (fallback.error) throw fallback.error;

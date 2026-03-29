@@ -15,7 +15,7 @@ function assertCondition(cond: boolean, message: string) {
 async function pickRecentChat(discordUserId: string): Promise<any | null> {
   const { data, error } = await supabase
     .from('chat_history')
-    .select('id,user_id,debate_type,key_risks,simons_opportunity,created_at')
+    .select('id,user_id,key_risks,simons_opportunity,created_at')
     .eq('user_id', discordUserId)
     .order('created_at', { ascending: false })
     .limit(1);
@@ -30,7 +30,12 @@ async function selfCheck() {
   if (!chat?.id) throw new Error('No recent chat_history for test user');
 
   const chatHistoryId = Number(chat.id);
-  const analysisType = String(chat.debate_type || 'unknown');
+  const { data: acRows } = await supabase
+    .from('analysis_claims')
+    .select('analysis_type')
+    .eq('chat_history_id', chatHistoryId)
+    .limit(1);
+  const analysisType = String((acRows && acRows[0] && (acRows[0] as any).analysis_type) || 'unknown');
   const personaName = 'HINDENBURG_ANALYST';
   const opinionText = String(chat.key_risks || chat.simons_opportunity || '').trim() || '테스트 의견 본문';
 

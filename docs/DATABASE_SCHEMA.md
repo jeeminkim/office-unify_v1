@@ -21,7 +21,7 @@
   - `user_id`
   - `user_query`
   - `ray_advice`, `jyp_insight`, `simons_opportunity`, `drucker_decision`, `cio_decision`
-  - 확장: `debate_type`, `summary`, `key_risks`, `key_actions`
+  - 확장(일부 DB만): `summary`, `key_risks`, `key_actions` — 레거시로 `debate_type`이 있을 수 있으나 **현재 앱은 insert/select에서 의존하지 않음**(피드백의 `analysis_type`은 customId·`analysis_claims.analysis_type` 기준).
 - 주의:
   - 코드·스키마 계약: `src/types/dbSchemaContract.ts`의 `ChatHistoryRowContract.id`는 `number`다.
   - 레포 `schema.sql`에 UUID 정의 흔적이 있어도 **운영 integer가 기준**이다. 점검: `npm run check:schema-contract`
@@ -41,6 +41,7 @@
   - `mapping_score`
 - **Discord 버튼 경로(운영)**:
   - 버튼 `customId`: `feedback:save:{chat_history_id}:{analysis_type}:{feedback_type}:{persona_key}` (`index.ts`의 `getFeedbackButtonsRow`).
+  - `analysis_type` 저장값은 **customId에서 파싱한 문자열**이며, `chat_history.debate_type`을 읽지 않는다.
   - 클릭 시 `index.ts` → `saveAnalysisFeedbackHistory` → `ingestPersonaFeedback` → (성공 시) `claim_feedback` 반영 시도. `persona_name`은 `analysis_claims`와 맞추기 위해 기존 페르소나 표시명 계열과 동일하게 매핑한다.
   - 동일 사용자·짧은 시간 내 동일 `feedback_type` 연타는 서비스 계층에서 duplicate 처리.
 

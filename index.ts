@@ -554,7 +554,7 @@ async function checkDbSchemaCompatibilityOnce(): Promise<void> {
         await supabase.from('user_profile').select('discord_user_id').limit(1);
         await supabase.from('analysis_feedback_history').select('id').limit(1);
         // Column existence checks
-        await supabase.from('chat_history').select('debate_type,summary,key_risks,key_actions').limit(1);
+        await supabase.from('chat_history').select('id,summary,key_risks,key_actions').limit(1);
         await supabase.from('accounts').select('id').limit(1);
         await supabase.from('trade_history').select('purchase_currency').limit(1);
         await supabase.from('portfolio_snapshot_history').select('id').limit(1);
@@ -687,7 +687,7 @@ async function runWeeklyReportSchedulerCheck() {
             const [recentChatsRes, recentFeedbackRes, profile] = await Promise.all([
                 supabase
                     .from('chat_history')
-                    .select('summary,key_risks,key_actions,debate_type')
+                    .select('summary,key_risks,key_actions')
                     .eq('user_id', discordUserId)
                     .gte('created_at', weekStartIso)
                     .order('created_at', { ascending: false })
@@ -787,7 +787,6 @@ Rules:
             const payload: any = {
                 user_id: discordUserId,
                 user_query: 'weekly_investment_report',
-                debate_type: 'weekly_investment_report',
                 jyp_weekly_report: reportText,
                 ray_advice: null,
                 jyp_insight: null,
@@ -1368,6 +1367,7 @@ async function handleFeedbackSaveButtonInteraction(interaction: any): Promise<vo
     });
 
     const personaName = personaKeyToDisplayNameForFeedback(personaKey);
+    /** analysisType은 customId 파싱값만 사용(chat_history.debate_type 조회 없음). */
 
     try {
         const chatRow = await findChatHistoryById(chatHistoryId);

@@ -51,6 +51,8 @@ export async function runFeedbackAppService(params: {
   chatHistoryId: number;
   feedbackType: FeedbackType;
   personaKey: PersonaKey;
+  /** 피드백 버튼 customId 등 — `chat_history.debate_type` 미사용 */
+  analysisType?: string;
 }): Promise<{ ok: boolean; message: string }> {
   logger.info('PROFILE', 'feedback button clicked', {
     discordUserId: params.discordUserId,
@@ -71,7 +73,7 @@ export async function runFeedbackAppService(params: {
   if (!opinionText) return { ok: false, message: '❌ 해당 페르소나 응답을 찾지 못했습니다.' };
 
   const opinionSummary = toOpinionSummary(opinionText, 220);
-  const analysisType = String((chatRow as any).debate_type || 'unknown');
+  const analysisType = params.analysisType ?? 'unknown';
   const personaName = personaKeyToPersonaName(params.personaKey);
 
   let ingestResult: any = {

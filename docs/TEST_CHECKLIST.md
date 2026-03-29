@@ -47,6 +47,7 @@
 - [ ] `claim_feedback` unique 제약으로 중복 방어 확인
 - [ ] 동일 버튼 연타 시 duplicate UX + `duplicate ignored` 로그
 - [ ] 피드백이 붙은 분석 메시지가 **봇 채널 메시지**로 전송됨(webhook만 사용 시 버튼이 동작하지 않을 수 있음 — `broadcastAgentResponse` 참고)
+- [ ] 피드백 저장 시 `chat_history.debate_type` 오류 없음(`analysis_type`은 customId 기준)
 
 ## 5b. 피드백 소프트 보정 (포트폴리오 토론)
 - [ ] `FEEDBACK_CALIBRATION` / `applied` 로그 및 `safetyFloorTriggered` 동작(RAY/HINDENBURG downside)

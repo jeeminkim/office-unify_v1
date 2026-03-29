@@ -164,11 +164,9 @@ export async function runOpenTopicDebateAppService(params: {
     results[p] = filterForbiddenFinancialKeywords(normalized, p);
   }
 
-  const debateType = 'open_topic';
   const chatHistoryPayload: Record<string, unknown> = {
     user_id: userId,
     user_query: userQuery,
-    debate_type: debateType,
     ray_advice: results.RAY ?? null,
     jyp_insight: results.JYP ?? null,
     simons_opportunity: results.SIMONS ?? null,

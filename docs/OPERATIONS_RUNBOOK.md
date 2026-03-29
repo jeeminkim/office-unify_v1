@@ -82,6 +82,7 @@ pm2 restart ai-office
 4. claim 매핑이 된 경우 `claim_feedback`에 반영됐는지 확인(unique `(discord_user_id, claim_id, feedback_type)`)
 5. **동일 버튼을 짧은 간격으로 연타** → `duplicate ignored` 로그 및 사용자 메시지(이미 저장/이미 반영) 확인
 6. 피드백이 붙은 메시지가 **webhook 전용이 아닌** 일반 채널 메시지인지 확인(버튼이 실제로 눌리는지 — `README.md` “Feedback buttons” 절 참고)
+7. 로그에 `column chat_history.debate_type does not exist` 가 **더 이상 나오지 않는지** 확인(피드백 경로는 customId의 `analysisType`만 사용).
 
 ### 6.2 피드백 소프트 보정(포트폴리오 토론)
 1. 포트폴리오 토론 완료 후 로그에 `FEEDBACK_CALIBRATION` / `applied`가 **페르소나당** 남는지 확인(`claimCount`, `avgBaseScore`, `avgAdjustedScore`, `safetyFloorTriggered`).

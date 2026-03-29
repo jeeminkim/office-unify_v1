@@ -51,7 +51,6 @@ export async function runTrendAnalysisAppService(params: {
   const chatHistoryPayload: Record<string, unknown> = {
     user_id: userId,
     user_query: userQuery,
-    debate_type: analysisType,
     ray_advice: text,
     jyp_insight: null,
     simons_opportunity: null,

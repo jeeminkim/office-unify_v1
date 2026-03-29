@@ -18,12 +18,14 @@ export async function handleFeedbackInteraction(params: {
   try {
     const parts = customId.split(':');
     const chatHistoryIdRaw = parts[2];
-    const feedbackTypeRaw = parts[3];
-    const personaKeyRaw = parts[4];
+    const analysisTypeRaw = parts[3];
+    const feedbackTypeRaw = parts[4];
+    const personaKeyRaw = parts[5];
     const chatHistoryId = Number(chatHistoryIdRaw);
+    const analysisType = String(analysisTypeRaw || '').trim();
     const feedbackType = String(feedbackTypeRaw || '').toUpperCase() as FeedbackType;
     const personaKey = String(personaKeyRaw || '') as PersonaKey;
-    if (!Number.isFinite(chatHistoryId) || !feedbackType || !personaKey) {
+    if (!Number.isFinite(chatHistoryId) || !analysisType || !feedbackType || !personaKey) {
       await params.safeEditReply(interaction, '❌ 피드백 처리 실패(파라미터 누락).', 'feedback:save:invalid');
       return true;
     }
@@ -32,7 +34,8 @@ export async function handleFeedbackInteraction(params: {
       discordUserId: params.getDiscordUserId(interaction.user),
       chatHistoryId,
       feedbackType,
-      personaKey
+      personaKey,
+      analysisType
     });
     await params.safeEditReply(interaction, result.message, result.ok ? 'feedback:save:success' : 'feedback:save:failure');
   } catch (e: any) {

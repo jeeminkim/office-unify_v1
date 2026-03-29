@@ -342,7 +342,6 @@ export async function runPortfolioDebateAppService(params: {
     const chatHistoryPayload: Record<string, unknown> = {
       user_id: userId,
       user_query: userQuery,
-      debate_type: analysisType,
       ray_advice: rayRes,
       jyp_insight: null,
       simons_opportunity: simonsRes,

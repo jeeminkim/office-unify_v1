@@ -38,6 +38,7 @@
 ## 2026-03-29
 
 ### Fixed
+- `chat_history.debate_type` 미존재 DB 대응: `findChatHistoryById`에서 `debate_type` select 제거, 피드백·`runFeedbackAppService`는 **`analysisType`을 customId(또는 명시 인자)로만** 사용. 부트 스키마 체크·주간 리포트 조회·`chat_history` insert payload에서 `debate_type` 의존 제거(SQL 추가 없음)
 - Discord 피드백 버튼: `customId`에 `analysis_type` 포함(`feedback:save:{chatHistoryId}:{analysisType}:{feedbackType}:{personaKey}`), `interactionCreate`에서 `feedback:save:*` 선처리 후 `saveAnalysisFeedbackHistory` → `ingestPersonaFeedback`; 인터랙티브 컴포넌트가 있을 때는 `broadcastAgentResponse`가 **webhook 대신 채널 봇 메시지**로 전송해 버튼 상호작용 안정화 (`index.ts`, `src/interactions/interactionRouter.ts`에서 중복 라우팅 제거)
 
 ### Added

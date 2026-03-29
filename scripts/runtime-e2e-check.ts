@@ -59,7 +59,6 @@ async function main() {
     {
       user_id: discordUserId,
       user_query: '[runtime-e2e-check] smoke',
-      debate_type: ANALYSIS_TYPE,
       ray_advice: sampleResponse,
       jyp_insight: null,
       simons_opportunity: null,
@@ -121,7 +120,8 @@ async function main() {
     discordUserId,
     chatHistoryId,
     feedbackType: 'TRUSTED',
-    personaKey: 'RAY'
+    personaKey: 'RAY',
+    analysisType: ANALYSIS_TYPE
   });
   console.log('[runtime-e2e-check] feedback service', fb);
 

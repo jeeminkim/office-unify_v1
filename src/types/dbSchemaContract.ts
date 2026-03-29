@@ -6,6 +6,7 @@ export type DbIdInteger = number;
 export type ChatHistoryRowContract = {
   id: DbIdInteger;
   user_id: string;
+  /** 레거시/일부 DB에만 존재 — 코드 경로에서는 조회하지 않음 */
   debate_type?: string | null;
   user_query?: string | null;
   ray_advice?: string | null;

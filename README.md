@@ -120,6 +120,7 @@ pm2 logs ai-office
 
 - **customId 형식**: `feedback:save:{chatHistoryId}:{analysisType}:{feedbackType}:{personaKey}`  
   (`TRUSTED` | `ADOPTED` | `BOOKMARKED` | `DISLIKED` 등 — `analysisTypes.ts`의 `FeedbackType`과 정합)
+- **`analysis_type` 소스**: `analysisType`은 **버튼 customId 파싱값만** 사용한다. `chat_history.debate_type` 컬럼은 조회·저장 신뢰에 사용하지 않는다(운영 DB에 없을 수 있음).
 - **처리 흐름**: 버튼 클릭 → `interactionCreate` → `safeDeferReply` → `saveAnalysisFeedbackHistory` → `ingestPersonaFeedback` → (가능 시) `claim_feedback` + `persona_memory` 갱신
 - **전송 방식**: 피드백 버튼이 붙은 분석 메시지는 **Incoming Webhook이 아니라 봇 채널 메시지**(`channel.send`)로 보낸다. Webhook으로 붙인 컴포넌트는 interaction/소유권 측면에서 실패하거나 불안정할 수 있다.
 - **중복**: 동일 조건 연타 시 `analysis_feedback_history` 또는 `claim_feedback` 단계에서 duplicate로 막히고, 사용자에게 구분 메시지가 간다.
