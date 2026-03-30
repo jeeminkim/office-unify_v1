@@ -123,17 +123,23 @@ function referencingSignals(text: string): boolean {
 export function runCommitteeVote(params: {
   members: PersonaCommitteeJudgment[];
   hasOpenPositions: boolean;
+  /** Phase 2.5: bounded multipliers on base committee weights (persona performance; optional) */
+  weightMultipliers?: Partial<Record<PersonaKeyCommittee, number>>;
 }): CommitteeVoteResult {
   logger.info('DECISION_ENGINE', 'committee_vote_started', {
     memberCount: params.members.length,
-    hasOpenPositions: params.hasOpenPositions
+    hasOpenPositions: params.hasOpenPositions,
+    hasPerfMultipliers: !!params.weightMultipliers && Object.keys(params.weightMultipliers).length > 0
   });
 
   let rawWeightedScore = 0;
   const totalWeight = totalCommitteeWeight();
 
   for (const m of params.members) {
-    const w = COMMITTEE_MEMBER_WEIGHTS[m.personaKey] ?? 1;
+    const base = COMMITTEE_MEMBER_WEIGHTS[m.personaKey] ?? 1;
+    const mult = params.weightMultipliers?.[m.personaKey];
+    const mfac = typeof mult === 'number' && Number.isFinite(mult) ? mult : 1;
+    const w = base * mfac;
     rawWeightedScore += w * m.vote * m.confidence;
   }
 

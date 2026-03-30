@@ -294,6 +294,66 @@ export function resolveInstrumentMetadata(input: string, marketHint?: string): I
   return null;
 }
 
+/**
+ * 후보 제안용 — 단일 확정이 아니라 매칭 가능한 목록(중복 제거).
+ * 최종 저장 전에는 반드시 사용자 확인 + `validateConfirmedInstrument`를 거친다.
+ */
+export function resolveInstrumentCandidates(input: string, marketHint?: string): InstrumentMetadata[] {
+  const raw = (input || '').trim();
+  if (!raw) return [];
+
+  const seen = new Set<string>();
+  const out: InstrumentMetadata[] = [];
+  const push = (m: InstrumentMetadata | null) => {
+    if (!m) return;
+    const k = `${m.market}:${m.symbol}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(m);
+  };
+
+  push(resolveInstrumentMetadata(raw, marketHint));
+
+  const lower = raw.toLowerCase();
+  for (const v of Object.values(KR_INSTRUMENT_MAP)) {
+    if (v.displayName.toLowerCase().includes(lower) || lower.includes(v.displayName.toLowerCase())) {
+      push({ ...v });
+    }
+  }
+
+  const upper = raw.toUpperCase();
+  for (const v of Object.values(KR_INSTRUMENT_MAP)) {
+    if (v.symbol === upper || (v.quoteSymbol || '').toUpperCase() === upper) {
+      push({ ...v });
+    }
+  }
+
+  const mh = String(marketHint || '').toUpperCase();
+  if (mh === 'US' || (/^[A-Z.\-]{1,8}$/.test(upper) && !/[가-힣]/.test(raw))) {
+    push(resolveInstrumentMetadata(raw, 'US'));
+    for (const k of Object.keys(US_TICKER_REGISTRY)) {
+      if (k.includes(upper) || upper.includes(k)) {
+        push(resolveInstrumentMetadata(k, 'US'));
+      }
+    }
+  }
+
+  if (out.length === 0) {
+    push(resolveInstrumentMetadata(raw, undefined));
+  }
+
+  return out.filter(Boolean).slice(0, 20);
+}
+
+export function buildInstrumentConfirmationMessage(candidates: InstrumentMetadata[], index: number): string {
+  const c = candidates[index];
+  if (!c) return '';
+  return [
+    `**${c.displayName}** — \`${c.symbol}\``,
+    `시장 ${c.market} · ${c.exchange ?? '-'} · 호가 ${c.quoteSymbol ?? '-'} · ${c.currency}`
+  ].join('\n');
+}
+
 /** 티커 기준 US 메타(한글 display_name + DB market=KR 혼재 보정) */
 export function applyRegistryMarketOverlay(meta: InstrumentMetadata, row: any): InstrumentMetadata {
   const sym = String(meta.symbol || '')
@@ -345,7 +405,22 @@ export function normalizePortfolioInstrument(row: any): InstrumentMetadata {
   const market = String(row?.market || '').toUpperCase() === 'US' ? 'US' : 'KR';
   const symbol = String(row?.symbol || '').trim();
   const currency = String(row?.currency || '').toUpperCase() === 'USD' ? 'USD' : (market === 'US' ? 'USD' : 'KRW');
-  const quoteSymbol = row?.quote_symbol ? String(row.quote_symbol) : (market === 'KR' && /^\d{6}$/.test(symbol) ? `${symbol}.KS` : symbol || null);
+  const ex = String(row?.exchange || '').toUpperCase();
+  let quoteSymbol = row?.quote_symbol ? String(row.quote_symbol) : null;
+  if (market === 'KR' && /^\d{6}$/.test(symbol)) {
+    if (!quoteSymbol) {
+      quoteSymbol = ex.includes('KOSDAQ') ? `${symbol}.KQ` : `${symbol}.KS`;
+    } else if (/^\d{6}\.(KS|KQ)$/i.test(quoteSymbol)) {
+      if (ex.includes('KOSDAQ') && /\.KS$/i.test(quoteSymbol)) {
+        quoteSymbol = `${symbol}.KQ`;
+        logger.info('INSTRUMENT', 'quote_symbol corrected for KOSDAQ', { symbol, before: row?.quote_symbol, after: quoteSymbol });
+      } else if (ex.includes('KOSPI') && /\.KQ$/i.test(quoteSymbol)) {
+        quoteSymbol = `${symbol}.KS`;
+        logger.info('INSTRUMENT', 'quote_symbol corrected for KOSPI', { symbol, before: row?.quote_symbol, after: quoteSymbol });
+      }
+    }
+  }
+  if (!quoteSymbol) quoteSymbol = market === 'KR' && /^\d{6}$/.test(symbol) ? `${symbol}.KS` : symbol || null;
 
   const fallback: InstrumentMetadata = {
     displayName: String(row?.display_name || symbol || quoteSymbol || 'UNKNOWN'),

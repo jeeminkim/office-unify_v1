@@ -30,7 +30,9 @@ import {
     getTrendPanel,
     getDataCenterPanel,
     getSettingsPanel,
-    getNoDataButtons
+    getNoDataButtons,
+    getQuickNavigationRows,
+    type QuickNavHighlight
 } from './panelManager';
 import { buildPortfolioSnapshot } from './portfolioService';
 import { resolveInstrumentMetadata } from './instrumentRegistry';
@@ -63,8 +65,30 @@ import { insertChatHistoryWithLegacyFallback } from './src/repositories/chatHist
 import { detectFinancialIntent, normalizeProviderOutputForDiscord } from './src/discord/analysisFormatting';
 import { runPortfolioDebateAppService } from './src/application/runPortfolioDebateAppService';
 import { formatDecisionSummaryForDiscord } from './src/application/runDecisionEngineAppService';
+import { buildRebalancePlanAppService } from './src/application/buildRebalancePlanAppService';
+import {
+    dismissRebalancePlanHold,
+    executeRebalancePlanComplete,
+    renderPlanItemsText
+} from './src/application/executeRebalancePlanAppService';
+import { runClaimOutcomeAuditAppService } from './src/application/runClaimOutcomeAuditAppService';
+import { getRebalancePlanById, getLatestPendingRebalancePlan } from './src/repositories/rebalancePlanRepository';
+import { buildPersonaScorecards, formatPersonaScorecardDiscord } from './src/services/personaScorecardService';
 import { runTrendAnalysisAppService } from './src/application/runTrendAnalysisAppService';
 import { runOpenTopicDebateAppService } from './src/application/runOpenTopicDebateAppService';
+import {
+    isDecisionPrompt,
+    extractDecisionOptions,
+    buildDecisionButtonsRow,
+    logDecisionPromptDetected
+} from './decisionPrompt';
+import {
+    handleInstrumentConfirm,
+    handleInstrumentCancel,
+    handleInstrumentPick
+} from './src/interactions/instrumentConfirmationHandler';
+import { parseCashflowFlowType } from './src/finance/cashflowCategories';
+import { parseInstallmentLine } from './src/finance/expenseInstallment';
 import {
     tryHandlePortfolioButton,
     tryHandlePortfolioModalSubmit,
@@ -179,14 +203,6 @@ function getDiscordUserId(user: { id: string }): string {
 /** 고급 매수/매도: 모달 직전에 선택한 계좌 (단일 프로세스 가정) */
 const pendingBuyAccountId = new Map<string, string>();
 const pendingSellAccountId = new Map<string, string>();
-
-function normalizeFlowType(value: string): string | null {
-    const valid = ['income', 'fixed_expense', 'saving', 'investment', 'debt_payment', 'other'];
-    const normalized = (value || '').trim().toLowerCase();
-    if (valid.includes(normalized)) return normalized;
-    return null;
-}
-
 
 function parsePositiveAmount(value: string): number | null {
     const amount = parseNumberStrict(value);
@@ -306,7 +322,20 @@ async function runPortfolioQueryFromButton(
         hideAggregateAccountBreakdown: uiMode === 'all'
     });
 
-    await safeEditReply(interaction, text, 'portfolio:query:success');
+    await safeEditReplyPayload(interaction, { content: text, flags: 64 }, 'portfolio:query:success');
+    try {
+        await interaction.followUp({
+            content: '**다음 메뉴** — 스크롤 없이 바로 선택할 수 있습니다.',
+            components: getQuickNavigationRows({ highlight: 'portfolio' }),
+            flags: 64
+        });
+        logger.info('UI', 'post_response_navigation_attached', {
+            context: 'portfolio:query:success',
+            discordUserId
+        });
+    } catch (e: any) {
+        logger.warn('UI', 'post_response_navigation_failed', { context: 'portfolio:query:success', message: e?.message });
+    }
 }
 
 /** 계좌별 보기 — 에페머럴 메시지 + select 응답 */
@@ -351,6 +380,22 @@ async function runPortfolioQueryFromAccountSelect(interaction: any, discordUserI
     });
 
     await safeEditReplyPayload(interaction, { content: text, components: [] }, 'portfolio:account_select:success');
+    try {
+        await interaction.followUp({
+            content: '**다음 메뉴** — 스크롤 없이 바로 선택할 수 있습니다.',
+            components: getQuickNavigationRows({ highlight: 'portfolio' }),
+            flags: 64
+        });
+        logger.info('UI', 'post_response_navigation_attached', {
+            context: 'portfolio:account_select:success',
+            discordUserId
+        });
+    } catch (e: any) {
+        logger.warn('UI', 'post_response_navigation_failed', {
+            context: 'portfolio:account_select:success',
+            message: e?.message
+        });
+    }
 }
 
 async function safeEditReply(interaction: any, content: string, context: string) {
@@ -836,13 +881,37 @@ function isTrendQueryCheck(query: string): boolean {
 const DISCORD_CONTENT_MAX = 2000;
 const DISCORD_BODY_CHUNK = 1800;
 
+async function sendPostNavigationReply(sourceInteraction: Interaction | Message, highlight: QuickNavHighlight) {
+    try {
+        const rows = getQuickNavigationRows({ highlight });
+        const src: any = sourceInteraction;
+        if (typeof src.followUp === 'function') {
+            await src.followUp({
+                content: '**다음 메뉴** — 스크롤 없이 바로 선택할 수 있습니다.',
+                components: rows,
+                ephemeral: true
+            });
+            logger.info('UI', 'post_response_navigation_attached', { mode: 'followUp', highlight });
+        } else if (src.channel?.send) {
+            await src.channel.send({
+                content: '**다음 메뉴** — 스크롤 없이 바로 선택할 수 있습니다.',
+                components: rows
+            });
+            logger.info('UI', 'post_response_navigation_attached', { mode: 'channel_send', highlight });
+        }
+    } catch (e: any) {
+        logger.warn('UI', 'post_response_navigation_failed', { message: e?.message });
+    }
+}
+
 async function broadcastAgentResponse(
     userId: string,
     agentName: string,
     avatarURL: string,
     content: string,
     sourceInteraction: Interaction | Message,
-    feedbackRow?: ActionRowBuilder<ButtonBuilder> | null
+    feedbackRow?: ActionRowBuilder<ButtonBuilder> | null,
+    decisionCtx?: { chatHistoryId: number; analysisType: string } | null
 ) {
     let finalContent = content;
     let components: ActionRowBuilder<ButtonBuilder>[] = [];
@@ -850,6 +919,13 @@ async function broadcastAgentResponse(
     if (finalContent.includes('[REASON: NO_DATA]')) {
         finalContent = finalContent.replace(/\[REASON: NO_DATA\]/g, '').trim();
         components = [getNoDataButtons()];
+    }
+
+    const decisionRows: ActionRowBuilder<ButtonBuilder>[] = [];
+    if (decisionCtx && isDecisionPrompt(finalContent)) {
+        const opts = extractDecisionOptions(finalContent);
+        logDecisionPromptDetected(decisionCtx.chatHistoryId, decisionCtx.analysisType, opts);
+        decisionRows.push(buildDecisionButtonsRow(decisionCtx.chatHistoryId, decisionCtx.analysisType, opts));
     }
 
     const originalLen = finalContent.length;
@@ -882,6 +958,7 @@ async function broadcastAgentResponse(
             const componentsToSend = i === 0
                 ? [
                     ...(components.length ? components : []),
+                    ...decisionRows,
                     ...(feedbackRow ? [feedbackRow] : [])
                   ]
                 : undefined;
@@ -921,6 +998,7 @@ async function broadcastAgentResponse(
             }
         }
     }
+
     return finalContent;
 }
 
@@ -1003,7 +1081,12 @@ async function runTrendAnalysis(
     try {
         const out = await runTrendAnalysisAppService({ userId, userQuery, topic, triggerCustomId });
         const feedbackRow = out.chatHistoryId ? getFeedbackButtonsRow(out.chatHistoryId, out.analysisType, 'TREND') : null;
-        await broadcastAgentResponse(userId, out.agentLabel, out.avatarUrl, out.text, sourceInteraction, feedbackRow);
+        const decisionCtx =
+            out.chatHistoryId != null
+                ? { chatHistoryId: out.chatHistoryId, analysisType: out.analysisType }
+                : null;
+        await broadcastAgentResponse(userId, out.agentLabel, out.avatarUrl, out.text, sourceInteraction, feedbackRow, decisionCtx);
+        await sendPostNavigationReply(sourceInteraction, 'trend');
     } catch (err: any) {
         logger.error('ROUTER', '트렌드 분석 에러: ' + err.message, err);
     }
@@ -1063,6 +1146,44 @@ async function runDataCenterAction(
         personaKey: 'THIEL'
     })}`;
     await safeSendChunkedInteractionContent(sourceInteraction, { content }, `data_center:${action}`);
+    if (sourceInteraction) await sendPostNavigationReply(sourceInteraction, 'data_center');
+}
+
+/** Phase 2.5 — shadow 리밸런싱 실행안(자동 주문 없음). trade_history는 「완료」버튼 후에만 반영. */
+async function postShadowRebalanceFollowUp(userId: string, result: Awaited<ReturnType<typeof runPortfolioDebateAppService>>, sourceInteraction: Interaction) {
+    if (result.status !== 'ok' || !result.chatHistoryId || !result.decisionArtifact) return;
+    try {
+        const mode = await loadUserMode(userId);
+        const snap = await buildPortfolioSnapshot(userId, { scope: 'DEFAULT' });
+        const plan = await buildRebalancePlanAppService({
+            discordUserId: userId,
+            snapshot: snap,
+            decisionArtifact: result.decisionArtifact,
+            userMode: mode,
+            chatHistoryId: result.chatHistoryId,
+            analysisType: result.analysisType,
+            dryRun: false
+        });
+        if (!plan.planId || !plan.lines.length) return;
+        const ch = (sourceInteraction as any).channel;
+        if (!ch?.send) return;
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(`rebalance:view:${plan.planId}`).setLabel('리밸런싱 계획 보기').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId(`rebalance:complete:${plan.planId}`).setLabel('리밸런싱 완료').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`rebalance:hold:${plan.planId}`).setLabel('이번엔 보류').setStyle(ButtonStyle.Danger)
+        );
+        const chunks = splitDiscordMessage(plan.discordText, 1800);
+        await ch.send({
+            content: chunks[0] || plan.discordText,
+            components: [row]
+        });
+        for (let i = 1; i < chunks.length; i++) {
+            await ch.send({ content: `_(계속 ${i + 1}/${chunks.length})_\n${chunks[i]}` });
+        }
+        logger.info('REBALANCE', 'shadow plan message posted', { planId: plan.planId, discordUserId: userId });
+    } catch (e: any) {
+        logger.warn('REBALANCE', 'follow-up post failed', { message: e?.message || String(e) });
+    }
 }
 
 /** 금융/포트폴리오 5인 토론 — application 계층에서 LLM·저장 수행 */
@@ -1101,13 +1222,18 @@ async function runPortfolioDebate(userId: string, userQuery: string, sourceInter
             const feedbackRow = result.chatHistoryId
                 ? getFeedbackButtonsRow(result.chatHistoryId, result.analysisType, seg.key)
                 : null;
+            const decisionCtx =
+                result.chatHistoryId != null
+                    ? { chatHistoryId: result.chatHistoryId, analysisType: result.analysisType }
+                    : null;
             await broadcastAgentResponse(
                 userId,
                 seg.agentName,
                 seg.avatarUrl,
                 seg.text,
                 sourceInteraction,
-                feedbackRow
+                feedbackRow,
+                decisionCtx
             );
         }
         if (result.decisionArtifact) {
@@ -1115,15 +1241,22 @@ async function runPortfolioDebate(userId: string, userQuery: string, sourceInter
             if (result.feedbackCalibrationLine) {
                 summary += `\n\n_${result.feedbackCalibrationLine}_`;
             }
+            const decisionCtxSummary =
+                result.chatHistoryId != null
+                    ? { chatHistoryId: result.chatHistoryId, analysisType: result.analysisType }
+                    : null;
             await broadcastAgentResponse(
                 userId,
                 '투자위원회 · 결정 요약',
                 'https://upload.wikimedia.org/wikipedia/commons/e/ef/System_Preferences_icon_Apple.png',
                 summary,
                 sourceInteraction,
-                null
+                null,
+                decisionCtxSummary
             );
         }
+        await postShadowRebalanceFollowUp(userId, result, sourceInteraction);
+        await sendPostNavigationReply(sourceInteraction, 'ai');
     } catch (err: any) {
         logger.error('ROUTER', '포트폴리오 토론 에러: ' + err.message, err);
     }
@@ -1135,8 +1268,13 @@ async function runOpenTopicDebate(userId: string, userQuery: string, sourceInter
         const out = await runOpenTopicDebateAppService({ userId, userQuery, loadUserMode });
         for (const b of out.broadcasts) {
             const feedbackRow = out.chatHistoryId ? getFeedbackButtonsRow(out.chatHistoryId, out.analysisType, b.personaKey) : null;
-            await broadcastAgentResponse(userId, b.agentName, b.avatarUrl, b.text, sourceInteraction, feedbackRow);
+            const decisionCtx =
+                out.chatHistoryId != null
+                    ? { chatHistoryId: out.chatHistoryId, analysisType: out.analysisType }
+                    : null;
+            await broadcastAgentResponse(userId, b.agentName, b.avatarUrl, b.text, sourceInteraction, feedbackRow, decisionCtx);
         }
+        await sendPostNavigationReply(sourceInteraction, 'ai');
     } catch (err: any) {
         logger.error('ROUTER', '오픈 토픽 토론 에러: ' + err.message, err);
     }
@@ -1291,10 +1429,18 @@ client.on('messageCreate', async (message: Message) => {
 
     if (message.content.startsWith('!현금흐름추가')) {
         const parts = message.content.split(' ');
-        if (parts.length < 3) return message.reply("❌ 사용법: `!현금흐름추가 [종류] [금액] [설명...]` (income, fixed_expense, saving, investment, debt_payment, other)");
+        if (parts.length < 3) {
+            return message.reply(
+                '❌ 사용법: `!현금흐름추가 [유형] [금액] [설명...]` — 유형: SALARY, BONUS, LOAN_IN, LOAN_PRINCIPAL, LOAN_INTEREST, CONSUMPTION, OTHER_IN, OTHER_OUT'
+            );
+        }
         const [_, typeRaw, amountStr, ...descParts] = parts;
-        const flowType = normalizeFlowType(typeRaw);
-        if (!flowType) return message.reply("❌ 잘못된 현금흐름 종류입니다. (income, fixed_expense, saving, investment, debt_payment, other 중 택 1)");
+        const flowType = parseCashflowFlowType(typeRaw);
+        if (!flowType) {
+            return message.reply(
+                '❌ 잘못된 현금흐름 유형입니다. (SALARY, BONUS, LOAN_IN, LOAN_PRINCIPAL, LOAN_INTEREST, CONSUMPTION, OTHER_IN, OTHER_OUT 중 택 1)'
+            );
+        }
         
         const amount = parseNumberStrict(amountStr);
         if (amount === null) return message.reply("❌ 금액은 숫자로 입력해주세요.");
@@ -1334,6 +1480,43 @@ client.on('messageCreate', async (message: Message) => {
     }
 });
 
+async function handleDecisionButtonInteraction(interaction: any): Promise<void> {
+    const cid = interaction.customId as string;
+    const discordUserId = getDiscordUserId(interaction.user);
+    const m = /^decision:select\|(\d+)\|(\d+)$/.exec(cid);
+    if (!m) {
+        logger.warn('DECISION', 'invalid decision customId', { cid });
+        await safeDeferReply(interaction, {});
+        await interaction.editReply({
+            content: '요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.'
+        });
+        return;
+    }
+    const chatHistoryId = Number(m[1]);
+    const optIndex = Number(m[2]);
+    if (!Number.isFinite(chatHistoryId) || chatHistoryId <= 0 || !Number.isFinite(optIndex)) {
+        await safeDeferReply(interaction, {});
+        await interaction.editReply({
+            content: '요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.'
+        });
+        return;
+    }
+    const msg = String(interaction.message?.content || '');
+    const options = extractDecisionOptions(msg);
+    const selectedOption = options[optIndex] ?? options[0] ?? '선택';
+    await safeDeferReply(interaction, {});
+    logger.info('DECISION', 'DECISION_SELECTED', {
+        chatHistoryId,
+        userId: discordUserId,
+        selectedOption,
+        optionIndex: optIndex,
+        options: options.slice(0, 4)
+    });
+    await interaction.editReply({
+        content: `**선택 완료:** ${selectedOption}을(를) 반영합니다.`
+    });
+}
+
 async function handleFeedbackSaveButtonInteraction(interaction: any): Promise<void> {
     const cid = interaction.customId as string;
     const discordUserId = getDiscordUserId(interaction.user);
@@ -1344,7 +1527,7 @@ async function handleFeedbackSaveButtonInteraction(interaction: any): Promise<vo
     const m = /^(\d+):([^:]+):(TRUSTED|ADOPTED|BOOKMARKED|DISLIKED|REJECTED):([A-Z0-9_]+)$/.exec(rest);
     if (!m) {
         logger.warn('FEEDBACK', 'invalid feedback customId', { cid });
-        await safeEditReply(interaction, '피드백 저장 중 오류 발생', 'feedback:failure');
+        await safeEditReply(interaction, '요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.', 'feedback:failure');
         return;
     }
 
@@ -1354,7 +1537,7 @@ async function handleFeedbackSaveButtonInteraction(interaction: any): Promise<vo
     const personaKey = m[4];
 
     if (!Number.isFinite(chatHistoryId) || chatHistoryId <= 0) {
-        await safeEditReply(interaction, '피드백 저장 중 오류 발생', 'feedback:failure');
+        await safeEditReply(interaction, '요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.', 'feedback:failure');
         return;
     }
 
@@ -1458,7 +1641,11 @@ async function handleFeedbackSaveButtonInteraction(interaction: any): Promise<vo
             personaKey,
             discordUserId
         });
-        await safeEditReply(interaction, '피드백 저장 중 오류 발생', 'feedback:failure');
+        await safeEditReply(
+            interaction,
+            '일시적인 저장 오류입니다. 잠시 후 다시 시도해 주세요.',
+            'feedback:failure'
+        );
     }
 }
 
@@ -1524,8 +1711,22 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 s.interactions.lastCustomId = cid;
             });
 
+            if (cid.startsWith('decision:select|')) {
+                await handleDecisionButtonInteraction(interaction);
+                return;
+            }
+
             if (cid.startsWith('feedback:save:')) {
                 await handleFeedbackSaveButtonInteraction(interaction);
+                return;
+            }
+
+            if (cid.startsWith('instr:confirm:')) {
+                await handleInstrumentConfirm(interaction, portfolioModalDeps);
+                return;
+            }
+            if (cid.startsWith('instr:cancel:')) {
+                await handleInstrumentCancel(interaction, portfolioModalDeps);
                 return;
             }
 
@@ -1577,6 +1778,75 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 return;
             }
 
+            const rebMatch = /^rebalance:(view|complete|hold):([0-9a-f-]{36})$/i.exec(cid);
+            if (rebMatch) {
+                const act = rebMatch[1].toLowerCase();
+                const planId = rebMatch[2];
+                const uid = interaction.user.id;
+                await safeDeferReply(interaction, { flags: 64 });
+                if (act === 'view') {
+                    const { plan, items, error } = await getRebalancePlanById(planId);
+                    if (error || !plan || plan.discord_user_id !== uid) {
+                        await safeEditReply(interaction, '플랜을 찾을 수 없거나 권한이 없습니다.', 'rebalance:view');
+                        return;
+                    }
+                    const txt = renderPlanItemsText(items, plan.plan_header, plan.fx_usdkrw);
+                    await safeEditReply(interaction, txt.slice(0, 1990), 'rebalance:view');
+                    return;
+                }
+                if (act === 'complete') {
+                    const r = await executeRebalancePlanComplete({ discordUserId: uid, planId });
+                    await safeEditReply(interaction, r.message, 'rebalance:complete');
+                    return;
+                }
+                if (act === 'hold') {
+                    const r = await dismissRebalancePlanHold({ discordUserId: uid, planId });
+                    await safeEditReply(interaction, r.message, 'rebalance:hold');
+                    return;
+                }
+            }
+
+            if (cid === 'panel:data:persona_report') {
+                await safeDeferReply(interaction, { flags: 64 });
+                const uid = interaction.user.id;
+                const c7 = await buildPersonaScorecards({ discordUserId: uid, windowDays: 7 });
+                const c30 = await buildPersonaScorecards({ discordUserId: uid, windowDays: 30 });
+                const t =
+                    formatPersonaScorecardDiscord(c7, '최근 7일') +
+                    '\n\n' +
+                    formatPersonaScorecardDiscord(c30, '최근 30일');
+                const chunks = splitDiscordMessage(t, 1800);
+                await safeEditReply(interaction, chunks[0] || t, 'panel:data:persona_report');
+                return;
+            }
+
+            if (cid === 'panel:data:claim_audit') {
+                await safeDeferReply(interaction, { flags: 64 });
+                const r = await runClaimOutcomeAuditAppService({ discordUserId: interaction.user.id, limit: 60 });
+                const msg =
+                    `claim 감사 배치 완료 · 갱신 ${r.updated} · 스킵 ${r.skipped}` +
+                    (r.errors.length ? ` · 오류 ${r.errors.slice(0, 2).join('; ')}` : '');
+                await safeEditReply(interaction, msg, 'panel:data:claim_audit');
+                return;
+            }
+
+            if (cid === 'panel:data:rebalance_view') {
+                await safeDeferReply(interaction, { flags: 64 });
+                const uid = interaction.user.id;
+                const { plan, items, error } = await getLatestPendingRebalancePlan(uid);
+                if (error) {
+                    await safeEditReply(interaction, `조회 실패: ${error}`, 'panel:data:rebalance_view:err');
+                    return;
+                }
+                if (!plan) {
+                    await safeEditReply(interaction, '대기 중인 리밸런싱 계획이 없습니다.', 'panel:data:rebalance_view:empty');
+                    return;
+                }
+                const txt = renderPlanItemsText(items, plan.plan_header, plan.fx_usdkrw);
+                await safeEditReply(interaction, txt.slice(0, 1990), 'panel:data:rebalance_view');
+                return;
+            }
+
             if (financialCommandQueryMap[cid]) {
                 const query = financialCommandQueryMap[cid];
                 const statusText = '📊 **포트폴리오·소비·현금흐름 기준 재무 분석 중...**';
@@ -1595,7 +1865,14 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 modal.addComponents(
                     new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('amount').setLabel("금액").setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('category').setLabel("카테고리").setStyle(TextInputStyle.Short)),
-                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('desc').setLabel("상세 설명").setStyle(TextInputStyle.Paragraph).setRequired(false))
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('desc').setLabel("상세 설명").setStyle(TextInputStyle.Paragraph).setRequired(false)),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('installment')
+                            .setLabel('할부 (N 또는 Y 개월 시작일, 예: Y 3 2026-01-01)')
+                            .setStyle(TextInputStyle.Short)
+                            .setRequired(false)
+                    )
                 );
                 await interaction.showModal(modal);
                 return;
@@ -1605,7 +1882,12 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 logger.info('INTERACTION', 'button click: panel:finance:add_cashflow', { user: interaction.user.tag });
                 const modal = new ModalBuilder().setCustomId('modal:cashflow:add').setTitle('💰 현금흐름 입력');
                 modal.addComponents(
-                    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('flow_type').setLabel("종류 (income/saving/investment/fixed_expense 등)").setStyle(TextInputStyle.Short)),
+                    new ActionRowBuilder<TextInputBuilder>().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('flow_type')
+                            .setLabel('유형 (SALARY, BONUS, LOAN_IN, LOAN_PRINCIPAL, …)')
+                            .setStyle(TextInputStyle.Short)
+                    ),
                     new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('amount').setLabel("금액").setStyle(TextInputStyle.Short)),
                     new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId('desc').setLabel("상세 설명").setStyle(TextInputStyle.Paragraph).setRequired(false))
                 );
@@ -1656,6 +1938,10 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 s.interactions.lastInteractionType = 'string_select';
                 s.interactions.lastCustomId = sid;
             });
+
+            if (sid.startsWith('instr:pick:')) {
+                if (await handleInstrumentPick(interaction, portfolioModalDeps)) return;
+            }
 
             if (await tryHandlePortfolioStringSelect(interaction, portfolioInteractionDeps)) {
                 return;
@@ -1714,14 +2000,25 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 const amount = parsePositiveAmount(interaction.fields.getTextInputValue('amount'));
                 const category = interaction.fields.getTextInputValue('category');
                 const desc = sanitizeDescription(interaction.fields.getTextInputValue('desc'));
+                const installmentRaw = (interaction.fields.getTextInputValue('installment') || '').trim();
                 if (!amount) {
                     await safeEditReply(interaction, "입력값을 확인해주세요. 금액이 올바르지 않습니다.", 'modal:expense:add:validation_failure');
                     return;
                 }
-                
-                const { error } = await supabase.from('expenses').insert({
-                    discord_user_id: getDiscordUserId(interaction.user), amount, category, description: desc
-                });
+
+                const inst = parseInstallmentLine(installmentRaw, amount);
+                const expensePayload: Record<string, unknown> = {
+                    discord_user_id: getDiscordUserId(interaction.user),
+                    amount,
+                    category,
+                    description: desc,
+                    is_installment: inst.is_installment,
+                    installment_months: inst.installment_months,
+                    monthly_recognized_amount: inst.monthly_recognized_amount,
+                    installment_start_date: inst.installment_start_date
+                };
+
+                const { error } = await supabase.from('expenses').insert(expensePayload);
                 if (error) { 
                     logger.error('DATABASE', 'Supabase insert failure', error); 
                     await safeEditReply(interaction, "지출 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.", 'modal:expense:add:db_failure');
@@ -1736,7 +2033,7 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                 await safeDeferReply(interaction, { flags: 64 });
                 try {
                     const flowTypeRaw = interaction.fields.getTextInputValue('flow_type');
-                    const flowType = normalizeFlowType(flowTypeRaw);
+                    const flowType = parseCashflowFlowType(flowTypeRaw);
                     const amount = parsePositiveAmount(interaction.fields.getTextInputValue('amount'));
                     const description = sanitizeDescription(interaction.fields.getTextInputValue('desc'));
 
@@ -1745,7 +2042,11 @@ client.on('interactionCreate', async (interaction: Interaction) => {
                             flowTypeRaw,
                             amountRaw: interaction.fields.getTextInputValue('amount')
                         });
-                        await safeEditReply(interaction, "입력값을 확인해주세요. 금액과 유형이 올바르지 않습니다.", 'modal:cashflow:add:validation_failure');
+                        await safeEditReply(
+                            interaction,
+                            '입력값을 확인해주세요. 금액과 유형이 올바르지 않습니다. 유형: SALARY, BONUS, LOAN_IN, LOAN_PRINCIPAL, LOAN_INTEREST, CONSUMPTION, OTHER_IN, OTHER_OUT (레거시 영문 별칭도 허용)',
+                            'modal:cashflow:add:validation_failure'
+                        );
                         return;
                     }
 

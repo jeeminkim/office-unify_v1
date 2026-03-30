@@ -127,12 +127,16 @@ export function buildPortfolioDiscordMessage(
   });
 
   const body = ['───', '**보유 종목**', '', ...posLines.map(x => `${x}\n`)].join('\n');
+  const metaBits = [snapshot.summary.price_basis_hint, snapshot.summary.partial_quote_warning].filter(
+    (x): x is string => !!x
+  );
+  const metaBlock = metaBits.length ? `\n\n${metaBits.join('\n')}` : '';
   const quoteWarn =
     snapshot.summary.degraded_quote_mode || (snapshot.summary.quote_failure_count || 0) > 0
-      ? `\n\n⚠️ 일부 종목의 실시간 시세 조회가 실패해 최근 저장값/매수가 기준으로 대체되었습니다. (실패 ${snapshot.summary.quote_failure_count || 0}건)`
+      ? `\n\n⚠️ 시세 조회 품질: 후보 실패 누적 **${snapshot.summary.quote_failure_count || 0}**건 · 위 가격 기준·출처 안내 참고`
       : '';
 
-  return `${head.join('\n')}\n${body}${quoteWarn}${snapshotFooterLine(opts.snapshotFooter)}`;
+  return `${head.join('\n')}\n${body}${metaBlock}${quoteWarn}${snapshotFooterLine(opts.snapshotFooter)}`;
 }
 
 export function accountTypeLabelKo(accountType: string): string {

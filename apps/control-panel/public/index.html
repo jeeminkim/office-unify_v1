@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Office Control Panel</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>AI Office Control Panel</h1>
+    <p class="muted">로컬 전용 상태판 · <code id="hostHint"></code></p>
+  </header>
+
+  <section class="grid-cards">
+    <div class="card" id="cardExec">
+      <h2>실행 상태</h2>
+      <dl id="dlExec"></dl>
+      <p class="err" id="statusErr"></p>
+    </div>
+    <div class="card" id="cardHealth">
+      <h2>Health 스냅샷</h2>
+      <dl id="dlHealth"></dl>
+    </div>
+    <div class="card" id="cardProcess">
+      <h2>현재 프로세스 (추적)</h2>
+      <dl id="dlProcess"></dl>
+    </div>
+    <div class="card" id="cardStop">
+      <h2>마지막 중지 시도</h2>
+      <dl id="dlStop"></dl>
+    </div>
+    <div class="card" id="cardScan">
+      <h2>마지막 프로세스 검사</h2>
+      <dl id="dlScan"></dl>
+    </div>
+    <div class="card" id="cardKill">
+      <h2>마지막 kill 시도</h2>
+      <dl id="dlKill"></dl>
+    </div>
+    <div class="card card-wide" id="cardLogs">
+      <h2>로그 확인 안내</h2>
+      <p class="lead">화면에는 로그 본문을 표시하지 않습니다. 아래 경로의 파일을 편집기·터미널에서 확인하세요.</p>
+      <ul id="logGuideList" class="log-guide"></ul>
+    </div>
+  </section>
+
+  <section class="actions">
+    <h2>제어</h2>
+    <div class="btn-row">
+      <button type="button" id="btnStart">기동</button>
+      <button type="button" id="btnStop">중지</button>
+      <button type="button" id="btnRestart">재기동</button>
+      <button type="button" id="btnScan">프로세스 검사</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="skipBuild" /> 빌드 생략 (빠른 재시작)</label>
+  </section>
+
+  <section class="proc" id="procSection" hidden>
+    <h2>프로세스 요약</h2>
+    <p id="procSummary" class="proc-summary"></p>
+    <p class="muted">상세 명령줄·PID는 <code>logs/control-panel/control-panel.log_*</code> 와 <code>office-ops</code> 로그에서 확인하세요.</p>
+    <div id="killRow" class="kill-row"></div>
+  </section>
+
+  <details class="advanced">
+    <summary>고급: API로 로그 tail 조회 (개발·진단용)</summary>
+    <p class="muted">기본 운영에서는 파일을 직접 여는 것을 권장합니다. <code>GET /api/logs/{ops|error|runtime}?lines=50</code></p>
+  </details>
+
+  <script src="/app.js"></script>
+</body>
+</html>

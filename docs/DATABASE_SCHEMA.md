@@ -11,6 +11,8 @@
   - `feedback_integrity_migration.sql`
   - Phase 2 append-only: `docs/sql/append_phase2_decision_tables.sql` (`decision_artifacts`, `committee_vote_logs`)
   - Phase 2 hardening(기본 Phase 2 적용 후): `docs/sql/append_phase2_decision_tables_hardening.sql` (컬럼·인덱스·CHECK·FK 추가만)
+  - Phase 2.5: `docs/sql/phase2_5_advisory_execution.sql` (`rebalance_plans`, `rebalance_plan_items`, `claim_outcome_audit` 확장 컬럼)
+  - Phase 3: `docs/sql/phase3_finance_instrument_integrity.sql` — `expenses` 할부 컬럼, `cashflow.flow_type` 레거시 정규화·CHECK(NOT VALID), `instrument_registration_candidates`, `portfolio`/`trade_history` KR·US 메타 CHECK(NOT VALID)
 
 ## 핵심 테이블(기존)
 
@@ -62,6 +64,7 @@
   - `purchase_currency` (중요: 평단 단위)
 - 인덱스:
   - `uq_portfolio_user_account_symbol` (user, account, symbol)
+- **Phase 3**: `chk_portfolio_kr_us_instrument_meta`(NOT VALID) — `market`·`currency`·`symbol`·`quote_symbol`이 모두 채워진 행에 대해 KR(6자리·`.KS`/`.KQ`) / US(`USD`, `symbol=quote_symbol`) 조합을 강제. 코드 검증은 `src/services/instrumentValidation.ts`의 `validateConfirmedInstrument`.
 
 ### `accounts`
 - 용도: 사용자 계좌 구분
@@ -77,6 +80,22 @@
   - `symbol`, `market`, `currency`
   - `quantity`, `price_per_unit`, `total_amount`, `realized_pnl_krw`
   - `purchase_currency`
+- **Phase 3**: `chk_trade_history_kr_us_instrument_meta`(NOT VALID) — 위와 동일한 KR/US 메타 규칙(완전히 채워진 행만).
+
+### `cashflow` (표준 유형)
+- `flow_type` 텍스트는 Phase 3에서 8종으로 정규화: `SALARY`, `BONUS`, `LOAN_IN`, `LOAN_PRINCIPAL`, `LOAN_INTEREST`, `CONSUMPTION`, `OTHER_IN`, `OTHER_OUT`.
+- 레거시 값은 `phase3_finance_instrument_integrity.sql`의 `UPDATE`로 매핑 후 `cashflow_flow_type_allowed` CHECK(NOT VALID) 적용.
+- 앱 파서: `src/finance/cashflowCategories.ts` (`parseCashflowFlowType`).
+
+### `expenses` (할부 확장)
+- Phase 3 추가(모두 nullable): `is_installment`, `installment_months`, `monthly_recognized_amount`, `installment_start_date`.
+- Discord 모달에서 `parseInstallmentLine`(`src/finance/expenseInstallment.ts`)으로 파싱.
+
+### `instrument_registration_candidates`
+- 용도: 종목 메타 **확정 전** Discord 후보만 저장. `status` ∈ `PENDING` | `CONFIRMED` | `CANCELLED` | `EXPIRED`.
+- `candidate_payload` JSON에 후보 목록; `pending_pick_index`로 다중 후보 선택.
+- **확인(`instr:confirm`) 전**에는 `portfolio` / `trade_history`에 쓰지 않음. 확정 시 `validateConfirmedInstrument` + `recordBuyTrade`.
+- 참조: `src/repositories/instrumentCandidateRepository.ts`, `src/interactions/instrumentConfirmationHandler.ts`.
 
 ### `portfolio_snapshot_history`
 - 용도: 일자/계좌별 스냅샷 이력
@@ -102,8 +121,13 @@
   - unique index `(discord_user_id, claim_id, feedback_type)` 적용
 
 ### `claim_outcome_audit`
-- 용도: claim outcome 추적 스켈레톤 저장(Phase 1 best-effort)
-- 참조 코드: `saveClaimOutcomeAuditSkeleton`
+- 용도: claim outcome 추적(Phase 1 스켈레톤 + Phase 2.5 감사 필드)
+- Phase 2.5 확장(마이그레이션 후): `baseline_price`, `price_after_7d`, `price_after_30d`, 수익률·`direction_hit_*`, `contribution_score`, `linked_symbol` 등 — **과거 시세 리플레이 없이 MVP 스냅샷** (`runClaimOutcomeAuditAppService`)
+- 참조 코드: `saveClaimOutcomeAuditSkeleton`, `runClaimOutcomeAuditAppService`
+
+### `rebalance_plans` / `rebalance_plan_items`
+- 용도: **그림자** 리밸런싱 실행안(자동 주문 없음). 상태 `pending` → 사용자가 HTS/MTS 체결 후 `리밸런싱 완료` 시 `executed` + `trade_history` 반영(`executeRebalancePlanAppService`).
+- 참조: `rebalancePlanRepository.ts`, `buildRebalancePlanAppService.ts`
 
 ### `persona_scorecard`
 - 용도: 페르소나 품질 점수 집계(코드/운영 설계상 대상)
@@ -165,8 +189,8 @@
 - `api_usage_tracking` 사용량 저장/조회
 
 ### 반영 예정/강화 필요
-- `persona_scorecard` 활용 로직
-- `claim_outcome_audit` 고도화(현재 skeleton 중심)
+- `persona_scorecard` 전용 테이블 materialization(현재는 `claim_outcome_audit` + `analysis_claims` 집계로 점수카드 생성)
+- 부분 체결·브로커 API 연동(Phase 2.5는 전량 MVP)
 - 스키마 드리프트 정리 문서 자동화
 
 ### 확인 필요(운영 DB 기준)

@@ -35,7 +35,45 @@
 - ...
 ```
 
+## 2026-03-28
+
+### Added
+- **Control Panel 관측성**: `logs/control-panel/control-panel.log_YYYYMMDD` 전용(`controlPanelLog.ts`), `state/control-panel-state.json` 요약, `stopPipeline.ts` 다단계 중지(graceful→검증→Windows `/F` 자동 fallback), `CONTROL_PANEL *` 이벤트(동일 실패 10초 dedupe). UI는 상태판·로그 경로 안내만(기본 raw tail 제거)
+- **시세 다단계 fallback**: `quoteService.ts` — Yahoo quote → chart 일봉(EOD) → DB/스냅샷; 종목별 `resolved_quote_symbol`, `price_source_kind`, `price_asof`, `market_state`, `fallback_reason`; `QUOTE_RESOLUTION` 로그(`current_success`, `eod_fallback_used`, `cache_fallback_used`, `symbol_corrected`)
+- **포트폴리오 가격 표시**: `portfolioService.ts` / `portfolioUx.ts` — 요약 `price_basis_hint`, `partial_quote_warning`; KR 장 마감 후 종가 안정화
+- **응답 후 빠른 메뉴**: `panelManager.ts` `getQuickNavigationRows`, `index.ts` `sendPostNavigationReply` — 포트폴리오·토론·트렌드·데이터센터 등 후 `UI` `post_response_navigation_attached`
+- **KR 심볼 보정**: `instrumentRegistry.ts` `normalizePortfolioInstrument` — `.KS`/`.KQ`·6자리 정합(가능 시)
+- **로깅 고도화**: `loggingPaths.ts` + `logger.ts` — `logs/daily/office-{runtime,error,ops,debug}_*.log`, `logger.debug`, `logger.ops`, INTERACTION INFO 메인 runtime 생략(카테고리 유지), WARN/ERROR 중복 억제, 일별 보존(`OFFICE_LOG_RETENTION_DAYS`)
+- **AI Office Control Panel (로컬)**: `apps/control-panel/` — Express API(`/api/status|start|stop|restart|processes|kill|logs/*`), spawn 기반 `dist/index.js` 기동·`state/control-panel-child.json` 추적, `healthGate` 중복 기동 방지
+- **Phase 3 금융·종목 정합성**: `docs/sql/phase3_finance_instrument_integrity.sql` — `expenses` 할부 컬럼, `cashflow.flow_type` 레거시 UPDATE + CHECK(NOT VALID), `instrument_registration_candidates`, `portfolio`/`trade_history` KR·US 메타 CHECK(NOT VALID)
+- `src/finance/cashflowCategories.ts` 표준 8종 + `parseCashflowFlowType`; `agents.ts` 스냅샷에 `formatCashflowSnapshotLine`
+- `src/services/instrumentValidation.ts` + `src/interactions/instrumentConfirmationHandler.ts` + `src/repositories/instrumentCandidateRepository.ts` — 종목 추가 후보 저장 후 `instr:confirm`/`instr:cancel`/`instr:pick`로만 확정
+- `src/finance/expenseInstallment.ts` — 지출 모달 할부 한 줄 파싱
+- **의사결정 버튼**: `decisionPrompt.ts` 휴리스틱·`extractDecisionOptions`·`broadcastAgentResponse`에 `decision:select|{chatHistoryId}|{idx}` 행 부착, `index.ts` `handleDecisionButtonInteraction` — `DECISION` 로그(`DECISION_PROMPT detected`는 `analysisPipelineService` persist, `DECISION_OPTIONS extracted` / `DECISION_SELECTED`는 Discord 경로)
+
+### Fixed
+- **피드백·claim UUID**: `chat_history.id`(integer)를 UUID FK에 넣지 않도록 `analysis_feedback_history`에 **`chat_history_ref`(TEXT)** 우선 저장(`feedbackService.ts`, `feedbackRepository.ts`, `docs/sql/feedback_chat_history_ref.sql`). `mapped_claim_id`는 형식이 UUID일 때만 저장. `claim_feedback` insert가 UUID 오류면 non-fatal 스킵(`claimLedgerService.ts`, `feedbackIngestionService.ts`). 피드백 버튼 UX 문구 완화(`index.ts`)
+
+### Changed
+- `index.ts`: `!현금흐름추가`·`modal:cashflow:add`·`modal:expense:add`를 위 표준/할부에 맞춤; `instr:*` 버튼·스트링 셀렉트 라우팅; 포트폴리오·분석 흐름 후 `sendPostNavigationReply`
+- `portfolioInteractionHandler`/`modal:portfolio:add`: 즉시 매수 없이 후보 플로우로 위임(기존 요약)
+- `loggingPaths.ts`: `CONTROL_PANEL_LOG_DIR`·`controlPanelLogPath`; Control Panel UI 상태판·로그 경로 안내만(기본 tail 제거)
+- **Windows Control Panel 중지**: `stopPipeline.ts`·`stopSafety.ts`·`stopErrorNormalize.ts` — `child_sigterm` 우선, 1.5s/4s/8s `post_stop_verification`, 안전 조건에서만 `taskkill /F /T` 자동; `stopPhase`·stderr 정규화; `postStopVerify.ts` 제거
+
+### Docs
+- `README.md`, `docs/SYSTEM_ARCHITECTURE.md`, `docs/OPERATIONS_RUNBOOK.md`, `docs/TEST_CHECKLIST.md` — 피드백 `chat_history_ref`·의사결정 버튼 흐름·`DECISION` 로그 운영 반영
+- `README.md`, `docs/SYSTEM_ARCHITECTURE.md`, `docs/DATABASE_SCHEMA.md`, `docs/OPERATIONS_RUNBOOK.md`, `docs/TEST_CHECKLIST.md` — Phase 3 + 로깅/컨트롤 패널 운영 절차 반영
+- Quote 다단계·KR EOD·후속 네비게이션·`QUOTE_RESOLUTION`/`post_response_navigation` 운영 검증: `README.md`, `SYSTEM_ARCHITECTURE.md`, `OPERATIONS_RUNBOOK.md`, `TEST_CHECKLIST.md`
+- Control Panel 전용 로그·상태판·Windows stop/kill 진단: `README.md`, `SYSTEM_ARCHITECTURE.md`, `OPERATIONS_RUNBOOK.md`, `TEST_CHECKLIST.md`
+
 ## 2026-03-29
+
+### Added
+- **Phase 2.5 Advisory Execution Layer**: `buildRebalancePlanAppService` / `executeRebalancePlanAppService` / `rebalancePlanRepository`; 포트폴리오 토론 직후 그림자 리밸 플랜 저장·Discord 버튼(`rebalance:view|complete|hold:*`); 완료 시에만 `trade_history`+스냅샷 기록
+- `runClaimOutcomeAuditAppService` + `claimOutcomeAuditRepository` — `claim_outcome_audit` 갱신(7d/30d, MVP 시세 스냅샷)
+- `personaScorecardService` + 데이터 센터 `panel:data:persona_report` / `panel:data:claim_audit` / `panel:data:rebalance_view`
+- `personaPerformanceCalibrationService` + `personaCommitteeMap` — 위원회 투표 가중 **bounded** 보정(RAY/HINDENBURG safety floor); `decisionEngineService` → `runCommitteeVote(weightMultipliers?)`
+- SQL: `docs/sql/phase2_5_advisory_execution.sql` (`rebalance_plans`, `rebalance_plan_items`, `claim_outcome_audit` 확장)
 
 ### Fixed
 - `chat_history.debate_type` 미존재 DB 대응: `findChatHistoryById`에서 `debate_type` select 제거, 피드백·`runFeedbackAppService`는 **`analysisType`을 customId(또는 명시 인자)로만** 사용. 부트 스키마 체크·주간 리포트 조회·`chat_history` insert payload에서 `debate_type` 의존 제거(SQL 추가 없음)
@@ -59,6 +97,7 @@
 - `decisionArtifactRepository`: Postgres `23505` → duplicate 처리, `isPostgresUniqueViolation` export
 
 ### Docs
+- Phase 2.5 Advisory Execution: `README.md`, `docs/SYSTEM_ARCHITECTURE.md`, `docs/DATABASE_SCHEMA.md`, `docs/OPERATIONS_RUNBOOK.md`, `docs/TEST_CHECKLIST.md`, `docs/CHANGELOG.md`
 - `SYSTEM_ARCHITECTURE.md`, `SYSTEM_REVIEW.md`, `DATABASE_SCHEMA.md`, `TEST_CHECKLIST.md`, `ROADMAP.md`, `DOCUMENTATION_POLICY.md`, `README.md`, `OPERATIONS_RUNBOOK.md`, `CHANGELOG.md`
 - 피드백 버튼 `customId`/Discord 전송 방식(`webhook` vs bot message)·운영 검증 절차: `README.md`, `SYSTEM_ARCHITECTURE.md`, `DATABASE_SCHEMA.md`, `OPERATIONS_RUNBOOK.md`, `TEST_CHECKLIST.md`, `SYSTEM_REVIEW.md`
 

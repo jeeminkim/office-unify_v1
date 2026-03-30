@@ -14,6 +14,38 @@ npm run build
 npm start
 ```
 
+## Logging (일별 + 운영 요약)
+
+- **일별 파일** (`logs/daily/`): `office-runtime_YYYYMMDD.log`(상세·INFO, INTERACTION 등 고빈도는 기본적으로 여기서 제외되고 카테고리 로그에만 기록), `office-error_YYYYMMDD.log`, `office-ops_YYYYMMDD.log`(부팅·연결·패널·스키마·피드백 실패·리밸·ERROR 등 핵심), 필요 시 `office-debug_YYYYMMDD.log`(`LOG_DEBUG=1`).
+- **카테고리 로그** (`logs/openai`, `logs/interaction` 등): 기존과 동일하게 일별 파일 유지.
+- **중복 억제**: 동일 WARN/ERROR가 짧은 시간 반복되면 full 로그는 한 번만, 이후 `LOGGER duplicate suppressed` 요약(`LOG_SUPPRESS_WINDOW_MS`, 기본 10초).
+- **보존**: `logs/daily/office-*.log` 및 동일 폴더의 일별 파일은 약 **14일** 후 자동 삭제(`OFFICE_LOG_RETENTION_DAYS`로 조정).
+- **헬스**: `logs/office-health.json` — 기존과 동일.
+
+환경 변수 예: `LOG_DEBUG=1`, `LOG_VERBOSE_RUNTIME=1`(INTERACTION INFO를 메인 runtime 일별에도 기록), `OFFICE_LOG_RETENTION_DAYS=14`.
+
+## AI Office Control Panel (로컬 웹 MVP)
+
+Discord와 무관한 **로컬 전용** 운영 패널입니다. 기본 `127.0.0.1:7788` 에만 바인딩합니다.
+
+```bash
+npm run build
+npm run control-panel
+# 개발: npm run control-panel:dev
+```
+
+- **UI 원칙**: 출근 시 기동·퇴근 후 상태 확인에 맞춘 **상태판** 중심이다. **로그 본문은 화면에 대량 표시하지 않는다.** 대신 어떤 파일을 볼지 경로만 안내한다.
+- 브라우저에서 실행 여부·PID·heartbeat·마지막 중지/kill/프로세스 검사 요약을 본다. 기동/중지/재기동(패널이 spawn한 `node dist/index.js`), 프로세스 검사, 안전 종료/kill.
+- **패널 전용 로그**(start/stop/kill/scan 이벤트, `CONTROL_PANEL` 접두): `logs/control-panel/control-panel.log_YYYYMMDD` — 본체 `office-ops`와 역할이 겹치지 않게 분리.
+- **본체 로그**: 핵심 운영 `logs/daily/office-ops_*.log`, 오류 `logs/daily/office-error_*.log`, (선택) 상세 `logs/daily/office-runtime_*.log`. **상태 스냅샷** `logs/office-health.json`. 패널이 띄운 자식 stdout: `logs/daily/control-panel-child_*.log`.
+- **상태 캐시**(UI 요약): `state/control-panel-state.json` (마지막 중지 시도·검사 요약 등).
+- **중복 기동 방지**: `office-health.json` 기준 하트비트가 살아 있으면 기동 거부.
+- **Windows 중지(중요)**: 같은 패널 세션에서 spawn한 프로세스는 **`child.kill('SIGTERM')` 우선** → 약 **1.5s / 4s / 8s** 단계로 `post_stop_verification`(attemptNo 1~3) 기록. 여전히 살아 있고 **ai-office로 안전 식별**(`tracked`·`matchedAiOffice`·명령줄·health pid 정합 등)되면 **자동 `taskkill /F /T`**. 임의 PID에는 자동 `/F` 없음. **`stopPhase`**(`REQUESTED` → `GRACEFUL_SENT` → `VERIFYING` → `FORCE_SENT` → `STOPPED`/`FAILED`)와 **`stop_final_status`**는 `state/control-panel-state.json`·상태판에 요약. **UI에는 Windows stderr 원문을 넣지 않고** 정규화 문구만 표시.
+- **중지**는 패널이 추적한 자식 PID 위주(`state/control-panel-child.json`). PM2 등으로 띄운 프로세스는 **프로세스 검사** 후 안전 종료/강제 kill 규칙을 따름.
+- 환경: `CONTROL_PANEL_PORT`, `CONTROL_PANEL_HOST`(기본 `127.0.0.1`).
+
+Windows에서는 방화벽·다른 터미널에서 이미 띄운 `node`와 PID가 겹칠 수 있으므로, kill 전에 목록의 `matchedAiOffice`와 `command`를 반드시 확인하세요. 중지가 안 되면 `control-panel.log_*` 의 `post_stop_verification`·`stop_force_fallback_*`·`stop_final_status` 와 `office-error` 를 함께 본다.
+
 ## PM2
 
 ```bash
@@ -56,7 +88,26 @@ Apply the additional SQL for usage tracking and feedback integrity before runnin
 
 -- Feedback integrity (unique + mapping metadata)
 -- file: feedback_integrity_migration.sql
+
+-- Phase 2.5 — shadow rebalance plans + claim_outcome_audit extensions
+-- file: docs/sql/phase2_5_advisory_execution.sql
+
+-- Phase 3 — 현금흐름 표준 유형, 지출 할부 컬럼, 종목 등록 후보(pending) 테이블, portfolio/trade_history KR·US 메타 CHECK(NOT VALID)
+-- file: docs/sql/phase3_finance_instrument_integrity.sql
 ```
+
+### Phase 2.5 — Advisory Execution (no broker / no auto-orders)
+
+- **그림자 리밸런싱**: 포트폴리오 토론 후 위원회 결정이 있으면 **일반계좌 스냅샷**으로 구체 매매 라인(매도/매수 수량·추정금액)을 계산해 `rebalance_plans`에 저장한다. **증권사 API로 주문하지 않는다.**
+- **Discord**: 채널 메시지로 실행안 본문 + `리밸런싱 계획 보기` / `리밸런싱 완료` / `이번엔 보류` 버튼. **`리밸런싱 완료`를 누르기 전까지 `trade_history`는 변경하지 않는다** (사용자가 HTS/MTS에서 체결했다는 MVP 전제로 `recordSellTrade` / `recordBuyTrade` 기록).
+- **데이터 센터**: `위원별 성과`, `Claim 감사 실행`, `리밸런싱 계획 보기`(대기 플랜 조회).
+- **위원회 가중치**: `claim_outcome_audit` 기반 **소폭** 성과 보정(`personaPerformanceCalibrationService`)이 `committeeDecisionService` 투표 가중에만 반영된다. **피드백 calibration과 별개**이며, **veto·NO_DATA·리스크 게이트는 약화하지 않는다.**
+
+### Phase 3 — 현금흐름·지출·종목 등록 정합성
+
+- **현금흐름** `flow_type`은 표준 8종(`SALARY`, `BONUS`, `LOAN_IN`, `LOAN_PRINCIPAL`, `LOAN_INTEREST`, `CONSUMPTION`, `OTHER_IN`, `OTHER_OUT`)만 저장한다. 레거시 영문 별칭은 `parseCashflowFlowType`(`src/finance/cashflowCategories.ts`)에서 매핑된다. SQL 마이그레이션으로 기존 행을 갱신한 뒤 `CHECK`(NOT VALID)로 신규 행을 제한한다.
+- **지출 할부**: `expenses`에 `is_installment`, `installment_months`, `monthly_recognized_amount`, `installment_start_date`가 추가된다(마이그레이션 필수). 모달 한 줄 `Y 3 2026-01-01` 형식 또는 일시불 `N`.
+- **종목 추가**: `modal:portfolio:add`는 후보만 저장(`instrument_registration_candidates`)하고, **확인** 버튼(`instr:confirm:*`) 후에만 `stocks`·`recordBuyTrade`가 실행된다. 후보가 1건이어도 자동 확정하지 않는다.
 
 Build and run:
 
@@ -116,15 +167,42 @@ pm2 logs ai-office
 - Mode setting is persisted in `user_settings`
 - Main panel state file is `state/discord-panel.json`
 
+## Quote resolution (포트폴리오 시세)
+
+시세는 **종목 단위**로 조회되며, 실패해도 전체 스냅샷이 한 번에 무너지지 않도록 설계되어 있다. 계층은 대략 다음과 같다.
+
+1. **1차 — Yahoo quote (current)**  
+   기존 실시간/지연 시세 경로. 성공 시 `QUOTE_RESOLUTION` 로그에 `current_success`가 남을 수 있다.
+2. **2차 — Yahoo chart 일봉(최근 유효 종가)**  
+   quote가 불안정하거나 한국장 종료 후 등 **종가 수준**이 더 신뢰될 때 사용. KR은 세션에 따라 EOD 우선이 되도록 설계. 로그: `eod_fallback_used`.
+3. **3차 — DB 스냅샷/포트폴리오 행 기반 fallback**  
+   마지막으로 저장된 유효 가격 등. 로그: `cache_fallback_used`.
+
+KR 종목은 조회 시 **`quote_symbol` 보정**(예: KOSPI→`.KS`, KOSDAQ→`.KQ`, 6자리 정합)이 가능하면 적용되며, 잘못 저장된 기호도 가능한 범위에서 바로잡는다. 로그: `symbol_corrected`(또는 `INSTRUMENT` 보정 로그).
+
+포지션·요약에는 `resolved_quote_symbol`, `price_source_kind`(live / delayed / eod / cache / fallback 등), `price_asof`, `market_state`, `fallback_reason` 메타가 붙을 수 있으며, Discord 포트폴리오 메시지에는 **가격 기준 힌트**와 **일부 종목 실패 요약**이 표시된다. `degraded_quote_mode`는 스냅샷 수준 요약으로 유지하고, 세부는 종목·로그로 추적한다.
+
+## Post-response navigation (Discord UX)
+
+포트폴리오 조회·계좌 선택 성공, AI 토론·트렌드·데이터 센터·오픈 토픽 토론 완료 후 **별도 follow-up(또는 채널 전송)** 으로 `getQuickNavigationRows()` 메뉴를 다시 붙인다. `panel:main:*` / `panel:main:reinstall`(메인) customId를 재사용하므로 상단 패널을 스크롤하지 않아도 다음 기능을 고를 수 있다. 운영 확인: 로그 `UI` 스코프 `post_response_navigation_attached` / `post_response_navigation_failed`.
+
 ## Feedback buttons (Discord)
 
 - **customId 형식**: `feedback:save:{chatHistoryId}:{analysisType}:{feedbackType}:{personaKey}`  
   (`TRUSTED` | `ADOPTED` | `BOOKMARKED` | `DISLIKED` 등 — `analysisTypes.ts`의 `FeedbackType`과 정합)
 - **`analysis_type` 소스**: `analysisType`은 **버튼 customId 파싱값만** 사용한다. `chat_history.debate_type` 컬럼은 조회·저장 신뢰에 사용하지 않는다(운영 DB에 없을 수 있음).
-- **처리 흐름**: 버튼 클릭 → `interactionCreate` → `safeDeferReply` → `saveAnalysisFeedbackHistory` → `ingestPersonaFeedback` → (가능 시) `claim_feedback` + `persona_memory` 갱신
-- **전송 방식**: 피드백 버튼이 붙은 분석 메시지는 **Incoming Webhook이 아니라 봇 채널 메시지**(`channel.send`)로 보낸다. Webhook으로 붙인 컴포넌트는 interaction/소유권 측면에서 실패하거나 불안정할 수 있다.
+- **`chat_history` 키 저장**: 운영 DB에서 `chat_history.id`는 **integer**이다. `analysis_feedback_history`에는 UUID FK(`chat_history_id`) 대신 **`chat_history_ref`(TEXT)** 에 문자열 ID를 넣는 경로를 우선한다(`feedbackService.ts`, `src/repositories/feedbackRepository.ts`). 스키마 보강은 `docs/sql/feedback_chat_history_ref.sql` — 레거시 DB는 insert 실패 시 `chat_history_id`만으로 재시도한다.
+- **처리 흐름**: 버튼 클릭 → `interactionCreate` → `safeDeferReply` → `saveAnalysisFeedbackHistory` → `ingestPersonaFeedback` → (가능 시) `claim_feedback` + `persona_memory` 갱신. 저장 일시 실패 시 서비스 계층 재시도 후에도 실패하면 사용자에게 **과도한 오류 문구 대신** 짧은 안내(`index.ts` `handleFeedbackSaveButtonInteraction`).
+- **전송 방식**: 피드백·의사결정 버튼이 붙은 분석 메시지는 **Incoming Webhook이 아니라 봇 채널 메시지**(`channel.send`)로 보낸다. Webhook으로 붙인 컴포넌트는 interaction/소유권 측면에서 실패하거나 불안정할 수 있다.
 - **중복**: 동일 조건 연타 시 `analysis_feedback_history` 또는 `claim_feedback` 단계에서 duplicate로 막히고, 사용자에게 구분 메시지가 간다.
 - **운영 확인**: `FEEDBACK` 스코프 로그(`feedback button clicked`, `feedback history saved`, `feedback ingestion result`, `duplicate ignored`, `handler failed`) 및 Supabase에서 `analysis_feedback_history` / `claim_feedback` 행 확인 — `docs/OPERATIONS_RUNBOOK.md`, `docs/TEST_CHECKLIST.md` 참고
+
+## Decision prompt buttons (Discord)
+
+- **목적**: LLM이 “원하시나요 / 선택 / vs …” 식으로 선택을 요구할 때 **빈 텍스트만 보내지 않고** 채널에 **선택 버튼**을 붙인다(`decisionPrompt.ts` 휴리스틱 + `extractDecisionOptions`).
+- **customId**: `decision:select|{chatHistoryId}|{optionIndex}` — 클릭 시 메시지 본문을 다시 파싱해 라벨을 복원한다(Discord customId 길이 제한 대응).
+- **처리**: `interactionCreate`에서 `decision:select|` → `handleDecisionButtonInteraction` — **ephemeral 아님**(채널에 “선택 완료”가 보이게). 로그: `DECISION` 스코프 `DECISION_PROMPT detected`(파이프라인 persist), `DECISION_OPTIONS extracted` / `DECISION_SELECTED`(브로드캐스트·클릭).
+- **배치**: `broadcastAgentResponse` 첫 청크에 `[NO_DATA 행] → [의사결정 행] → [피드백 행]` 순으로 합친다.
 
 ### Feedback → 의사결정 소프트 보정 (포트폴리오 5인 토론)
 

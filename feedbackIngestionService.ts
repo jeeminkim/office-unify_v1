@@ -122,7 +122,24 @@ export async function ingestPersonaFeedback(params: {
         };
       }
       if (!saveResult.saved) {
-        throw new Error('claim_feedback save failed');
+        logger.warn('FEEDBACK', 'claim_feedback not persisted (non-fatal)', {
+          discordUserId,
+          analysisType,
+          personaName,
+          chatHistoryId,
+          claimId: mapped.bestClaimId,
+          feedbackType
+        });
+        await refreshPersonaMemoryFromFeedback(discordUserId, personaName).catch(() => {});
+        return {
+          mappedCount: 0,
+          fallbackLegacyOnly: true,
+          duplicate: false,
+          bestClaimId: mapped.bestClaimId,
+          mappingMethod: mapped.mappingMethod,
+          mappingScore: mapped.mappingScore,
+          candidateCount: mapped.candidateCount
+        };
       }
       logger.info('FEEDBACK', 'claim_feedback inserted', {
         discordUserId,

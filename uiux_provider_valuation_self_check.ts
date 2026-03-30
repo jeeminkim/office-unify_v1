@@ -53,9 +53,15 @@ async function main() {
   assertTrue(!/JYP/i.test(aiDesc), 'AI panel still contains JYP');
 
   const dataPanel = panel.getDataCenterPanel();
-  const dataButtons = (dataPanel.components?.[0] as any)?.components?.map((c: any) => c?.data?.custom_id || c?.customId) || [];
+  const rows = (dataPanel.components || []) as any[];
+  const dataButtons = rows.flatMap(
+    (row: any) => row?.components?.map((c: any) => c?.data?.custom_id || c?.customId) || []
+  );
   assertTrue(dataButtons.includes('panel:data:daily_logs'), 'Data center missing daily log button');
   assertTrue(dataButtons.includes('panel:data:improvement'), 'Data center missing improvement button');
+  assertTrue(dataButtons.includes('panel:data:persona_report'), 'Data center missing persona report button');
+  assertTrue(dataButtons.includes('panel:data:claim_audit'), 'Data center missing claim audit button');
+  assertTrue(dataButtons.includes('panel:data:rebalance_view'), 'Data center missing rebalance view button');
 
   const thielCfg = llm.getPersonaModelConfig('THIEL');
   const hotCfg = llm.getPersonaModelConfig('HOT_TREND');

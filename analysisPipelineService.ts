@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { isDecisionPrompt } from './decisionPrompt';
 import type { PersonaKey } from './analysisTypes';
 import { loadPersonaMemory } from './personaMemoryService';
 import { saveClaims, saveClaimOutcomeAuditSkeleton } from './claimLedgerService';
@@ -95,6 +96,14 @@ export async function persistAnalysisArtifacts(params: {
     personaName,
     chatHistoryId
   });
+
+  if (responseText && isDecisionPrompt(responseText)) {
+    logger.info('DECISION', 'DECISION_PROMPT detected', {
+      chatHistoryId,
+      analysisType,
+      personaName
+    });
+  }
 
   const extraction = extractClaimsByContract({
     responseText,

@@ -209,6 +209,54 @@ export function getMainPanel() {
     return { embeds: [embed], components: [row, row2] };
 }
 
+export type QuickNavHighlight =
+  | 'main'
+  | 'portfolio'
+  | 'finance'
+  | 'ai'
+  | 'trend'
+  | 'data_center'
+  | 'settings'
+  | null;
+
+/** 주요 응답 직후 다시 메뉴를 고를 수 있게 — `panel:main:*` customId 재사용 */
+export function getQuickNavigationRows(opts?: { highlight?: QuickNavHighlight }): ActionRowBuilder<ButtonBuilder>[] {
+  const h = opts?.highlight ?? null;
+  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId('panel:main:reinstall')
+      .setLabel('🏠 메인')
+      .setStyle(h === 'main' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('panel:main:portfolio')
+      .setLabel('📊 포트폴리오')
+      .setStyle(h === 'portfolio' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('panel:main:finance')
+      .setLabel('💸 소비/현금')
+      .setStyle(h === 'finance' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('panel:main:ai')
+      .setLabel('🧠 AI 토론')
+      .setStyle(h === 'ai' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('panel:main:trend')
+      .setLabel('🔥 트렌드')
+      .setStyle(h === 'trend' ? ButtonStyle.Primary : ButtonStyle.Danger)
+  );
+  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId('panel:main:data_center')
+      .setLabel('🗄 데이터 센터')
+      .setStyle(h === 'data_center' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('panel:main:settings')
+      .setLabel('⚙️ 설정')
+      .setStyle(h === 'settings' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+  );
+  return [row1, row2];
+}
+
 /** 1차: 일반계좌 중심 · 전체 합산 · 매매 · 더보기(고급) */
 export function getPortfolioPanel() {
     const embed = new EmbedBuilder()
@@ -293,14 +341,25 @@ export function getAIPanel() {
 export function getDataCenterPanel() {
     const embed = new EmbedBuilder()
       .setTitle('🗄 데이터 센터')
-      .setDescription('Peter Thiel 페르소나가 운영 로그를 분석해\n문제 원인과 시스템 개선안을 제안합니다.')
+      .setDescription(
+        [
+          'Peter Thiel 페르소나가 운영 로그를 분석해 문제 원인과 시스템 개선안을 제안합니다.',
+          '',
+          'Phase 2.5: 위원 성과·claim 감사·대기 중인 리밸런싱(그림자) 계획 조회.'
+        ].join('\n')
+      )
       .setColor('#5865f2');
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId('panel:data:daily_logs').setLabel('📅 하루치 로그 분석').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('panel:data:improvement').setLabel('🛠 시스템 개선안 제안').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('panel:data:persona_report').setLabel('📊 위원별 성과').setStyle(ButtonStyle.Primary)
+    );
+    const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId('panel:data:claim_audit').setLabel('🔬 Claim 감사 실행').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('panel:data:rebalance_view').setLabel('📐 리밸런싱 계획 보기').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('panel:main:reinstall').setLabel('🔙 메인으로').setStyle(ButtonStyle.Secondary)
     );
-    return { embeds: [embed], components: [row] };
+    return { embeds: [embed], components: [row, row2] };
 }
 
 export function getTrendPanel() {

@@ -11,6 +11,7 @@ import {
 } from 'discord.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { logger } from '../../logger';
+import { handlePortfolioAddModalSubmit } from './instrumentConfirmationHandler';
 
 export type PortfolioInteractionDeps = {
   getDiscordUserId: (user: { id: string }) => string;
@@ -377,91 +378,7 @@ export async function tryHandlePortfolioModalSubmit(interaction: any, d: Portfol
       interactionId: interaction.id,
       customId: interaction.customId
     });
-    await d.safeDeferReply(interaction, { flags: 64 });
-    try {
-      const rawInput = interaction.fields.getTextInputValue('symbol');
-      const resolved = d.resolveInstrumentMetadata(rawInput, undefined);
-      const symbol = resolved?.symbol || d.normalizeSymbol(rawInput);
-      const displayName = resolved?.displayName || rawInput;
-      const quoteSymbol = resolved?.quoteSymbol || symbol;
-      const exchange = resolved?.exchange || null;
-      const market = (resolved?.market === 'US' ? 'US' : 'KR') as 'KR' | 'US';
-      const currency = (resolved?.currency === 'USD' ? 'USD' : 'KRW') as 'KRW' | 'USD';
-      const qty = d.parsePositiveAmount(interaction.fields.getTextInputValue('qty'));
-      const price = d.parsePositiveAmount(interaction.fields.getTextInputValue('price'));
-      if (!qty || !price) {
-        await d.safeEditReply(interaction, '❌ 수량과 평단가는 0보다 큰 숫자여야 합니다.', 'modal:portfolio:add:validation_failure');
-        return true;
-      }
-      const discordUserId = d.getDiscordUserId(interaction.user);
-      logger.info('PORTFOLIO', 'portfolio upsert requested', {
-        interactionId: interaction.id,
-        discordUserId,
-        username: interaction.user.username,
-        symbol,
-        quantity: qty,
-        avgPurchasePrice: price
-      });
-      logger.info('PORTFOLIO', 'trade buy payload', {
-        discordUserId,
-        symbol,
-        market,
-        currency,
-        quantity: qty,
-        pricePerUnit: price
-      });
-
-      await d.supabase.from('stocks').upsert({ symbol, name: displayName, sector: 'Unknown' });
-      const buyOverride = d.pendingBuyAccountId.get(discordUserId);
-      if (buyOverride) d.pendingBuyAccountId.delete(discordUserId);
-      const accountsForLabel = await d.listUserAccounts(discordUserId);
-      const accLabel =
-        buyOverride != null
-          ? accountsForLabel.find((a: any) => a.id === buyOverride)?.account_name ?? '선택 계좌'
-          : d.GENERAL_ACCOUNT_NAME;
-
-      await d.recordBuyTrade({
-        discordUserId,
-        accountId: buyOverride,
-        symbol,
-        displayName,
-        quoteSymbol,
-        exchange,
-        market,
-        currency,
-        purchaseCurrency: market === 'US' ? (currency === 'USD' ? 'USD' : 'KRW') : 'KRW',
-        quantity: qty,
-        pricePerUnit: price,
-        fee: 0,
-        memo: 'modal:portfolio:add'
-      });
-      logger.info('PORTFOLIO', 'portfolio upsert completed', {
-        discordUserId,
-        symbol
-      });
-      void d.learnBehaviorFromTrades(discordUserId);
-      await d.safeEditReply(
-        interaction,
-        `✅ **${accLabel}**에 반영됨\n**${displayName}** · ${qty}주 · 단가 ${price}\n거래 기록 저장됨`,
-        'modal:portfolio:add:success'
-      );
-      logger.info('PORTFOLIO', 'portfolio upsert success response sent', {
-        discordUserId: interaction.user.id,
-        symbol
-      });
-      logger.info('INTERACTION', 'handler branch returning', {
-        interactionId: interaction.id,
-        customId: interaction.customId
-      });
-    } catch (e: any) {
-      logger.error('PORTFOLIO', 'portfolio upsert error response sent', {
-        discordUserId: interaction.user.id,
-        symbol: d.normalizeSymbol(interaction.fields.getTextInputValue('symbol')),
-        message: e?.message || String(e)
-      });
-      await d.safeEditReply(interaction, `❌ 저장 실패: ${e?.message || 'unknown error'}`, 'modal:portfolio:add:exception');
-    }
-    return true;
+    return handlePortfolioAddModalSubmit(interaction, d);
   }
 
   if (cid === 'modal:portfolio:delete') {

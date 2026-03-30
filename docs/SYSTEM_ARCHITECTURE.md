@@ -6,6 +6,11 @@
 
 ## 전체 시스템 개요
 - 런타임 진입점은 `index.ts` 단일 프로세스 구조다.
+- **로컬 운영 패널(MVP)**: `apps/control-panel/server.ts` — Express + 정적 UI(`apps/control-panel/public`). 본체와 별도 프로세스이며 `GET/POST /api/*`로 상태·기동·중지·프로세스·(고급) 로그 tail API를 제공한다. 기본 `127.0.0.1` 바인딩. **UI는 상태판 중심**이며 로그 raw는 기본 표시하지 않고, 경로 안내만 한다.
+  - **패널 전용 로그**: `apps/control-panel/controlPanelLog.ts` → `logs/control-panel/control-panel.log_YYYYMMDD` (`CONTROL_PANEL` 이벤트: start/stop/restart/scan/kill/post_stop_verification 등). 본체 `office-ops`·`office-error`와 분리.
+  - **보조 모듈**: `stopPipeline.ts`(graceful→다단계 검증→Windows `/F` 자동 fallback), `stopSafety.ts`/`stopErrorNormalize.ts`, `processScan.ts`(`verifyPidState`), 상태 요약 `state/control-panel-state.json`.
+  - 로그 경로·헬스는 `loggingPaths.ts` / `logs/office-health.json`과 공유한다.
+- **로깅**: `logger.ts` + `loggingPaths.ts` — 일별 `logs/daily/office-{runtime,error,ops,debug}_YYYYMMDD.log`, 카테고리 로그, 중복 억제, 보존 정책(`cleanupOldDailyLogs`).
 - 인터페이스 계층은 Discord(버튼/모달/명령)이며, 상태 진입은 `panelManager.ts` 중심으로 제어한다.
 - 비즈니스 로직은 포트폴리오/소비/토론/트렌드/데이터센터 흐름으로 분기된다.
 - 데이터 저장소는 Supabase(Postgres)이고, 분석 산출물과 피드백 이력은 별도 테이블로 누적된다.
@@ -13,13 +18,16 @@
 
 ## 계층 구조 (Phase 1 리팩토링)
 1. **Interaction** (`src/interactions/`)
-   - `interactionRouter.ts`: 메인 패널(`panel:main:*`) 등 선처리(`feedback:save:*`는 **`index.ts`에서 직접 처리** — `saveAnalysisFeedbackHistory` / `ingestPersonaFeedback` 호출)
+   - `interactionRouter.ts`: 메인 패널(`panel:main:*`) 등 선처리(`decision:select|*`·`feedback:save:*`는 **`index.ts`에서 직접 처리** — `handleDecisionButtonInteraction` / `saveAnalysisFeedbackHistory` / `ingestPersonaFeedback`)
+   - `instrumentConfirmationHandler.ts`: 종목 추가 모달 → 후보 저장(`instrument_registration_candidates`) → `instr:pick` / `instr:confirm` / `instr:cancel`. **사용자 확인 전**에는 `portfolio`/`trade_history`에 쓰지 않음; 확정 시 `validateConfirmedInstrument`(`src/services/instrumentValidation.ts`) 후 `recordBuyTrade`.
    - `feedbackInteractionHandler.ts`: 레거시 보관(현재 피드백 버튼은 `index.ts` 핸들러 사용)
    - `panelInteractionHandler.ts`: 메인 패널 네비게이션(트렌드 서브패널 포함)
 2. **Application** (`src/application/`)
    - `runPortfolioDebateAppService.ts` / `runTrendAnalysisAppService.ts` / `runOpenTopicDebateAppService.ts`: 금융·트렌드·오픈토픽 분석 오케스트레이션(LLM, `runAnalysisPipeline` 호출); 포트폴리오 토론은 `runDecisionEngineAppService`(Phase 2) 후행
    - `runFeedbackAppService.ts`: 피드백·claim 매핑·이력 저장 조율
    - `runDataCenterAppService.ts`: 데이터 센터(THIEL) 실행
+   - `buildRebalancePlanAppService.ts` / `executeRebalancePlanAppService.ts`: Phase 2.5 그림자 리밸런싱
+   - `runClaimOutcomeAuditAppService.ts`: claim 사후 감사 배치
    - `runAnalysisAppService.ts`: 파이프라인 직접 호출 + 위 서비스 re-export
 3. **Persistence** (`src/repositories/`)
    - Supabase 쿼리만: `chatHistoryRepository`, `claimRepository`, `feedbackRepository`, `personaMemoryRepository`, `generationTraceRepository`, `decisionArtifactRepository`, `supabaseClient.ts`
@@ -32,9 +40,10 @@
    - `committeeWeightsPolicy.ts`: 위원 가중치(하드코딩 단일 객체, 추후 설정 이전 가능)
    - `decisionThresholdPolicy.ts`: 가중 raw 점수 → 후보 `DecisionType` 매핑
 6. **Decision services** (`src/services/`, Phase 2)
-   - `committeeDecisionService.ts`: 페르소나 응답·claim 기반 judgment → 가중 투표
+   - `committeeDecisionService.ts`: 페르소나 응답·claim 기반 judgment → 가중 투표(Phase 2.5: 선택적 `weightMultipliers`)
    - `riskVetoService.ts`: `riskPolicyContract` 입력으로 BUY/ADD 등 강등·차단
    - `decisionEngineService.ts`: 파이프라인 이후 claim 로드 → 투표 → veto → `decision_artifacts` / `committee_vote_logs` 저장(best-effort)
+   - `personaPerformanceCalibrationService.ts` / `personaScorecardService.ts`: 성과 기반 소폭 투표 보정·데이터 센터 점수카드
 7. **스키마 계약** (`src/types/dbSchemaContract.ts`)
    - 운영 DB 기준 `chat_history.id` = `number`(integer), FK 경로 동일 가정
 
@@ -54,6 +63,7 @@
   - `analysis_generation_trace` 저장(가능 시 provider/model/cost 포함)
   - `analysis_claims` 추출/저장
   - `claim_outcome_audit` 스켈레톤 저장(best-effort)
+  - 의사결정 질문 휴리스틱(`decisionPrompt.ts` `isDecisionPrompt`)이면 `DECISION` 로그 `DECISION_PROMPT detected`(persist 시점, `chat_history_id`·`analysis_type`·`persona_name`)
 
 ### 3b) Phase 2 — Decision Engine (포트폴리오 금융 토론 경로)
 - `runPortfolioDebateAppService`가 `runAnalysisPipeline` 완료 후 `runDecisionEngineAppService`를 **best-effort**로 호출한다.
@@ -63,16 +73,30 @@
 - 실패 시 분석 응답/기존 저장 경로는 유지되며, 로그에 `DECISION_ENGINE` 스코프로 기록된다.
 - Discord: `index.runPortfolioDebate`가 결정 요약 문자열을 추가 브로드캐스트(짧은 섹션, 실행 없음).
 
+### 3c) Phase 2.5 — Advisory Execution (그림자 리밸런싱, 주문 없음)
+- **저장**: `buildRebalancePlanAppService`가 일반계좌 `buildPortfolioSnapshot` + 위원회 `DecisionArtifact`로 목표 비중 대비 초과/부족을 **최소 거래 금액·밴드**로 잘라 라인을 만든 뒤 `rebalance_plans` / `rebalance_plan_items`에 기록한다. `NO_ACTION`이면 플랜 생략.
+- **Discord**: `postShadowRebalanceFollowUp`가 채널에 본문 + `rebalance:view|complete|hold:{planId}` 버튼. Webhook이 아닌 **봇 메시지**(컴포넌트 필요).
+- **실행**: `리밸런싱 완료`만 `recordSellTrade`/`recordBuyTrade` + `portfolio_snapshot_history`(best-effort). **완료 전에는 trade_history를 건드리지 않음.** `이번엔 보류`는 `user_hold` + `USER_HOLD_DECISION`.
+- **Claim 감사**: `runClaimOutcomeAuditAppService`가 `claim_outcome_audit`를 7d/30d 필드로 갱신(MVP는 시세 스냅샷; 과거 시세 리플레이 없음).
+- **위원 성과 → 투표**: `personaPerformanceCalibrationService`가 감사 집계로 **bounded** 가중 배율을 만들고 `runCommitteeVote({ weightMultipliers })`에 전달. **피드백 calibration과 독립**. RAY/HINDENBURG는 패널티로 가중 하한(1.0) 유지. **veto/NO_DATA/리스크 게이트는 침범하지 않음.**
+
 ### 4b) 피드백 → 소프트 보정 (포트폴리오 토론, 제한적)
 - **저장 이후**: `analysis_feedback_history` / `claim_feedback` / `refreshPersonaMemoryFromFeedback`가 `persona_memory.confidence_calibration`에 `preferred_claim_types`, `preferred_evidence_scopes`, `numeric_anchor_bias`, `actionable_bias`, `downside_bias`, `conservatism_floor` 등을 **소량(대략 ±0.1 범위)** 누적한다.
 - **실행 시(토론)**: Ray~Drucker 응답 텍스트에서 `extractClaimsByContract`로 in-memory claim을 뽑고 `buildFeedbackDecisionSignal`로 점수 블렌드에 소프트 Δ를 적용한다. **RAY/HINDENBURG + downside-focused**인 경우 사용자 비선호로 **원 점수보다 낮아지지 않게** floor를 적용한다.
 - **CIO 직전**: 보정 힌트는 **프롬프트 블록**으로만 주입되며, CIO는 Priority / Timing / Conviction / Monitoring 서술에 반영하도록 유도한다. **NO_DATA·valuation·quote 실패·Phase2 veto 경로는 피드백으로 완화하지 않는다**(코드상 별도 게이트 유지).
 - **추적**: CIO 페르소나의 `analysis_generation_trace.memory_snapshot`에 `feedback_adjustment_meta`가 붙을 수 있다(스키마 변경 없음).
 
+### 4a) Phase 3 — 현금흐름·지출·종목 메타 정합성
+- **현금흐름**: 표준 `flow_type` 8종(`src/finance/cashflowCategories.ts`). 채팅 `!현금흐름추가`·모달 `modal:cashflow:add`·에이전트 스냅샷(`agents.ts`의 `formatCashflowSnapshotLine`)이 동일 계열을 사용.
+- **지출 할부**: `expenses` 확장 컬럼 + 모달 필드 → `parseInstallmentLine`. SQL은 `docs/sql/phase3_finance_instrument_integrity.sql`.
+- **이중 방어**: 앱에서 확정 시 `validateConfirmedInstrument`; DB에서 `portfolio`/`trade_history`에 NOT VALID CHECK(레거시 행 보존). `cashflow.flow_type`도 CHECK(NOT VALID)로 신규 행만 표준 강제.
+
 ### 4) 저장 및 피드백 루프
 - **버튼 `customId`**: `feedback:save:{chatHistoryId}:{analysisType}:{feedbackType}:{personaKey}` (`getFeedbackButtonsRow` in `index.ts`).
+- **의사결정 버튼 `customId`**: `decision:select|{chatHistoryId}|{optionIndex}` — 본문에서 `extractDecisionOptions`로 라벨 복원. `broadcastAgentResponse`가 휴리스틱 매칭 시 **피드백 행 위에** 최대 4개 버튼 행을 추가한다.
+- **`analysis_feedback_history` 키**: integer `chat_history.id`는 **`chat_history_ref`(TEXT)** 로 저장하는 경로를 우선하고, UUID FK `chat_history_id`에는 넣지 않는다(레거시 스키마 호환을 위해 insert 실패 시에만 `chat_history_id` 재시도 — `feedbackService.ts`).
 - **`analysisType`**: **customId 파싱값이 단일 소스**이다. `chat_history.debate_type` 컬럼을 조회·덮어쓰기에 쓰지 않는다(`findChatHistoryById`는 `id`/`user_id` 검증용 컬럼만). SQL로 `debate_type`을 복구하지 않고 code-side로 정렬.
-- **처리 순서**: 버튼 클릭 → `interactionCreate` → `safeDeferReply` → `handleFeedbackSaveButtonInteraction` → `saveAnalysisFeedbackHistory`(`feedbackService.ts`) → `ingestPersonaFeedback`(`feedbackIngestionService.ts`, claim 매핑·`claim_feedback`). 동일 `feedbackType` 연타는 서비스 계층 중복 방어 + UX 메시지.
+- **처리 순서**: 버튼 클릭 → `interactionCreate` → `safeDeferReply` → `handleFeedbackSaveButtonInteraction` → `saveAnalysisFeedbackHistory`(`feedbackService.ts`) → `ingestPersonaFeedback`(`feedbackIngestionService.ts`, claim 매핑·`claim_feedback`). `claim_id`가 UUID가 아닌 경우 `claim_feedback` 삽입은 건너뛰고(non-fatal) 피드백 이력은 유지. 동일 `feedbackType` 연타는 서비스 계층 중복 방어 + UX 메시지.
 - **Discord 전송**: 분석 응답에 버튼·기타 **MessageComponent**가 붙는 경우 `broadcastAgentResponse`는 **Incoming Webhook이 아니라 봇이 채널에 `channel.send`** 한정으로 붙인다. Webhook 메시지는 interaction 소유권/컴포넌트 안정성 측면에서 불리할 수 있음.
 - 저장소 접근은 `src/repositories/*`에서 **Supabase 쿼리만** 수행한다(예: `chatHistoryRepository`, `claimRepository`, `feedbackRepository`).
 - `personaMemoryService.ts`가 피드백 이력을 집계해 `persona_memory`를 갱신한다.
@@ -107,7 +131,13 @@
 - `portfolioService.ts`
   - 포지션 평가, 환율 반영, quote fallback, snapshot 빌드, sanity guard
 - `quoteService.ts`
-  - 실시간 시세 조회 + 캐시 + 실패 분류 + fallback source metadata
+  - 짧은 TTL 메모리 캐시 → **Yahoo quote** → **Yahoo chart 1d 최근 종가(EOD)** → **DB/스냅샷 fallback** 순 다단계 조회
+  - 종목별 메타: `resolved_quote_symbol`, `price_source_kind`, `price_asof`, `market_state`, `fallback_reason`; 로그 `QUOTE_RESOLUTION`(예: `current_success`, `eod_fallback_used`, `cache_fallback_used`, `symbol_corrected`)
+- `instrumentRegistry.ts` 등
+  - KR `quote_symbol` 정합(KOSPI `.KS` / KOSDAQ `.KQ`, 6자리) — 조회·정규화 시 보정
+- `panelManager.ts` — `getQuickNavigationRows({ highlight })`
+  - 주요 응답 직후 메인 메뉴 버튼을 다시 제공(`panel:main:reinstall`, `panel:main:portfolio`, …). Discord 5버튼/행 제한으로 2행 구성
+- `index.ts` — `sendPostNavigationReply` → followUp 우선, 실패 시 `channel.send`; 로그 `UI` `post_response_navigation_attached`
 - `llmProviderService.ts`
   - persona별 provider/model 정책 + OpenAI budget guard + fallback
   - 응답에 `generation_meta`를 붙여, **Gemini 기본 페르소나**와 **OpenAI 실패 후 Gemini fallback**을 구분한다.
@@ -144,10 +174,11 @@
   - `reply`/`editReply`/`followUp` 라우팅 보정
   - 메시지 2000자 초과 시 chunking
   - interaction route 실패 시 channel send fallback
-- Quote:
-  - 실시간 시세 실패 시 fallback price 사용
-  - source metadata(`live_*`, `fallback_*`, `snapshot_krw`, `purchase_basis_krw`)로 환산 경로 분리
-  - 이상치 guard로 과대평가 차단
+- Quote (다단계, 종목 단위):
+  - 1차 Yahoo **quote** → 2차 Yahoo **chart 일봉** 최근 유효 종가(EOD), 특히 **KR 장 마감 후** 종가 안정화
+  - 3차 DB 스냅샷/포트폴리오 행 fallback — 0/NaN/비정상 가격은 valuation 오염 방지
+  - `price_source_kind` / `QuotePriceSource`(`eod_krw` 등)로 환산 경로 분리; 스냅샷 `degraded_quote_mode`와 병행
+  - 이상치 guard로 과대평가 차단(기존 유지)
 - DB:
   - 일부 insert 확장 컬럼 실패 시 base 컬럼 fallback insert(`analysis_generation_trace`, `generationTraceRepository`)
   - `chat_history` insert 확장 컬럼 실패 시 레거시 컬럼만 재시도(`chatHistoryRepository.insertChatHistoryWithLegacyFallback`)

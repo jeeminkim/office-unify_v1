@@ -10,6 +10,7 @@ import { buildPersonaJudgments, runCommitteeVote } from './committeeDecisionServ
 import { applyRiskVeto, evaluateRiskVetoRules } from './riskVetoService';
 import { insertCommitteeVoteLogs, insertDecisionArtifactRow } from '../repositories/decisionArtifactRepository';
 import { listClaimsForChatHistory } from '../repositories/claimRepository';
+import { loadPersonaPerformanceWeightMultipliers } from './personaPerformanceCalibrationService';
 
 const COMMITTEE_KEYS: PersonaKeyCommittee[] = ['RAY', 'HINDENBURG', 'SIMONS', 'DRUCKER', 'CIO'];
 
@@ -60,7 +61,12 @@ export async function runDecisionEngine(params: {
     });
 
     const hasOpenPositions = params.snapshotSummary.position_count > 0;
-    const committee = runCommitteeVote({ members, hasOpenPositions });
+    const perfMult = await loadPersonaPerformanceWeightMultipliers(params.discordUserId);
+    const committee = runCommitteeVote({
+      members,
+      hasOpenPositions,
+      weightMultipliers: perfMult ?? undefined
+    });
 
     const hind = members.find(m => m.personaKey === 'HINDENBURG');
     const vetoCtx: RiskVetoContext = {

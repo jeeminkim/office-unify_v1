@@ -1,6 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { logger } from './logger';
-import { getLatestQuote, mergeFailureBreakdown, type QuotePriceSource } from './quoteService';
+import {
+  getLatestQuote,
+  mergeFailureBreakdown,
+  type QuotePriceSource,
+  type PriceSourceKind
+} from './quoteService';
 import { getUsdKrwRate } from './fxService';
 import { normalizePortfolioInstrument } from './instrumentRegistry';
 import { inferUsAvgIsKrwPerShare, resolvePurchaseCurrency } from './portfolioCost';
@@ -45,6 +50,12 @@ export type PortfolioPositionSnapshot = {
   current_price_usd?: number | null;
   market_value_usd?: number | null;
   usdkrw_rate?: number | null;
+  /** 시세 해석 메타(표시·감사용) */
+  quote_resolved_symbol?: string | null;
+  quote_price_source_kind?: PriceSourceKind;
+  quote_price_asof?: string | null;
+  quote_market_state?: 'open' | 'closed' | 'unknown';
+  quote_fallback_reason?: string | null;
   /** 전체 합산(scope ALL) 시 동일 심볼·다계좌 분해 */
   account_breakdown?: AccountBreakdownEntry[];
 };
@@ -66,6 +77,9 @@ export type PortfolioSnapshot = {
     us_weight_pct: number;
     quote_failure_count?: number;
     degraded_quote_mode?: boolean;
+    /** 요약 한 줄: 가격 기준 시각 등 */
+    price_basis_hint?: string;
+    partial_quote_warning?: string;
   };
   positions: PortfolioPositionSnapshot[];
 };
@@ -77,7 +91,13 @@ function round2(v: number): number {
 export function isKrwQuotePathForUs(source?: string, currency?: string): boolean {
   const c = String(currency || '').toUpperCase();
   if (c === 'KRW') return true;
-  return source === 'live_krw' || source === 'fallback_krw' || source === 'snapshot_krw' || source === 'purchase_basis_krw';
+  return (
+    source === 'live_krw' ||
+    source === 'eod_krw' ||
+    source === 'fallback_krw' ||
+    source === 'snapshot_krw' ||
+    source === 'purchase_basis_krw'
+  );
 }
 
 function normalizeMarket(value: any): 'KR' | 'US' {
@@ -149,7 +169,8 @@ async function computePositionForRow(
       quoteSymbol: normalized.quoteSymbol,
       market,
       currency,
-      displayName: normalized.displayName
+      displayName: normalized.displayName,
+      exchange: normalized.exchange
     },
     rowCurrentPrice,
     fallbackPriceCurrency,
@@ -232,7 +253,8 @@ async function computePositionForRow(
     cbKrw = cbNative;
   } else {
     const qCurrency = String(q.currency || 'USD').toUpperCase();
-    const source = q.priceSource || (qCurrency === 'KRW' ? 'fallback_krw' : 'fallback_usd');
+    const source =
+      q.priceSource || (qCurrency === 'KRW' ? 'fallback_krw' : 'fallback_usd');
     const isKrwPricePath = isKrwQuotePathForUs(source, qCurrency);
 
     fxApplied = fxForUs;
@@ -333,7 +355,12 @@ async function computePositionForRow(
     weight_pct: 0,
     current_price_usd: market === 'US' ? round2(currentPriceUsd ?? 0) : null,
     market_value_usd: market === 'US' ? round2(marketValueUsd ?? 0) : null,
-    usdkrw_rate: market === 'US' ? round2(fxForUs) : null
+    usdkrw_rate: market === 'US' ? round2(fxForUs) : null,
+    quote_resolved_symbol: q.resolved_quote_symbol ?? normalized.quoteSymbol,
+    quote_price_source_kind: q.price_source_kind,
+    quote_price_asof: q.price_asof ?? null,
+    quote_market_state: q.market_state,
+    quote_fallback_reason: q.fallback_reason ?? null
   };
 }
 
@@ -486,6 +513,26 @@ export async function buildPortfolioSnapshot(
   const domestic = sorted.filter(p => p.market === 'KR').reduce((a, p) => a + p.market_value_krw, 0);
   const us = sorted.filter(p => p.market === 'US').reduce((a, p) => a + p.market_value_krw, 0);
 
+  const asofDates = sorted.map(p => p.quote_price_asof).filter(Boolean) as string[];
+  let price_basis_hint: string | undefined;
+  if (asofDates.length) {
+    const latest = [...asofDates].sort().pop()!;
+    const d = new Date(latest);
+    price_basis_hint = `가격 기준(최근 조회 시각): ${d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} KST`;
+  }
+  const eodN = sorted.filter(p => p.quote_price_source_kind === 'eod').length;
+  const fbN = sorted.filter(p => p.quote_price_source_kind === 'fallback').length;
+  const partialLines: string[] = [];
+  if (eodN > 0) {
+    partialLines.push(
+      `· Yahoo 일봉 종가(최근 5거래일) 사용: **${eodN}**종목 (장 마감 후 등 안정 조회)`
+    );
+  }
+  if (fbN > 0) {
+    partialLines.push(`· 실시간/차트 실패 후 **저장 스냅샷·매수가** 기준: **${fbN}**종목`);
+  }
+  const partial_quote_warning = partialLines.length > 0 ? partialLines.join('\n') : undefined;
+
   const snapshot: PortfolioSnapshot = {
     meta: {
       scope,
@@ -501,7 +548,9 @@ export async function buildPortfolioSnapshot(
       domestic_weight_pct: totalMv > 0 ? round2((domestic / totalMv) * 100) : 0,
       us_weight_pct: totalMv > 0 ? round2((us / totalMv) * 100) : 0,
       quote_failure_count: quoteStats.failed,
-      degraded_quote_mode: quoteStats.degraded > 0
+      degraded_quote_mode: quoteStats.degraded > 0,
+      price_basis_hint,
+      partial_quote_warning
     },
     positions: sorted
   };

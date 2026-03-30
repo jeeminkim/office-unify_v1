@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
 import { logger, updateHealth } from './logger';
+import { formatCashflowSnapshotLine } from './src/finance/cashflowCategories';
 
 dotenv.config();
 
@@ -48,7 +49,9 @@ export function buildAnchoredSummary(context: AgentContext) {
     },
     cashflow: {
       count: context.cashflow ? context.cashflow.length : 0,
-      snapshot: (context.cashflow || []).slice(0, 5).map(c => `[${c.flow_type}] ${c.amount}`)
+      snapshot: (context.cashflow || []).slice(0, 5).map(c =>
+        formatCashflowSnapshotLine(String(c.flow_type), Number(c.amount))
+      )
     }
   };
 }

@@ -284,6 +284,14 @@ export async function saveClaimFeedback(params: {
         });
         return { saved: false, duplicate: true };
       }
+      if (/invalid input syntax for type uuid/i.test(String(error.message || ''))) {
+        logger.warn('FEEDBACK', 'claim_feedback skipped (claim_id / uuid type mismatch)', {
+          discordUserId: params.discordUserId,
+          claimId: params.claimId,
+          feedbackType: params.feedbackType
+        });
+        return { saved: false, duplicate: false };
+      }
       throw error;
     }
     logger.info('FEEDBACK', 'claim feedback saved', {
