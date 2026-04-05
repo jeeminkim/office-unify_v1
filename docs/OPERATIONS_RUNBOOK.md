@@ -1,5 +1,5 @@
-# OPERATIONS RUNBOOK (리다이렉트)
+# OPERATIONS_RUNBOOK.md (비정본)
 
-이 문서는 **[docs/OPERATIONS.md](OPERATIONS.md)** 로 통합되었다.
+이 문서는 더 이상 정본이 아닙니다. 예전 링크 호환을 위해 파일명만 유지합니다.
 
-PM2, Control Panel, 로그·헬스, 배포 체크, 장애 시 빠른 점검은 각각 **OPERATIONS.md**, **TROUBLESHOOTING.md**를 본다.
+현재 정본은 **[docs/OPERATIONS.md](OPERATIONS.md)** 입니다. 세부 내용은 해당 문서를 참고하세요.

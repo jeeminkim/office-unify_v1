@@ -36,7 +36,9 @@
 
 ## AI_PERF(체감·비용 관측)
 
-- `AI_PERF` 스코프: `first_visible_latency_ms`, `persona_execution_time`, `execution_summary`(`total_execution_time_ms`, `prompt_build_time_ms`, `persona_parallel_wall_time_ms`, `cio_stage_time_ms`, `compressed_prompt_mode`, `retry_mode_used`, `partial_fallback_used`) 등. 운영 해석은 **docs/OPERATIONS.md** §3.2.
+- **`first_visible_latency_ms`**: `AiExecutionHandle.startedAt`(사용자에게 보이는 분석 실행 시작)부터 **`markFirstResponseSent`**가 호출될 때까지의 시간. 실제로 `broadcastAgentResponse`가 **첫 유의미 본문** 전송을 마친 뒤 기록된다(“분석 중” 안내만 있는 전송은 제외하는 쪽으로 설계됨).
+- **`execution_summary`**: 파이프라인 종료 직전 `logExecutionPerfSummary` 한 줄 — `total_execution_time_ms`, 위 `first_visible_latency_ms` 재출력, 앱 서비스가 `setPerfMetrics`로 넣은 `prompt_build_time_ms`, `persona_parallel_wall_time_ms`, `cio_stage_time_ms`, `compressed_prompt_mode`, `retry_mode_used`, 핸들의 `partial_fallback_used` 등이 병합된다.
+- 그 외 `persona_execution_time`, `portfolio_pipeline_complete` 등 기존 키 유지. 운영 해석은 **docs/OPERATIONS.md** §3.2.
 
 ## Quote(포트폴리오 시세)
 

@@ -2,6 +2,12 @@
 
 이 문서는 코드 변경 이력을 운영 관점으로 기록한다.
 
+## 문서 정본(현재 운영 기준)
+
+- 설계·운영·DB·UX·파이프라인·장애 점검·환경·테스트·정책의 **정본**은 `README.md`(입구)와 `docs/ARCHITECTURE.md`, `docs/OPERATIONS.md`, `docs/DATABASE.md`, `docs/DISCORD_UX.md`, `docs/ANALYSIS_PIPELINE.md`, `docs/TROUBLESHOOTING.md`, `docs/ENVIRONMENT.md`, `docs/TEST_CHECKLIST.md`, `docs/DOCUMENTATION_POLICY.md`, `docs/CHANGELOG.md`(이력)이다.
+- `docs/SYSTEM_ARCHITECTURE.md`, `docs/OPERATIONS_RUNBOOK.md`, `docs/DATABASE_SCHEMA.md`는 **리다이렉트 스텁만** 유지하며, 본문 정본으로 쓰지 않는다.
+- 아래 날짜별 항목에 구 파일명이 나오면 **당시 작업 당시 기록**이다. **신규 문서 갱신은 위 정본 경로만** 수정한다.
+
 ## 기록 원칙
 - 의미 있는 코드 변경 시 **항상** 이 파일을 갱신한다.
 - 문서 갱신 없이 코드만 변경한 작업은 완료로 간주하지 않는다.
@@ -51,10 +57,12 @@
 - **AI timeout 고도화(2차)**: `FIRST_VISIBLE_TIMEOUT_MS`(90s) + 전체 5분, `markFirstResponseSent`·조기 타이머 해제, 타임아웃 시 **partial 요약**(`aiExecutionHelpers.formatPartialFallbackDiscordBody`, `collectPartialResult` in app services), **`timeout_retry_snapshots` DB** + 실패 시 메모리 폴백, 버튼 ID를 UUID 스냅샷 기준으로 통일(레거시 hex 호환 유지). `AiExecutionHandle`에 `expired`·`timeoutPhase`·`partialSegments`·`augmentRetryPayload`.
 
 ### Docs
+- **정본·스텁 정리**: `docs/DOCUMENTATION_POLICY.md` § 문서 정본(canonical) 명문화; `docs/SYSTEM_ARCHITECTURE.md` 등 구명 3종은 짧은 리다이렉트 스텁만 유지. `README.md` 정책 한 줄 보강.
 - `README.md`, `docs/SYSTEM_ARCHITECTURE.md`, `docs/OPERATIONS_RUNBOOK.md`, `docs/TEST_CHECKLIST.md`, `docs/DATABASE_SCHEMA.md`, `docs/CHANGELOG.md` — 2단계 타임아웃·partial·스냅샷·로그 반영.
 - 동일 날짜 후속: `README.md`, `SYSTEM_ARCHITECTURE.md`, `OPERATIONS_RUNBOOK.md`, `TEST_CHECKLIST.md`, `ENVIRONMENT.md`, `.env.example` — 프롬프트 압축·페르소나 병렬·`getModelForTask`·`AI_PERF`·조기 브로드캐스트 트레이드오프.
 - 동일 날짜 후속(피드백 follow-up·`AI_PERF`·압축 모드·Drucker/CIO 선계산): `README.md`, `docs/SYSTEM_ARCHITECTURE.md`, `docs/OPERATIONS_RUNBOOK.md`, `docs/TEST_CHECKLIST.md`.
 - **문서 구조 정리(후속)**: README 입구 문서화 축소; `docs/ARCHITECTURE.md`, `docs/OPERATIONS.md`, `docs/DATABASE.md`, `docs/DISCORD_UX.md`, `docs/ANALYSIS_PIPELINE.md`, `docs/TROUBLESHOOTING.md` 신설·분리. `SYSTEM_ARCHITECTURE.md`·`OPERATIONS_RUNBOOK.md`·`DATABASE_SCHEMA.md`는 리다이렉트 스텁. `DOCUMENTATION_POLICY.md` 정식 파일명 반영.
+- **성능·피드백 UX 문서 정렬**: README, `docs/ANALYSIS_PIPELINE.md`, 정본(`ARCHITECTURE`·`DISCORD_UX`·`OPERATIONS`) 교차 참고에 조기 브로드캐스트 피드백 follow-up, `AI_PERF`·`first_visible_latency_ms`, 압축 모드 안내.
 
 ## 2026-03-29
 

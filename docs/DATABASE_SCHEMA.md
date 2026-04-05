@@ -1,5 +1,5 @@
-# DATABASE SCHEMA (리다이렉트)
+# DATABASE_SCHEMA.md (비정본)
 
-이 문서는 **[docs/DATABASE.md](DATABASE.md)** 로 통합되었다.
+이 문서는 더 이상 정본이 아닙니다. 예전 링크 호환을 위해 파일명만 유지합니다.
 
-테이블·마이그레이션·피드백 매핑 컬럼은 **DATABASE.md**를 본다.
+현재 정본은 **[docs/DATABASE.md](DATABASE.md)** 입니다. 세부 내용은 해당 문서를 참고하세요.

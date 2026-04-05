@@ -83,7 +83,7 @@
 
 - [ ] `npm run build` 통과
 - [ ] 포트폴리오 전체 위원 실행 시 로그에 `AI_PERF` — `parallel_ray_hindenburg_window_ms` 또는 `persona_parallel_wall_time_ms`, `persona_execution_time`(Ray/Hindenburg에 `parallel_execution_used: true`), `portfolio_pipeline_complete`, **`execution_summary`**에 `total_execution_time_ms`·`prompt_build_time_ms`·`cio_stage_time_ms`·`compressed_prompt_mode`(`standard_compressed` / `aggressive_compressed`)·`retry_mode_used`·`partial_fallback_used`
-- [ ] 첫 브로드캐스트 직후 **`first_visible_latency_ms`**가 `AI_PERF`에 남는지(실행 시작 대비)
+- [ ] 첫 브로드캐스트 직후 **`first_visible_latency_ms`**가 `AI_PERF`에 단독 이벤트로 남고, 완료 시 **`execution_summary`**에도 동일 지표가 포함되는지(실행 `startedAt` 대비)
 - [ ] 오픈 토픽에서 페르소나 2명 이상일 때 `open_topic_persona`에 `parallel_execution_used: true`가 찍히는지
 - [ ] 조기 브로드캐스트 사용 시 **동일 페르소나 본문이 두 번** 오지 않는지(`index.ts` 스킵); **`FEEDBACK_FOLLOWUP_ATTACH_PENDING` → `ATTACHED`** 후 follow-up 메시지에 피드백 행 1회(중복 `ATTACHED` 없음)
 - [ ] `timeout:return:menu:*` 시 스냅샷 해제·메인 패널

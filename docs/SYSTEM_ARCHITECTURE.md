@@ -1,5 +1,5 @@
-# SYSTEM ARCHITECTURE (리다이렉트)
+# SYSTEM_ARCHITECTURE.md (비정본)
 
-이 문서는 **[docs/ARCHITECTURE.md](ARCHITECTURE.md)** 로 통합되었다.
+이 문서는 더 이상 정본이 아닙니다. 예전 링크 호환을 위해 파일명만 유지합니다.
 
-시스템 구성·Discord 진입점·모듈 관계는 **ARCHITECTURE.md**, Discord UX는 **DISCORD_UX.md**, 운영 절차는 **OPERATIONS.md**를 본다.
+현재 정본은 **[docs/ARCHITECTURE.md](ARCHITECTURE.md)** 입니다. 세부 내용은 해당 문서를 참고하세요.
