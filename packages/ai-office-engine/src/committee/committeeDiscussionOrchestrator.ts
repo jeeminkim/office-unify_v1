@@ -14,6 +14,7 @@ import { generateGeminiPersonaReply, type GeminiChatTurn } from '../geminiWebPer
 import { generateOpenAiWebPersonaReply } from '../openAiWebPersonaAdapter';
 import { executeOpenAiWithBudgetAndGeminiFallback } from '../openAiBudgetRunner';
 import { formatWebPortfolioLedgerForCommitteePrompt } from './committeePortfolioLedgerPrompt';
+import { formatCommitteeInputSummaryForPrompt } from '../sheets/portfolioSheetsModel';
 import {
   generatePersonaAssistantReply,
   buildWebPersonaSystemInstruction,
@@ -85,7 +86,10 @@ async function loadLedgerSnapshot(supabase: SupabaseClient, userKey: OfficeUserK
       ReturnType<typeof listWebPortfolioWatchlistForUser>
     >),
   ]);
-  return formatWebPortfolioLedgerForCommitteePrompt({ holdings, watchlist });
+  const base = formatWebPortfolioLedgerForCommitteePrompt({ holdings, watchlist });
+  const dash = formatCommitteeInputSummaryForPrompt(holdings).trim();
+  if (!dash) return base;
+  return `${base}\n\n${dash}`;
 }
 
 async function buildCommitteeSpeakerPrepared(params: {

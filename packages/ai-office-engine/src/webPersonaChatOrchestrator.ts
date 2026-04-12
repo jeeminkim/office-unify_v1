@@ -33,7 +33,8 @@ import { resolveGeminiModelForWebPersonaSlug, resolveOpenAiModelForWebPersonaSlu
 import { isOpenAiWebPersonaSlug } from './webPersonaOpenAiRouting';
 import { getOpenAiMonthlyBudgetUsd, getOpenAiMonthlyMaxCalls, isOpenAiFallbackToGeminiEnabled } from './llmEnvConfig';
 import { formatLongTermForPrompt } from './webPersonaLongTerm';
-import { getCommitteeSystemPromptAppend } from './committee/committeePrompt';
+import { getCommitteeSystemPromptAppend, isCommitteePersonaSlug } from './committee/committeePrompt';
+import { formatCommitteeInputSummaryForPrompt } from './sheets/portfolioSheetsModel';
 
 /** 조일현 제외 — persona-chat에서 Supabase 웹 원장 스냅샷을 시스템 프롬프트에 붙인다(Ray Dalio 포함). */
 export const WEB_PORTFOLIO_LEDGER_PERSONA_SLUGS = [
@@ -203,9 +204,15 @@ export async function preparePersonaChatTurnContext(params: {
 
   const committeeAppend = getCommitteeSystemPromptAppend(personaKey);
 
-  const ledgerSnapshot = loadLedger
+  let ledgerSnapshot = loadLedger
     ? formatWebPortfolioLedgerForPrivateBankerPrompt({ holdings, watchlist })
     : '';
+  if (loadLedger && isCommitteePersonaSlug(slugLower)) {
+    const dash = formatCommitteeInputSummaryForPrompt(holdings).trim();
+    if (dash) {
+      ledgerSnapshot = ledgerSnapshot.trim() ? `${ledgerSnapshot.trim()}\n\n${dash}` : dash;
+    }
+  }
 
   const systemInstruction = buildWebPersonaSystemInstruction({
     personaSystem: def.systemPrompt,

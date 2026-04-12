@@ -21,3 +21,14 @@ export * from './committeeFeedback';
 export * from './committee/committeePrompt';
 export * from './committee/committeeResponseFormat';
 export * from './committee/committeeDiscussionOrchestrator';
+export * from './sheets/portfolioSheetsModel';
+export { runResearchCenterGeneration } from './research-center/researchCenterOrchestrator';
+export {
+  buildResearchContextCacheRow,
+  buildResearchRequestRow,
+  buildResearchReportsLogRow,
+  extractLogSummaries,
+  RESEARCH_CONTEXT_CACHE_HEADER,
+  RESEARCH_REPORTS_LOG_HEADER,
+  RESEARCH_REQUESTS_HEADER,
+} from './research-center/researchSheetsRows';

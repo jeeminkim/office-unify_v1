@@ -205,3 +205,9 @@ export type {
   JoLedgerPayloadV1,
   JoLedgerPriority,
 } from './joLedgerPayload';
+export type {
+  ResearchCenterGenerateRequestBody,
+  ResearchCenterGenerateResponseBody,
+  ResearchDeskId,
+  ResearchToneMode,
+} from './researchCenter';

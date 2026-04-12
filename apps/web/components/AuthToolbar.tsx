@@ -22,6 +22,9 @@ export async function AuthToolbar() {
         <Link href="/committee-discussion" className="hover:text-slate-900 hover:underline">
           위원회 토론
         </Link>
+        <Link href="/research-center" className="hover:text-slate-900 hover:underline">
+          Research Center
+        </Link>
         <Link href="/private-banker" className="hover:text-slate-900 hover:underline">
           Private Banker
         </Link>
