@@ -197,3 +197,11 @@ export type {
   PortfolioLedgerValidateResponseBody,
   PortfolioLedgerWatchlistInput,
 } from './portfolioLedger';
+export type {
+  JoLedgerActionType,
+  JoLedgerEditMode,
+  JoLedgerLedgerTarget,
+  JoLedgerMarket,
+  JoLedgerPayloadV1,
+  JoLedgerPriority,
+} from './joLedgerPayload';

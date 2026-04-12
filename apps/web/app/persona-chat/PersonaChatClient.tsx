@@ -9,6 +9,7 @@ import {
 import { listRegisteredPersonaWebKeys, resolveWebPersona } from "@office-unify/ai-office-engine";
 import Link from "next/link";
 import { PersonaAssistantFeedbackRow } from "@/components/PersonaAssistantFeedbackRow";
+import { JoIlHyeonLedgerForm } from "@/components/JoIlHyeonLedgerForm";
 
 const jsonHeaders: HeadersInit = {
   "Content-Type": "application/json",
@@ -117,13 +118,14 @@ export function PersonaChatClient() {
     void loadSession();
   }, [loadSession]);
 
-  const send = async () => {
+  const send = async (contentOverride?: string) => {
     setError(null);
     setInfo(null);
     if (sendInFlightRef.current) return;
-    if (!input.trim()) return;
+    const raw = contentOverride ?? input;
+    if (!raw.trim()) return;
 
-    const content = input.trim();
+    const content = raw.trim();
     if (content.length > PERSONA_CHAT_USER_MESSAGE_MAX_CHARS) {
       setError(`메시지는 최대 ${PERSONA_CHAT_USER_MESSAGE_MAX_CHARS}자까지 입력할 수 있습니다.`);
       return;
@@ -210,6 +212,7 @@ export function PersonaChatClient() {
 
   const busy = loadingLoad || loadingSend;
   const personaDef = resolveWebPersona(personaKey);
+  const isJoIlHyeon = personaKey.trim() === "jo-il-hyeon";
 
   return (
     <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 bg-slate-50 p-6 text-slate-900">
@@ -348,28 +351,46 @@ export function PersonaChatClient() {
             )}
           </div>
           <div className="flex flex-col gap-1">
-            <div className="flex gap-2">
-              <textarea
-                className="min-h-[80px] flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
-                value={input}
-                maxLength={PERSONA_CHAT_USER_MESSAGE_MAX_CHARS}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="메시지…"
-                disabled={loadingSend}
-              />
-              <button
-                type="button"
-                className="self-end rounded-md bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-                disabled={busy || !input.trim() || input.length > PERSONA_CHAT_USER_MESSAGE_MAX_CHARS}
-                onClick={() => void send()}
-              >
-                {loadingSend ? "응답 중…" : "전송"}
-              </button>
-            </div>
-            <p className="text-xs text-slate-500">
-              {input.length}/{PERSONA_CHAT_USER_MESSAGE_MAX_CHARS}자 · 초과 시 전송할 수 없습니다. 긴 답은 약{" "}
-              {PERSONA_CHAT_STREAM_FLUSH_CHARS}자 단위로 화면에 이어 붙습니다.
-            </p>
+            {isJoIlHyeon ? (
+              <>
+                <JoIlHyeonLedgerForm
+                  disabled={loadingSend}
+                  onSubmitContent={(jsonText) => {
+                    setInput(jsonText);
+                    void send(jsonText);
+                  }}
+                />
+                <p className="text-xs text-slate-500">
+                  조일현이 만든 SQL 초안은 <Link href="/portfolio-ledger">포트 원장</Link> 화면에서{" "}
+                  <strong>검증·적용</strong>하세요. 부분 수정은 원장 불러오기에 성공했을 때만 안전하게 진행됩니다.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex gap-2">
+                  <textarea
+                    className="min-h-[80px] flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                    value={input}
+                    maxLength={PERSONA_CHAT_USER_MESSAGE_MAX_CHARS}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="메시지…"
+                    disabled={loadingSend}
+                  />
+                  <button
+                    type="button"
+                    className="self-end rounded-md bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+                    disabled={busy || !input.trim() || input.length > PERSONA_CHAT_USER_MESSAGE_MAX_CHARS}
+                    onClick={() => void send()}
+                  >
+                    {loadingSend ? "응답 중…" : "전송"}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {input.length}/{PERSONA_CHAT_USER_MESSAGE_MAX_CHARS}자 · 초과 시 전송할 수 없습니다. 긴 답은 약{" "}
+                  {PERSONA_CHAT_STREAM_FLUSH_CHARS}자 단위로 화면에 이어 붙습니다.
+                </p>
+              </>
+            )}
           </div>
         </div>
 

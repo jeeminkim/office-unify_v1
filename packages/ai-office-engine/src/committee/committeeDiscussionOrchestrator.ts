@@ -13,7 +13,7 @@ import { COMMITTEE_DISCUSSION_SPEAKER_ORDER, getCommitteeSystemPromptAppend } fr
 import { generateGeminiPersonaReply, type GeminiChatTurn } from '../geminiWebPersonaAdapter';
 import { generateOpenAiWebPersonaReply } from '../openAiWebPersonaAdapter';
 import { executeOpenAiWithBudgetAndGeminiFallback } from '../openAiBudgetRunner';
-import { formatWebPortfolioLedgerForPrivateBankerPrompt } from '../privateBanker/privateBankerPortfolioLedgerPrompt';
+import { formatWebPortfolioLedgerForCommitteePrompt } from './committeePortfolioLedgerPrompt';
 import {
   generatePersonaAssistantReply,
   buildWebPersonaSystemInstruction,
@@ -46,7 +46,18 @@ function formatTranscript(lines: CommitteeDiscussionLineDto[]): string {
 const DISCUSSION_TURN_PREAMBLE = `[투자위원회 · 턴제 토론]
 - 당신은 이번 라운드에서 **지정된 순서로 한 번만** 발언합니다.
 - 앞선 발언자의 논지를 **참고**하되, 다른 페르소나의 말투를 흉내 내지 마세요.
+- **원장 사실**은 비중·구조·리스크 판별에 쓰고, **사용자 메모**는 감정·참고일 뿐이며 결론 문장으로 재인용하지 않는다(위원당 메모 표현 0~1회 이내).
+- 개별 종목 후회 서사·종목 나열보다, 레버리지·고변동 비중·섹터 편중·KR/US 노출·현금 완충·이벤트 민감 자산·손실 확산 경로 같은 **포트 구조**를 우선한다.
+- 지정학·거시 이슈는 가능하면 **전이 경로**(원인→중간 변수→포트에 미치는 방식)로 짧게 연결한다.
+- 각 발언에는 **거시(외부 변수) · 포트 구조 · 실행 우선순위** 중 이 역할에 맞는 층이 최소 **한 문장 이상** 드러나게 한다(다른 위원과 같은 문장을 복붙하지 않는다).
 - 투자위원회 응답 계약(대괄호 섹션)을 유지합니다.`;
+
+function logCommitteeRemediation(slug: string, rem: { debugTags?: string[] }) {
+  if (process.env.NODE_ENV === 'production') return;
+  const tags = rem.debugTags?.filter(Boolean) ?? [];
+  if (tags.length === 0) return;
+  console.debug(`[committee-remediation] ${slug}`, tags.join(','));
+}
 
 const CLOSING_CIO_APPEND = `
 [정리 발언 모드 — CIO]
@@ -74,7 +85,7 @@ async function loadLedgerSnapshot(supabase: SupabaseClient, userKey: OfficeUserK
       ReturnType<typeof listWebPortfolioWatchlistForUser>
     >),
   ]);
-  return formatWebPortfolioLedgerForPrivateBankerPrompt({ holdings, watchlist });
+  return formatWebPortfolioLedgerForCommitteePrompt({ holdings, watchlist });
 }
 
 async function buildCommitteeSpeakerPrepared(params: {
@@ -206,6 +217,7 @@ export async function runCommitteeDiscussionRound(params: {
     });
 
     const rem = remediateCommitteePersonaReply(slug, raw);
+    logCommitteeRemediation(slug, rem);
     lines.push({
       slug,
       displayName: def.displayName,
@@ -253,6 +265,7 @@ export async function runCommitteeDiscussionClosing(params: {
     prepared: { ...cioPrepared, systemInstruction: cioSystem },
   });
   const cioRem = remediateCommitteePersonaReply('cio', cioGen.text);
+  logCommitteeRemediation('cio', cioRem);
   const cioLine: CommitteeDiscussionLineDto = {
     slug: 'cio',
     displayName: cioDef.displayName,
@@ -283,6 +296,7 @@ export async function runCommitteeDiscussionClosing(params: {
     prepared: { ...druckerPrepared, systemInstruction: druckerSystem },
   });
   const druckerRem = remediateCommitteePersonaReply('drucker', druckerGen.text);
+  logCommitteeRemediation('drucker', druckerRem);
   const druckerLine: CommitteeDiscussionLineDto = {
     slug: 'drucker',
     displayName: druckerDef.displayName,

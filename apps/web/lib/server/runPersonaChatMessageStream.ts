@@ -241,6 +241,9 @@ export function createPersonaChatMessageNdjsonStream(params: {
               const rem = remediateCommitteePersonaReply(personaSlug, pair.assistantMessage.content);
               replyText = rem.text;
               if (rem.note) personaFormatNote = rem.note;
+              if (process.env.NODE_ENV !== 'production' && rem.debugTags?.length) {
+                console.debug(`[committee-remediation] ${personaSlug}`, rem.debugTags.join(','));
+              }
               userMessage = pair.userMessage;
               assistantMessage = { ...pair.assistantMessage, content: rem.text };
             } else {
@@ -254,6 +257,14 @@ export function createPersonaChatMessageNdjsonStream(params: {
               : { text: llmRaw, note: null as string | null };
             replyText = rem.text;
             if (rem.note) personaFormatNote = rem.note;
+            if (
+              isCommitteePersonaSlug(personaSlug) &&
+              process.env.NODE_ENV !== 'production' &&
+              'debugTags' in rem &&
+              rem.debugTags?.length
+            ) {
+              console.debug(`[committee-remediation] ${personaSlug}`, rem.debugTags!.join(','));
+            }
             const pair = await insertPersonaChatTurnMessages({
               supabase,
               prepared,

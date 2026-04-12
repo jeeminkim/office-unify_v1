@@ -212,6 +212,9 @@ export async function runPersonaChatMessageWithDbIdempotency(params: {
         if (isCommitteePersonaSlug(personaSlug)) {
           const rem = remediateCommitteePersonaReply(personaSlug, pair.assistantMessage.content);
           if (rem.note) personaFormatNote = rem.note;
+          if (process.env.NODE_ENV !== 'production' && rem.debugTags?.length) {
+            console.debug(`[committee-remediation] ${personaSlug}`, rem.debugTags.join(','));
+          }
           userMessage = pair.userMessage;
           assistantMessage = { ...pair.assistantMessage, content: rem.text };
         } else {
@@ -223,6 +226,14 @@ export async function runPersonaChatMessageWithDbIdempotency(params: {
           ? remediateCommitteePersonaReply(personaSlug, llmRaw)
           : { text: llmRaw, note: null as string | null };
         if (rem.note) personaFormatNote = rem.note;
+        if (
+          isCommitteePersonaSlug(personaSlug) &&
+          process.env.NODE_ENV !== 'production' &&
+          'debugTags' in rem &&
+          rem.debugTags?.length
+        ) {
+          console.debug(`[committee-remediation] ${personaSlug}`, rem.debugTags!.join(','));
+        }
         const pair = await insertPersonaChatTurnMessages({
           supabase,
           prepared,

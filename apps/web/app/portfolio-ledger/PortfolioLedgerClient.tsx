@@ -9,7 +9,7 @@ import type {
 
 const jsonHeaders: HeadersInit = { "Content-Type": "application/json" };
 
-const EXAMPLE_SQL = `-- 보유 upsert (KR 예시)
+const EXAMPLE_SQL = `-- 보유 upsert (KR 예시) — 수정도 동일 형식 INSERT 한 줄(upsert). UPDATE 문은 거부됩니다.
 INSERT INTO web_portfolio_holdings (market, symbol, name, sector, investment_memo, qty, avg_price, target_price, judgment_memo)
 VALUES ('KR', '000660', 'SK하이닉스', '반도체', '메모', 20, 513000, 1300000, '판단');
 
