@@ -211,3 +211,21 @@ export type {
   ResearchDeskId,
   ResearchToneMode,
 } from './researchCenter';
+export type {
+  TrendAnalysisGenerateRequestBody,
+  TrendAnalysisGenerateResponseBody,
+  TrendAnalysisMeta,
+  TrendBeneficiariesBlock,
+  TrendCitation,
+  TrendConfidenceLevel,
+  TrendFreshnessMetaOut,
+  TrendGeo,
+  TrendHorizon,
+  TrendOutputFocus,
+  TrendProvider,
+  TrendReportMode,
+  TrendResearchLayer,
+  TrendSectorFocus,
+  TrendSectionBlock,
+  TrendToolUsage,
+} from './trendAnalysis';

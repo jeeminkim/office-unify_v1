@@ -32,3 +32,10 @@ export {
   RESEARCH_REPORTS_LOG_HEADER,
   RESEARCH_REQUESTS_HEADER,
 } from './research-center/researchSheetsRows';
+export { runTrendAnalysisGeneration } from './trend-center/trendCenterOrchestrator';
+export {
+  buildTrendReportsLogRow,
+  buildTrendRequestRow,
+  TREND_REPORTS_LOG_HEADER,
+  TREND_REQUESTS_HEADER,
+} from './trend-center/trendSheetsRows';
