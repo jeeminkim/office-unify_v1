@@ -316,6 +316,7 @@ export function TrendAnalysisClient() {
             />
             업로드 파일 데이터 분석 (code interpreter, file_id 필요)
           </label>
+          {/* TODO: Files API 업로드 후 file_id 자동 주입 UX (현재는 수동 file- id만) */}
           <label className="flex flex-col gap-1 text-xs text-slate-600">
             <span>OpenAI file id (선택, 쉼표 구분)</span>
             <input

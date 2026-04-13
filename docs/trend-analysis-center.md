@@ -20,7 +20,19 @@
 - 타입: `packages/shared-types/src/trendAnalysis.ts` 의 `TrendAnalysisGenerateRequestBody` / `TrendAnalysisGenerateResponseBody`.
 - 인증: `requirePersonaChatAuth` + 서비스 롤 Supabase (`getServiceSupabase`).
 - **최종 보고서 포맷:** `GEMINI_API_KEY` + `generateGeminiResearchReport` (기본 `gemini-2.5-flash`).
-- **리서치(최신성) 보강:** `OPENAI_API_KEY` + OpenAI **Responses API** `POST /v1/responses` with built-in **`web_search`** 및/또는 **`code_interpreter`** (컨테이너 `file_ids`). 별도 스크래퍼/RSS는 두지 않습니다.
+- **리서치(최신성) 보강:** `OPENAI_API_KEY` + OpenAI **Responses API** `POST /v1/responses` with built-in **`web_search`** 및/또는 **`code_interpreter`**. 별도 스크래퍼/RSS는 두지 않습니다.
+
+### OpenAI Responses 요청 (공식 문서 기준)
+
+구현은 [Responses API — Create](https://platform.openai.com/docs/api-reference/responses/create)와 [Web search](https://platform.openai.com/docs/guides/tools-web-search) / [Code Interpreter](https://platform.openai.com/docs/guides/tools-code-interpreter) 가이드의 **필드명**을 따른다.
+
+| 항목 | 값 |
+|------|-----|
+| `tools` | `{ "type": "web_search" }` |
+| `tools` (데이터 분석) | `{ "type": "code_interpreter", "container": { "type": "auto", "memory_limit": "4g", "file_ids": ["file-…"] } }` |
+| `include` | `ResponseIncludable` 중 **`web_search_call.action.sources`**, **`code_interpreter_call.outputs`** 만 사용 (`trendOpenAiResponsesConstants.ts`) |
+| 재시도 | **`include` 관련 클라이언트(4xx) 오류**일 때만 동일 바디에서 `include` 제거 후 1회 재시도 |
+| 다운그레이드 | **code interpreter / container** 로 보이는 4xx이면 `web_search`만 있는 도구로 1회 재시도, 그래도 실패하면 엔진에서 Gemini 폴백 |
 
 ### 요청 필드 (추가)
 
@@ -49,7 +61,7 @@
 
 ## web search / data analysis 사용 기준
 
-- **웹 검색:** `useWebSearch`·`preferFreshness`·`focus=hot_now`·프롬프트 키워드(최근·요즘·latest 등) 또는 `provider=openai`(기본 최소 웹 검색)일 때 자동 포함.
+- **웹 검색:** `useWebSearch`·`preferFreshness`·`focus=hot_now`·프롬프트 키워드(예: 최근, 요즘, 지난 7·30·90일, 지금 뜨는, 이번 주/달, 최신, latest 등) 또는 `provider=openai`(기본 최소 웹 검색)일 때 자동 포함.
 - **데이터 분석:** `useDataAnalysis=true` **이고** `attachedFileIds`가 있을 때만 code interpreter 도구 포함. 파일 없이 분석만 켠 경우 경고 후 생략.
 - **도구 미사용:** `provider=gemini` 또는 `auto`에서 위 조건이 없으면 OpenAI 호출 없이 Gemini·내부 팩만 사용.
 

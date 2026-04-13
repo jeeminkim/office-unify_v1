@@ -1,7 +1,8 @@
 import type { TrendAnalysisGenerateRequestBody, TrendProvider } from '@office-unify/shared-types';
 
+/** 최신성 표현 — web search 라우팅 힌트 (요구 스펙 + 일반 표현) */
 const FRESHNESS_KW =
-  /최근|요즘|지금|뉴스|실시간|오늘|이번\s*주|이번\s*달|최신|라이브|live|latest|breaking|today|this week/i;
+  /최근|요즘|지금\s*뜨는|지금|뉴스|실시간|오늘|이번\s*주|이번\s*달|최신|라이브|live|latest|breaking|today|this week|지난\s*7일|지난\s*30일|지난\s*90일|지난\s*주|지난\s*달/i;
 
 export type TrendToolRoutingDecision = {
   /** OpenAI Responses에 web_search 도구 포함 */
