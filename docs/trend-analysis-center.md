@@ -43,6 +43,8 @@
 | `useDataAnalysis` | `true`이고 `attachedFileIds`가 있으면 code interpreter |
 | `preferFreshness` | 최신성 우선(자동으로 웹 검색 후보 강화) |
 | `attachedFileIds` | OpenAI Files API `file-...` id 배열 |
+| `includeMemoryContext` | 기본 `true` — 생략 시 `true`. `false`면 기존 `trend_memory_*` 읽기·delta 비교 생략(쓰기만 하는 모드는 엔진 규칙 참고). |
+| `saveToSqlMemory` | 기본 `true` — 생략 시 `true`. `false`면 실행 이력·토픽·시그널 **저장 안 함**(delta 읽기만 가능). |
 
 ### 응답 필드 (추가)
 
@@ -51,7 +53,19 @@
 | `citations` | 제목·URL·스니펫·구조화 출처 |
 | `toolUsage` | 웹 검색·데이터 분석 도구 사용 여부·파일 수·출처 수 |
 | `freshnessMeta` | 지역·기간·신선도 설명·OpenAI 리서치 적용 여부 |
-| `meta` | `providerUsed`, `webSearchUsed`, `dataAnalysisUsed`, `fallbackUsed`, `researchLayer`, `openAiModel` 등 |
+| `meta` | `providerUsed`, `webSearchUsed`, `dataAnalysisUsed`, `fallbackUsed`, `researchLayer`, `openAiModel` 및 **memory** 필드(아래) |
+| `memoryDelta` | `new` / `reinforced` / `weakened` / `dormant` — 각각 `memoryKey`, `title`, `summary`, `reason` |
+
+### meta.memory (Phase 4)
+
+| 필드 | 설명 |
+|------|------|
+| `memoryEnabled` | `trend_report_runs` 테이블이 없으면 `false` |
+| `memoryReadSucceeded` | 최근 실행·토픽 읽기 성공 여부 |
+| `memoryWriteSucceeded` | 실행 이력·토픽·시그널 쓰기 성공 여부 |
+| `memoryItemsRead` | 읽은 행 수(실행·토픽 합) |
+| `memoryItemsWritten` | 기록한 행·시그널 등 대략치 |
+| `memoryStatusNote` | 비활성/실패 시 짧은 이유 |
 
 ## 왜 별도 스크래핑 대신 OpenAI built-in tools인가
 
@@ -88,10 +102,28 @@
 - 스프레드시트에 위 이름의 탭을 만들고, 첫 행에 `TREND_REQUESTS_HEADER` / `TREND_REPORTS_LOG_HEADER` 컬럼(엔진 `trendSheetsRows.ts` 참고)을 맞춰야 append가 의미 있게 쌓입니다.
 - **read-back·GOOGLEFINANCE 재반영은 하지 않습니다.** 실패해도 리포트 본문은 200으로 반환하고 `warnings`·`meta.appendToSheetsSucceeded`에 남깁니다.
 
-## SQL / 장기 메모리
+## SQL 장기 메모리 (Phase 4, 3테이블 최소안)
 
-- **이번 단계에서도 신규 SQL 파일을 추가하지 않습니다.** (SQL memory는 다음 단계 후보)
-- `meta.futureMemoryHint` 등으로 Phase 3에서 Supabase 기억·delta를 붙일 여지만 둡니다. `docs/sql/append_web_trend_*.sql` 는 아직 만들지 않습니다.
+**목적:** MVP·OpenAI tool 경로(2~3단계)는 유지하고, **리포트 실행 이력 + 구조적 메모리 토픽 + 시그널**만 Supabase에 쌓아 “반복 추적 가능한 리서치”로 확장한다. `trend_memory_links` / `trend_followup_queue` 등은 **이번 단계에서 제외**한다.
+
+**왜 3테이블인가:** 전체 5테이블 설계보다 먼저 **실행 이력(`trend_report_runs`)·토픽(`trend_memory_topics`)·시그널(`trend_memory_signals`)** 만으로 delta·감사·재현성을 확보하고, 실패 시에도 본문 생성이 깨지지 않게 한다.
+
+**MVP / OpenAI 단계와의 차이:** 최신성·도구·Gemini 합성은 기존과 동일. **추가**로는 (1) 포맷된 섹션에서 구조적 후보를 추출하고, (2) 기존 토픽과 비교해 `memoryDelta`를 만들고, (3) 선택적으로 DB에 저장한다. **별도 LLM 호출 없음.**
+
+**memory delta 정의 (최소):**
+
+- **new:** 이번 후보에 있고, 기존 `memory_key`와 매칭되지 않음.
+- **reinforced:** 같은 `memory_key`로 이미 토픽이 있고 이번에도 후보 등장.
+- **weakened:** 활성 토픽인데 이번 후보에 없고, `last_seen`이 오래되지 않음(대략 90일 이내 기준).
+- **dormant:** 활성 토픽인데 이번 후보에 없고, 더 오래됨.
+
+**Graceful degradation:** `trend_report_runs` 조회 실패(테이블 없음) 시 `memoryEnabled=false`, `warnings`에 안내. **리포트·HTTP 200은 유지.** 쓰기 실패 시 `memoryWriteSucceeded=false`, 읽기 실패 시 delta 비우거나 읽기만 실패로 표시.
+
+**엔진:** `trendCenterMemory.ts`(DB), `trendMemoryCandidates.ts`·`trendMemoryKey.ts`(후보·키), orchestrator에서 OpenAI/Gemini 경로 **이후**에만 실행해 실패를 국소화.
+
+**DDL:** `docs/sql/append_web_trend_memory_phase1.sql` — 적용 전에도 앱은 빌드·실행된다.
+
+**상세 스키마:** `docs/DATABASE_SCHEMA.md`.
 
 ## 수동 API 예시
 
@@ -113,6 +145,10 @@ Content-Type: application/json
 }
 ```
 
-## 다음 단계 후보
+## Phase 5 후보
 
-- SQL memory / 월간 롤업 / GOOGLEFINANCE read-back / follow-up 큐 / 파일 업로드 UX 고도화.
+- GOOGLEFINANCE **read-back** (시트·원장 재반영)
+- 외부 source 품질 보강
+- **follow-up queue** / `trend_memory_links`
+- 월간 롤업·비교 고도화
+- Files API 업로드 → `file_id` UX

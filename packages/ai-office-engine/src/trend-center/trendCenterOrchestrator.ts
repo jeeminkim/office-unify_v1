@@ -11,8 +11,18 @@ import { listWebPortfolioHoldingsForUser, listWebPortfolioWatchlistForUser } fro
 import { generateGeminiResearchReport } from '../research-center/researchGeminiCall';
 import { DEFAULT_GEMINI_WEB_PERSONA_MODEL } from '../webPersonaLlmModels';
 import { buildTrendCuratorUserContent, trendCuratorSystemPrompt } from './trendCenterPrompts';
-import { buildSafeFallbackReport, formatTrendReport } from './trendCenterFormatter';
-import { applyTrendGuards, mergeTrendWarnings, resolveTrendConfidence } from './trendCenterGuards';
+import {
+  buildSafeFallbackReport,
+  formatTrendMemoryDeltaHeadline,
+  formatTrendReport,
+} from './trendCenterFormatter';
+import {
+  applyTrendGuards,
+  applyTrendMemoryGuards,
+  mergeTrendWarnings,
+  resolveTrendConfidence,
+} from './trendCenterGuards';
+import { runTrendSqlMemoryLayer } from './trendCenterMemory';
 import { buildTrendSourcePack } from './trendCenterSourcePack';
 import { runTrendOpenAiResearch } from './trendOpenAiResearch';
 import { computeTrendToolRouting, shouldAttemptOpenAiResearch } from './trendToolRouting';
@@ -51,6 +61,17 @@ function buildMetaBase(params: {
   webSearchUsed: boolean;
   dataAnalysisUsed: boolean;
   fallbackUsed: boolean;
+  memoryPartial?: Partial<
+    Pick<
+      TrendAnalysisGenerateResponseBody['meta'],
+      | 'memoryEnabled'
+      | 'memoryReadSucceeded'
+      | 'memoryWriteSucceeded'
+      | 'memoryItemsRead'
+      | 'memoryItemsWritten'
+      | 'memoryStatusNote'
+    >
+  >;
 }): TrendAnalysisGenerateResponseBody['meta'] {
   return {
     provider: 'gemini',
@@ -58,13 +79,18 @@ function buildMetaBase(params: {
     sourceCount: params.packSourceCount,
     noDataReason: params.noDataReason,
     appendToSheetsAttempted: false,
-    futureMemoryHint: 'Phase 3: optional Supabase trend memory delta',
     researchLayer: params.researchLayer,
     openAiModel: params.openAiModel,
     providerUsed: params.providerUsed,
     webSearchUsed: params.webSearchUsed,
     dataAnalysisUsed: params.dataAnalysisUsed,
     fallbackUsed: params.fallbackUsed,
+    memoryEnabled: params.memoryPartial?.memoryEnabled ?? false,
+    memoryReadSucceeded: params.memoryPartial?.memoryReadSucceeded ?? false,
+    memoryWriteSucceeded: params.memoryPartial?.memoryWriteSucceeded ?? false,
+    memoryItemsRead: params.memoryPartial?.memoryItemsRead ?? 0,
+    memoryItemsWritten: params.memoryPartial?.memoryItemsWritten ?? 0,
+    memoryStatusNote: params.memoryPartial?.memoryStatusNote,
   };
 }
 
@@ -166,7 +192,6 @@ export async function runTrendAnalysisGeneration(params: {
       needsFreshness: routing.needsFreshness,
       webSearchUsed: openAiResult?.webSearchUsed ?? false,
     });
-    logTrend('TREND_REQ_DONE', { ok: false });
     const citations = mergeCitations(openAiResult?.citations, pack.sourceRefs);
     const toolUsage: TrendToolUsage = {
       webSearchUsed: openAiResult?.webSearchUsed ?? false,
@@ -181,13 +206,52 @@ export async function runTrendAnalysisGeneration(params: {
       openAiResearchApplied: Boolean(openAiResult?.text),
       internalContextOnly: !openAiResult?.webSearchUsed,
     };
+    const baseWarnings = mergeTrendWarnings(
+      ['Gemini 호출 실패. 환경 변수·쿼터를 확인하세요.', ...warningsExtra],
+      pack.noDataReason ? [pack.noDataReason] : [],
+    );
+    const memoryLayer = await runTrendSqlMemoryLayer({
+      supabase,
+      userKey,
+      body,
+      formatted: fb,
+      title: buildTitle(body),
+      summary: fb.summary,
+      reportMarkdown: fb.reportMarkdown,
+      confidence: conf,
+      warnings: baseWarnings,
+      citations,
+      toolUsage,
+      freshnessMeta,
+      includeMemoryContext: body.includeMemoryContext !== false,
+      saveToSqlMemory: body.saveToSqlMemory !== false,
+    });
+    let warningsFb = mergeTrendWarnings(baseWarnings, memoryLayer.extraWarnings);
+    warningsFb = mergeTrendWarnings(
+      warningsFb,
+      applyTrendMemoryGuards({
+        meta: {
+          memoryEnabled: memoryLayer.meta.memoryEnabled,
+          memoryReadSucceeded: memoryLayer.meta.memoryReadSucceeded,
+          memoryWriteSucceeded: memoryLayer.meta.memoryWriteSucceeded,
+          memoryItemsRead: memoryLayer.meta.memoryItemsRead,
+        },
+        memoryDelta: memoryLayer.memoryDelta,
+      }),
+    );
+    let summaryFb = fb.summary;
+    if (body.mode === 'monthly') {
+      const memHead = formatTrendMemoryDeltaHeadline(memoryLayer.memoryDelta);
+      if (memHead) summaryFb = `${memHead}\n\n${summaryFb}`;
+    }
+    logTrend('TREND_REQ_DONE', { ok: false });
     return {
       ok: true,
       title: buildTitle(body),
       generatedAt: new Date().toISOString(),
       mode: body.mode,
       reportMarkdown: fb.reportMarkdown,
-      summary: fb.summary,
+      summary: summaryFb,
       sections: fb.sections,
       beneficiaries: fb.beneficiaries,
       hypotheses: fb.hypotheses,
@@ -195,10 +259,7 @@ export async function runTrendAnalysisGeneration(params: {
       nextTrackers: fb.nextTrackers,
       sources: fb.sources,
       confidence: conf,
-      warnings: mergeTrendWarnings(
-        ['Gemini 호출 실패. 환경 변수·쿼터를 확인하세요.', ...warningsExtra],
-        pack.noDataReason ? [pack.noDataReason] : [],
-      ),
+      warnings: warningsFb,
       meta: buildMetaBase({
         packSourceCount: pack.facts.length + pack.sourceRefs.length,
         noDataReason: pack.noDataReason,
@@ -208,10 +269,12 @@ export async function runTrendAnalysisGeneration(params: {
         webSearchUsed: openAiResult?.webSearchUsed ?? false,
         dataAnalysisUsed: openAiResult?.dataAnalysisUsed ?? false,
         fallbackUsed: true,
+        memoryPartial: memoryLayer.meta,
       }),
       citations,
       toolUsage,
       freshnessMeta,
+      memoryDelta: memoryLayer.memoryDelta,
     };
   }
 
@@ -246,26 +309,8 @@ export async function runTrendAnalysisGeneration(params: {
   }
 
   logTrend('TREND_VALIDATION_DONE', { warningCount: warnings.length, confidence });
-  logTrend('TREND_REQ_DONE', { ok: true });
 
   const citations = mergeCitations(openAiResult?.citations, pack.sourceRefs);
-  if (citations.length > 0) {
-    const citeLines = citations
-      .map((c) => {
-        const head = c.title || c.url || '출처';
-        const u = c.url ? ` ${c.url}` : '';
-        const sn = c.snippet ? ` — ${c.snippet.slice(0, 120)}` : '';
-        return `- ${head}${u}${sn}`;
-      })
-      .join('\n');
-    const appendix = `\n\n---\n**참고 링크·출처 요약**\n${citeLines}`;
-    formatted = {
-      ...formatted,
-      sources: (formatted.sources || '') + appendix,
-      reportMarkdown: formatted.reportMarkdown + appendix,
-    };
-  }
-
   const toolUsage: TrendToolUsage = {
     webSearchUsed,
     dataAnalysisUsed: openAiResult?.dataAnalysisUsed ?? false,
@@ -283,6 +328,61 @@ export async function runTrendAnalysisGeneration(params: {
     internalContextOnly: !webSearchUsed,
   };
 
+  const memoryLayer = await runTrendSqlMemoryLayer({
+    supabase,
+    userKey,
+    body,
+    formatted,
+    title: buildTitle(body),
+    summary: formatted.summary,
+    reportMarkdown: formatted.reportMarkdown,
+    confidence,
+    warnings,
+    citations,
+    toolUsage,
+    freshnessMeta,
+    includeMemoryContext: body.includeMemoryContext !== false,
+    saveToSqlMemory: body.saveToSqlMemory !== false,
+  });
+
+  let warningsOut = mergeTrendWarnings(warnings, memoryLayer.extraWarnings);
+  const metaPartial = memoryLayer.meta;
+  warningsOut = mergeTrendWarnings(
+    warningsOut,
+    applyTrendMemoryGuards({
+      meta: {
+        memoryEnabled: metaPartial.memoryEnabled,
+        memoryReadSucceeded: metaPartial.memoryReadSucceeded,
+        memoryWriteSucceeded: metaPartial.memoryWriteSucceeded,
+        memoryItemsRead: metaPartial.memoryItemsRead,
+      },
+      memoryDelta: memoryLayer.memoryDelta,
+    }),
+  );
+
+  if (citations.length > 0) {
+    const citeLines = citations
+      .map((c) => {
+        const head = c.title || c.url || '출처';
+        const u = c.url ? ` ${c.url}` : '';
+        const sn = c.snippet ? ` — ${c.snippet.slice(0, 120)}` : '';
+        return `- ${head}${u}${sn}`;
+      })
+      .join('\n');
+    const appendix = `\n\n---\n**참고 링크·출처 요약**\n${citeLines}`;
+    formatted = {
+      ...formatted,
+      sources: (formatted.sources || '') + appendix,
+      reportMarkdown: formatted.reportMarkdown + appendix,
+    };
+  }
+
+  let summaryOut = formatted.summary;
+  if (body.mode === 'monthly') {
+    const memHead = formatTrendMemoryDeltaHeadline(memoryLayer.memoryDelta);
+    if (memHead) summaryOut = `${memHead}\n\n${summaryOut}`;
+  }
+
   let providerUsed: TrendAnalysisGenerateResponseBody['meta']['providerUsed'] = 'gemini_only';
   if (openAiResult?.text) {
     providerUsed = 'openai_tools_then_gemini';
@@ -290,13 +390,15 @@ export async function runTrendAnalysisGeneration(params: {
     providerUsed = 'gemini_fallback_after_openai';
   }
 
+  logTrend('TREND_REQ_DONE', { ok: true });
+
   return {
     ok: true,
     title: buildTitle(body),
     generatedAt: new Date().toISOString(),
     mode: body.mode,
     reportMarkdown: formatted.reportMarkdown,
-    summary: formatted.summary,
+    summary: summaryOut,
     sections: formatted.sections,
     beneficiaries: formatted.beneficiaries,
     hypotheses: formatted.hypotheses,
@@ -304,7 +406,7 @@ export async function runTrendAnalysisGeneration(params: {
     nextTrackers: formatted.nextTrackers,
     sources: formatted.sources,
     confidence,
-    warnings,
+    warnings: warningsOut,
     meta: buildMetaBase({
       packSourceCount: pack.facts.length + pack.sourceRefs.length + (openAiResult?.citations.length ?? 0),
       noDataReason: pack.noDataReason,
@@ -314,9 +416,11 @@ export async function runTrendAnalysisGeneration(params: {
       webSearchUsed,
       dataAnalysisUsed: openAiResult?.dataAnalysisUsed ?? false,
       fallbackUsed,
+      memoryPartial: memoryLayer.meta,
     }),
     citations,
     toolUsage,
     freshnessMeta,
+    memoryDelta: memoryLayer.memoryDelta,
   };
 }

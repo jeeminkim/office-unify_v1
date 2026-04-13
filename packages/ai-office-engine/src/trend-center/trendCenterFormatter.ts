@@ -1,5 +1,6 @@
 import type {
   TrendBeneficiariesBlock,
+  TrendMemoryDelta,
   TrendReportMode,
   TrendSectionBlock,
 } from '@office-unify/shared-types';
@@ -160,6 +161,17 @@ export function formatTrendReport(raw: string, mode: TrendReportMode): Formatted
     nextTrackers,
     sources,
   };
+}
+
+/** 월간 요약 한 줄 등에 쓸 짧은 메모리 요약 (없으면 null) */
+export function formatTrendMemoryDeltaHeadline(delta: TrendMemoryDelta): string | null {
+  const n =
+    delta.new.length +
+    delta.reinforced.length +
+    delta.weakened.length +
+    delta.dormant.length;
+  if (n === 0) return null;
+  return `장기 메모리 변화 — 신규 ${delta.new.length} · 강화 ${delta.reinforced.length} · 약화 ${delta.weakened.length} · 휴면 ${delta.dormant.length}`;
 }
 
 export function buildSafeFallbackReport(params: {

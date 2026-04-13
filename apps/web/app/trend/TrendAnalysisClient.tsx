@@ -59,6 +59,86 @@ const LOADING_STEPS = [
   "최종 정리 중",
 ];
 
+function TrendMemoryDeltaSection({ result }: { result: TrendAnalysisGenerateResponseBody }) {
+  const d = result.memoryDelta;
+  const m = result.meta;
+  const total =
+    (d?.new.length ?? 0) +
+    (d?.reinforced.length ?? 0) +
+    (d?.weakened.length ?? 0) +
+    (d?.dormant.length ?? 0);
+
+  if (!m.memoryEnabled) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/90 px-3 py-3 text-xs text-slate-600">
+        <p className="font-medium text-slate-700">장기 메모리 변화</p>
+        <p className="mt-1.5 leading-relaxed">
+          {m.memoryStatusNote ??
+            "이번 실행에서는 장기 메모리 비교를 수행하지 못했습니다. Supabase에 Phase 4 DDL을 적용하면 활성화됩니다."}
+        </p>
+      </div>
+    );
+  }
+
+  if (!m.memoryReadSucceeded && total === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/90 px-3 py-3 text-xs text-slate-600">
+        <p className="font-medium text-slate-700">장기 메모리 변화</p>
+        <p className="mt-1.5 leading-relaxed">
+          읽기가 생략되었거나 실패했습니다. 비교 결과를 표시하지 않습니다.
+          {m.memoryStatusNote ? ` ${m.memoryStatusNote}` : ""}
+        </p>
+      </div>
+    );
+  }
+
+  if (total === 0) {
+    return (
+      <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-3 text-xs text-slate-600">
+        <p className="font-medium text-slate-700">장기 메모리 변화</p>
+        <p className="mt-1.5">이번 리포트에서 구조적 변화로 분류된 delta가 없습니다.</p>
+      </div>
+    );
+  }
+
+  const block = (
+    label: string,
+    tone: string,
+    items: { memoryKey: string; title: string; summary: string; reason: string }[],
+  ) => {
+    if (items.length === 0) return null;
+    return (
+      <div className={`rounded-md border px-2.5 py-2 ${tone}`}>
+        <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">{label}</p>
+        <ul className="mt-1.5 space-y-2">
+          {items.map((it) => (
+            <li key={it.memoryKey} className="text-[12px] leading-snug">
+              <span className="font-medium text-slate-800">{it.title}</span>
+              {it.summary ? <p className="mt-0.5 text-slate-600">{it.summary}</p> : null}
+              {it.reason ? <p className="mt-0.5 text-[11px] text-slate-500">{it.reason}</p> : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
+  return (
+    <div className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
+      <p className="text-xs font-semibold text-slate-800">장기 메모리 변화</p>
+      <p className="mt-1 text-[11px] text-slate-500">
+        지난 실행과 비교한 구조적 테마 변화입니다. 일회성 뉴스는 의도적으로 제외될 수 있습니다.
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {block("신규", "border-emerald-100 bg-emerald-50/70", d.new)}
+        {block("강화", "border-blue-100 bg-blue-50/70", d.reinforced)}
+        {block("약화", "border-amber-100 bg-amber-50/70", d.weakened)}
+        {block("휴면", "border-slate-200 bg-slate-50/80", d.dormant)}
+      </div>
+    </div>
+  );
+}
+
 export function TrendAnalysisClient() {
   const [mode, setMode] = useState<TrendReportMode>("weekly");
   const [horizon, setHorizon] = useState<TrendHorizon>("30d");
@@ -75,6 +155,8 @@ export function TrendAnalysisClient() {
   const [useDataAnalysis, setUseDataAnalysis] = useState(false);
   const [preferFreshness, setPreferFreshness] = useState(false);
   const [attachedFileIdsRaw, setAttachedFileIdsRaw] = useState("");
+  const [includeMemoryContext, setIncludeMemoryContext] = useState(true);
+  const [saveToSqlMemory, setSaveToSqlMemory] = useState(true);
 
   const [loading, setLoading] = useState(false);
   const [loadingStepIdx, setLoadingStepIdx] = useState(0);
@@ -140,6 +222,8 @@ export function TrendAnalysisClient() {
           useDataAnalysis,
           preferFreshness,
           ...(fileIds.length > 0 ? { attachedFileIds: fileIds } : {}),
+          includeMemoryContext,
+          saveToSqlMemory,
         }),
       });
       const data = (await res.json()) as TrendAnalysisGenerateResponseBody & { error?: string };
@@ -164,6 +248,8 @@ export function TrendAnalysisClient() {
     useDataAnalysis,
     preferFreshness,
     attachedFileIdsRaw,
+    includeMemoryContext,
+    saveToSqlMemory,
   ]);
 
   const copyMarkdown = async () => {
@@ -343,6 +429,25 @@ export function TrendAnalysisClient() {
           </label>
         </div>
 
+        <div className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-4">
+          <p className="text-xs font-medium text-slate-600">장기 메모리 (SQL)</p>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-700">
+            <input
+              type="checkbox"
+              checked={includeMemoryContext}
+              onChange={(e) => setIncludeMemoryContext(e.target.checked)}
+            />
+            이전 리포트·토픽과 비교 (읽기)
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-700">
+            <input type="checkbox" checked={saveToSqlMemory} onChange={(e) => setSaveToSqlMemory(e.target.checked)} />
+            실행 이력·메모리에 저장 (쓰기)
+          </label>
+          <p className="text-[11px] text-slate-500">
+            Supabase에 `trend_*` 테이블이 없으면 자동으로 건너뜁니다. 리포트 본문은 항상 생성됩니다.
+          </p>
+        </div>
+
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -422,6 +527,14 @@ export function TrendAnalysisClient() {
                 </>
               ) : null}
             </p>
+            <p className="mt-2 text-[11px] text-slate-500">
+              장기 메모리:{" "}
+              {result.meta.memoryEnabled
+                ? `읽기 ${result.meta.memoryReadSucceeded ? "성공" : "생략/실패"} · 쓰기 ${
+                    result.meta.memoryWriteSucceeded ? "성공" : "생략/실패"
+                  } · 읽은 항목 ${result.meta.memoryItemsRead} · 기록 ${result.meta.memoryItemsWritten}`
+                : "비활성 또는 테이블 없음"}
+            </p>
           </div>
 
           {result.warnings.length > 0 ? (
@@ -463,6 +576,8 @@ export function TrendAnalysisClient() {
               </ul>
             </div>
           ) : null}
+
+          <TrendMemoryDeltaSection result={result} />
 
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-800">한눈에 보는 결론</h3>

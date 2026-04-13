@@ -1,4 +1,4 @@
-import type { TrendReportMode } from '@office-unify/shared-types';
+import type { TrendAnalysisMeta, TrendMemoryDelta, TrendReportMode } from '@office-unify/shared-types';
 import type { FormattedTrendReport } from './trendCenterFormatter';
 import type { TrendSourcePack } from './trendCenterSourcePack';
 import { mergeWarnings } from '../research-center/researchCenterGuards';
@@ -90,6 +90,33 @@ export function mergeTrendWarnings(
   b: string[],
 ): string[] {
   return mergeWarnings(a, b);
+}
+
+/** memory enabled인데 delta가 비어 있을 때만 정보성 경고 */
+export function applyTrendMemoryGuards(params: {
+  meta: Pick<
+    TrendAnalysisMeta,
+    'memoryEnabled' | 'memoryReadSucceeded' | 'memoryWriteSucceeded' | 'memoryItemsRead'
+  >;
+  memoryDelta: TrendMemoryDelta;
+}): string[] {
+  const { meta, memoryDelta } = params;
+  if (
+    !meta.memoryEnabled ||
+    !meta.memoryReadSucceeded ||
+    !meta.memoryWriteSucceeded
+  ) {
+    return [];
+  }
+  const total =
+    memoryDelta.new.length +
+    memoryDelta.reinforced.length +
+    memoryDelta.weakened.length +
+    memoryDelta.dormant.length;
+  if (total === 0 && meta.memoryItemsRead > 0) {
+    return ['장기 메모리: DB 읽기는 성공했으나 이번 실행의 delta 분류 결과가 비어 있습니다.'];
+  }
+  return [];
 }
 
 export function resolveTrendConfidence(params: {

@@ -75,6 +75,10 @@ function parseBody(raw: unknown): TrendAnalysisGenerateRequestBody | null {
     useDataAnalysis: o.useDataAnalysis === true,
     preferFreshness: o.preferFreshness === true,
     attachedFileIds: parseAttachedFileIds(o.attachedFileIds),
+    /** 기본 true — 생략 시 기존 메모리 읽기 */
+    includeMemoryContext: o.includeMemoryContext !== false,
+    /** 기본 true — 생략 시 SQL에 실행 이력·토픽 저장 */
+    saveToSqlMemory: o.saveToSqlMemory !== false,
   };
 }
 

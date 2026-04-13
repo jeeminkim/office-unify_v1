@@ -221,6 +221,8 @@ export type {
   TrendFreshnessMetaOut,
   TrendGeo,
   TrendHorizon,
+  TrendMemoryDelta,
+  TrendMemoryDeltaItem,
   TrendOutputFocus,
   TrendProvider,
   TrendReportMode,
@@ -229,3 +231,4 @@ export type {
   TrendSectionBlock,
   TrendToolUsage,
 } from './trendAnalysis';
+export { EMPTY_TREND_MEMORY_DELTA } from './trendAnalysis';
