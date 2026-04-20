@@ -25,6 +25,8 @@ export type CommitteeFollowupDraft = {
   requiredEvidence: string[];
   acceptanceCriteria: string[];
   ownerPersona?: string;
+  duePolicy?: string;
+  verificationNote?: string;
   status: CommitteeFollowupStatus;
 };
 
@@ -62,5 +64,23 @@ export type CommitteeFollowupItem = CommitteeFollowupDraft & {
   sourceReportKind: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type CommitteeFollowupListResponse = {
+  items: CommitteeFollowupItem[];
+  total: number;
+  limit: number;
+  warnings?: string[];
+};
+
+export type CommitteeFollowupDetailResponse = {
+  item: CommitteeFollowupItem;
+  artifacts: {
+    id: string;
+    artifactType: string;
+    contentMd: string | null;
+    contentJson: Record<string, unknown> | null;
+    createdAt: string;
+  }[];
 };
 

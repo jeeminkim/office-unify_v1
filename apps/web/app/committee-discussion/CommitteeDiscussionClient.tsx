@@ -382,6 +382,14 @@ export function CommitteeDiscussionClient() {
             >
               {extractingFollowups ? "후속작업 추출 중…" : "후속작업 추출"}
             </button>
+            {committeeTurnId ? (
+              <Link
+                href={`/committee-followups?committeeTurnId=${committeeTurnId}`}
+                className="mt-2 ml-2 inline-flex rounded-md border border-indigo-700 bg-white px-4 py-2 text-sm text-indigo-900"
+              >
+                저장된 후속작업 보기
+              </Link>
+            ) : null}
           </div>
         ) : null}
       </div>

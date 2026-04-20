@@ -33,6 +33,10 @@ create index if not exists committee_followup_items_status_idx
   on public.committee_followup_items (status);
 create index if not exists committee_followup_items_created_at_idx
   on public.committee_followup_items (created_at desc);
+create index if not exists committee_followup_items_user_status_updated_idx
+  on public.committee_followup_items (user_key, status, updated_at desc);
+create index if not exists committee_followup_items_user_turn_idx
+  on public.committee_followup_items (user_key, committee_turn_id);
 
 create table if not exists public.committee_followup_artifacts (
   id uuid primary key default gen_random_uuid(),

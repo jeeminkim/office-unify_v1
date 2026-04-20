@@ -35,6 +35,11 @@
 | `committee_followup_items` | `committee_turn_id`에 연결된 후속작업 본문/상태 |
 | `committee_followup_artifacts` | draft JSON 등 원본 아티팩트 |
 
+주요 인덱스:
+
+- `user_key`, `committee_turn_id`, `status`, `created_at desc`
+- 운영 조회 최적화: `user_key + status + updated_at desc`, `user_key + committee_turn_id`
+
 핵심 원칙:
 
 - 조일현 Markdown(`report`)은 사람용 문서이며, DB 저장용 후속작업은 별도 JSON 계약으로 분리한다.

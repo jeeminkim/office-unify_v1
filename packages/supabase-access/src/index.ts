@@ -30,8 +30,12 @@ export {
 } from './webCommitteeTurnsRepository';
 export {
   getWebCommitteeTurnForUserScope,
+  getCommitteeFollowupItemById,
   insertCommitteeFollowupArtifact,
   insertCommitteeFollowupItem,
+  listCommitteeFollowupArtifacts,
+  listCommitteeFollowupItems,
+  updateCommitteeFollowupItem,
 } from './committeeFollowupRepository';
 export { selectPersonaLongTermSummary, upsertPersonaLongTermSummary } from './personaMemoryWebRepository';
 export {
