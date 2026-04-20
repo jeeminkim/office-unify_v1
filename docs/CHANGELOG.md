@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Infographic export renderer v2:** 저장용 SVG를 `IndustryStructureExport`/`MarketOpinionExport` 2종으로 분기하고, flow는 외곽 레인+요약(시황형은 번호 흐름), 차트는 유효 슬롯만 auto-compact, PNG는 기본적으로 경고·디버그 메타 비노출·짧은 품질 배지 최대 2개. 시황형 상단 **핵심 수치 카드**·K-엔터 회귀 fixture/`exportLayout.test.ts` 추가.
 - **Infographic control + predictability polish:** 자동 분류(articlePattern/industryPattern) override UI와 reset-to-auto를 추가해 사용자 교정 루프를 강화.
 - **Degraded fallback action guide:** degraded reason classifier를 도입하고 reason별 행동 문구/CTA(재시도, 텍스트 축약, 패턴 전환)를 제공.
 - **Result mode surfaced:** 생성 결과를 `industry_structure`/`opinion_argument_map`/`market_checkpoint_map` 등으로 명시하고 구조화 방식을 strip으로 설명.

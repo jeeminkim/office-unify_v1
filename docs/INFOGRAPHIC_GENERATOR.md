@@ -85,6 +85,37 @@
 - 모바일에서는 `저장용 미리보기` 액션으로 export 레이아웃을 확인한다.
 - 저장용 미리보기에서 "이 화면이 PNG로 저장됩니다." 안내 후 저장을 수행한다.
 
+## Export 템플릿 분기 (저장본 전용)
+
+클라이언트 `resolveExportTemplate(articlePattern, resultMode)`가 PNG/SVG 레이아웃을 선택한다 (추출기와 독립).
+
+| 템플릿 | 대상 문서 성격(대표) | 특징 |
+|--------|---------------------|------|
+| `IndustryStructureExport` | `industry_report`, `company_report`, `thematic_analysis` 또는 `mixed_or_unknown`+`industry_structure` | 4-zone 비중·외곽 flow 레인·플레이어/차트 하단 |
+| `MarketOpinionExport` | `market_commentary`, `opinion_editorial`, `how_to_explainer`, 기타 mixed→시황/논점 계열 | 상단 요약+**핵심 수치 카드**(원문 숫자 기반)·4-block·번호형 흐름 요약·화살표 최소화 |
+
+화면 상단( SVG 밖)에 `저장 템플릿: …` 스트립으로 선택 결과를 표시한다(PNG에는 포함되지 않음).
+
+## 차트 auto-compact (`computeChartPolicy`)
+
+유효한 막대/원형/선형 데이터 개수에 따라 `none | single_focus | dual_split | full_three`를 적용한다.
+
+- 막대: 라벨+유효 숫자
+- 원형: 양수 값만
+- 선형: 유효 점 **2개 이상**일 때만 슬롯 사용(그렇지 않으면 export에서 생략)
+
+빈 '데이터 없음' 상자는 export에서 가급적 그리지 않는다(`SimplePieChart`/`SimpleLineChart`의 export 모드).
+
+## Export 텍스트 compact
+
+- `ZoneCard`의 `variant="export"`: 항목 수·줄 수·키워드 줄 수 축소
+- 플레이어/리스크/메모: `exportLayout`의 길이 상한·둘째 줄 제한
+
+## PNG 디버그 최소화
+
+- `InfographicCanvas`의 `showExportDebug`(기본 `false`): 끌 때 SVG 하단의 장문 `warnings`·상세 `sourceMeta` 스트립을 숨기고 `office-unify · 날짜`만 남긴다.
+- 품질 배지(예: 복구 추출, 자동 보정, 차트 일부 생략)는 최대 2개.
+
 ## Extractor Hardening (긴 본문/도메인 편차 대응)
 
 - source extraction 성공 이후 `text -> InfographicSpec` 실패를 줄이기 위해 추출 단계 강화:
@@ -156,7 +187,7 @@
 
 ## PNG 저장 방식
 
-- 렌더 결과는 단일 SVG (`InfographicCanvas`)
+- 렌더 결과는 단일 SVG (`InfographicCanvas`; 내부적으로 위 export 템플릿 중 하나)
 - `XMLSerializer`로 SVG 문자열화
 - `canvas`에 2x 스케일로 draw 후 PNG 다운로드
 - 한글 가독성을 위해 단색 배경 + 고정 폰트 크기 + 줄바꿈 유틸 사용

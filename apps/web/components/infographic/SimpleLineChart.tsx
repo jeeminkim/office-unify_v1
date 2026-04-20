@@ -6,12 +6,14 @@ export function SimpleLineChart({
   y,
   width,
   height,
+  variant = 'default',
 }: {
   data: InfographicLineChart[];
   x: number;
   y: number;
   width: number;
   height: number;
+  variant?: 'default' | 'export';
 }) {
   const rows = data.slice(0, 8).map((d) => ({ label: d.label, value: typeof d.value === 'number' ? d.value : null }));
   const valid = rows.filter((r) => r.value != null) as Array<{ label: string; value: number }>;
@@ -20,6 +22,7 @@ export function SimpleLineChart({
   const range = Math.max(1, max - min);
 
   if (valid.length < 2) {
+    if (variant === 'export') return null;
     return (
       <g>
         <text x={x} y={y - 6} fontSize={11} fontWeight={700} fill="#1e3a8a">

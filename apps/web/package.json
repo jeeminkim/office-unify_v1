@@ -27,6 +27,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "vitest": "^3.2.4",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

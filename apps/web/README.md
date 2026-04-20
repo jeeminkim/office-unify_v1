@@ -59,6 +59,8 @@ npm run clean:win   # apps/web 전용 — .next / node_modules 정리
 - 차트 수치 추정 생성 금지 (`null/empty` 허용)
 - 투자 조언이 아닌 산업 구조화 도구로 동작
 - PDF는 텍스트 레이어 중심 파싱(OCR 미지원)
+- **Export(PNG) 전용**: `articlePattern`/`resultMode`에 따라 저장 템플릿이 `IndustryStructureExport` vs `MarketOpinionExport`로 갈린다. 읽기용 responsive는 상세 유지, export는 compact·차트 자동 축약·PNG 경고 최소화.
+- 회귀: `K_ENTERTAINMENT_MARKET_REGRESSION_TEXT` / `K_ENTERTAINMENT_MARKET_REGRESSION_SPEC`(시황형·수치 카드)은 `lib/infographic/regressionFixtures.ts`와 `exportLayout.test.ts`에 고정.
 
 ## Mermaid 렌더 안정화 파이프라인 (Flow)
 

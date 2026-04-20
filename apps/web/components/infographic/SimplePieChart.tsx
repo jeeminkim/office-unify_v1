@@ -11,16 +11,19 @@ export function SimplePieChart({
   cx,
   cy,
   radius,
+  variant = 'default',
 }: {
   data: InfographicPieChart[];
   cx: number;
   cy: number;
   radius: number;
+  variant?: 'default' | 'export';
 }) {
   const rows = data.slice(0, 5).filter((d) => typeof d.value === 'number' && (d.value ?? 0) > 0);
   const total = rows.reduce((sum, row) => sum + (row.value ?? 0), 0);
 
   if (rows.length === 0 || total <= 0) {
+    if (variant === 'export') return null;
     return (
       <g>
         <text x={cx - 40} y={cy - radius - 6} fontSize={11} fontWeight={700} fill="#1e3a8a">

@@ -15,6 +15,7 @@ import { SEMICONDUCTOR_SAMPLE_SPEC, SPACE_SAMPLE_SPEC } from '@/lib/infographic/
 import {
   CYBERSECURITY_REGRESSION_TEXT,
   HEALTHCARE_INSTITUTIONAL_REGRESSION_TEXT,
+  K_ENTERTAINMENT_MARKET_COMMENTARY_REGRESSION_TEXT,
   MARKET_COMMENTARY_REGRESSION_TEXT,
   OPINION_EDITORIAL_REGRESSION_TEXT,
   SEMICONDUCTOR_REPORT_REGRESSION_TEXT,
@@ -415,6 +416,18 @@ export default function InfographicClient() {
             className="rounded border border-cyan-300 bg-cyan-50 px-3 py-2 text-xs text-cyan-800"
           >
             시황형 샘플
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIndustryName('K-엔터');
+              setSourceType('text');
+              setRawText(K_ENTERTAINMENT_MARKET_COMMENTARY_REGRESSION_TEXT);
+              setSourcePreviewText('');
+            }}
+            className="rounded border border-fuchsia-300 bg-fuchsia-50 px-3 py-2 text-xs text-fuchsia-900"
+          >
+            K-엔터 시황 회귀
           </button>
           <button
             type="button"

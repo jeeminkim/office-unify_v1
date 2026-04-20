@@ -7,14 +7,27 @@ type Props = {
   y: number;
   width: number;
   height: number;
+  /** 저장용 PNG: 항목 수·길이을 줄여 밀도를 낮춘다 */
+  variant?: 'default' | 'export';
 };
 
-export function ZoneCard({ zone, x, y, width, height }: Props) {
-  const titleLines = wrapTextLines(zone.name, 18, 2);
-  const itemText = zone.items.slice(0, 5).join(' · ') || '정보 없음';
-  const itemLines = wrapTextLines(itemText, 30, 3);
-  const keywordText = zone.visualKeywords.slice(0, 4).join(' / ');
-  const keywordLines = wrapTextLines(keywordText || '키워드 없음', 30, 2);
+function truncateItem(s: string, max: number): string {
+  const t = s.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+export function ZoneCard({ zone, x, y, width, height, variant = 'default' }: Props) {
+  const isExport = variant === 'export';
+  const maxItems = isExport ? 4 : 5;
+  const itemJoinLen = isExport ? 24 : 30;
+  const titleLines = wrapTextLines(zone.name, isExport ? 16 : 18, 2);
+  const rawItems = zone.items.slice(0, maxItems).map((it) => truncateItem(it, isExport ? 40 : 200));
+  const itemText = rawItems.join(' · ') || '정보 없음';
+  const itemLines = wrapTextLines(itemText, itemJoinLen, isExport ? 2 : 3);
+  const kwLimit = isExport ? 2 : 4;
+  const keywordText = zone.visualKeywords.slice(0, kwLimit).join(' / ');
+  const keywordLines = wrapTextLines(keywordText || '키워드 없음', itemJoinLen, isExport ? 1 : 2);
 
   return (
     <g>
@@ -25,12 +38,12 @@ export function ZoneCard({ zone, x, y, width, height }: Props) {
         </text>
       ))}
       {itemLines.map((line, i) => (
-        <text key={`item-${i}`} x={x + 14} y={y + 62 + i * 15} fontSize={11} fill="#334155">
+        <text key={`item-${i}`} x={x + 14} y={y + 62 + i * (isExport ? 14 : 15)} fontSize={isExport ? 10 : 11} fill="#334155">
           {line}
         </text>
       ))}
       {keywordLines.map((line, i) => (
-        <text key={`kw-${i}`} x={x + 14} y={y + height - 24 + i * 14} fontSize={10} fill="#64748b">
+        <text key={`kw-${i}`} x={x + 14} y={y + height - 24 + i * 14} fontSize={isExport ? 9 : 10} fill="#64748b">
           {line}
         </text>
       ))}

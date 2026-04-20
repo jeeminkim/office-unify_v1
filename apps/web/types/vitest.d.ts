@@ -3,6 +3,7 @@ declare module 'vitest' {
   export function it(name: string, fn: () => void): void;
   export function expect<T = unknown>(value: T): {
     toBe(expected: unknown): void;
+    toEqual(expected: unknown): void;
     toContain(expected: unknown): void;
     toBeTruthy(): void;
     startsWith(expected: string): boolean;

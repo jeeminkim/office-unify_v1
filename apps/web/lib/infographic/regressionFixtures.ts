@@ -1,3 +1,93 @@
+import type { InfographicSpec } from '@office-unify/shared-types';
+
+/** K-엔터 시황형 디자인 회귀: 막대 중심·수치 카드·MarketOpinionExport·PNG 경고 최소화 검증용 */
+export const K_ENTERTAINMENT_MARKET_COMMENTARY_REGRESSION_TEXT = `K-엔터 시황: 목표주가 하향과 리스크 재평가
+증권사들이 보수적으로 재조정한 가운데 하이브 목표주가가 15.6% 하향, YG는 13.3% 하향으로 정리됐다.
+업계 내 최대 하향폭은 18.8% 수준으로, 단기 수급보다 구조적 우려(세대교체 리스크, 인적 리스크)가 부각된다.
+
+체크포인트:
+- 음원/콘서트 모멘텀 대비 영업이익 변동성
+- 해외 투어·IP 확장의 지속성
+- 주요 인력 이슈에 따른 프로젝트 지연 가능성
+
+시사점:
+낙관/비관을 가르기보다 하향폭이 큰 종목부터 근거와 리스크를 분리해 점검하는 편이 안전하다.`;
+
+/** 수동/테스트용 고정 스펙: 실제 LLM 출력과 다를 수 있으나 export 레이아웃 회귀 기준으로 사용 */
+export const K_ENTERTAINMENT_MARKET_REGRESSION_SPEC: InfographicSpec = {
+  title: 'K-엔터: 목표가 하향과 리스크 재평가',
+  subtitle: '시황 브리프 (회귀 기준 스펙)',
+  industry: 'K-엔터',
+  summary:
+    '목표주가 하향이 이어지며 세대교체·인적 리스크가 부각된다. 하이브 15.6%·YG 13.3% 하향, 업계 최대 하향폭 약 18.8%로 정리.',
+  zones: [
+    {
+      id: 'input',
+      name: '문제의식',
+      items: ['목표가 하향 속도', '수급 대비 펀더멘털', '이벤트 일정'],
+      visualKeywords: ['하향', '변동성'],
+    },
+    {
+      id: 'production',
+      name: '핵심 주장',
+      items: ['구조적 우려가 단기 모멘텀을 압도', '종목별 편차 확대'],
+      visualKeywords: ['리스크', '편차'],
+    },
+    {
+      id: 'distribution',
+      name: '쟁점/반론',
+      items: ['해외 성장 스토리 지속성', '밸류 조정 범위'],
+      visualKeywords: ['성장', '밸류'],
+    },
+    {
+      id: 'demand',
+      name: '시사점',
+      items: ['근거·리스크 분리 점검', '이벤트 전후 변동성 관리'],
+      visualKeywords: ['점검', '모니터링'],
+    },
+  ],
+  flows: [
+    { from: 'input', to: 'production', type: 'data', label: '시그널' },
+    { from: 'production', to: 'demand', type: 'capital', label: '시사' },
+  ],
+  lineup: [
+    { name: '하이브', category: '리더', note: '목표가 하향 15.6%·IP 라인업 점검' },
+    { name: 'YG', category: '중형', note: '13.3% 하향·프로젝트 일정 리스크' },
+    { name: 'JYP', category: '중형', note: '상대적 방어·밸류 디스카운트 완화 여부' },
+  ],
+  comparisons: [
+    { label: '목표주가 하향 최대폭', value: '18.8%', note: '업계 범위' },
+    { label: '하이브 하향폭', value: '15.6%', note: '' },
+    { label: 'YG 하향폭', value: '13.3%', note: '' },
+  ],
+  risks: [
+    { title: '세대교체 리스크', description: '신인 대비 기존 라인업 성장세 둔화 우려' },
+    { title: '인적 리스크', description: '핵심 인력 이탈·프로젝트 지연 가능성' },
+  ],
+  charts: {
+    bar: [
+      { label: '하이브', value: 15.6 },
+      { label: 'YG', value: 13.3 },
+      { label: 'JYP', value: 9.2 },
+    ],
+    pie: [{ label: '점유', value: null }],
+    line: [{ label: 't1', value: 1 }],
+  },
+  notes: ['하향폭이 큰 종목부터 근거 분리', '실적 시즌 가이던스 확인'],
+  warnings: [
+    'PNG_EXPORT_REGRESSION: 이 경고 문구는 기본 PNG에 노출되면 안 됩니다( showExportDebug=false ).',
+  ],
+  sourceMeta: {
+    sourceType: 'pasted_text',
+    generatedAt: '2026-04-20T12:00:00.000Z',
+    confidence: 'medium',
+    articlePattern: 'market_commentary',
+    resultMode: 'market_checkpoint_map',
+    extractionMode: 'llm_direct',
+    parseStage: 'strict_ok',
+  },
+};
+
 export const CYBERSECURITY_REGRESSION_TEXT = `2026 사이버 보안 위협 보고서 요약
 설문 대상: 국내외 보안 담당자 총 667명
 
