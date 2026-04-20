@@ -37,6 +37,7 @@
   - sourceType 기반 원문 추출 전용
   - URL/PDF 입력의 추출 결과를 preview/edit 단계로 전달
   - 내부 처리: `raw extract -> cleanup -> cleaned text`
+  - cleanup 결과 요약(strip) 제공: 반복 헤더 제거, 노이즈 라인 정리, 문단 병합 등
 - `POST /api/infographic/extract`
   - 최종 텍스트를 받아 `InfographicSpec` 생성
 
@@ -72,6 +73,7 @@
 - fallback 발생 시 `warnings`에 사유 기록
 - URL/PDF 본문 추출 실패 또는 본문 과소 추출 시 `extractionWarnings` 기록
 - cleanup 적용 시 `cleanupNotes`에 적용 규칙을 기록
+- UI는 기본적으로 cleaned text를 보여주고, raw text는 접기 패널에서만 노출한다.
 
 ## 렌더 모드 정책
 
@@ -81,6 +83,7 @@
 - `export`: PNG 저장 기준 레이아웃
 - PNG 저장은 항상 export 기준으로 수행
 - 모바일에서는 `저장용 미리보기` 액션으로 export 레이아웃을 확인한다.
+- 저장용 미리보기에서 "이 화면이 PNG로 저장됩니다." 안내 후 저장을 수행한다.
 
 ## PNG 저장 방식
 

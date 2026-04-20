@@ -101,6 +101,9 @@ type JoReportSanitizeMeta = {
   removedTableCount: number;
   removedBucketLikeBlocks: number;
   removedPreview: string[];
+  removedSectionCount: number;
+  keptSectionCount: number;
+  sanitationSeverity: 'low' | 'medium' | 'high';
 };
 
 function sanitizeJoReportMarkdown(markdown: string): { markdown: string; meta: JoReportSanitizeMeta } {
@@ -186,6 +189,7 @@ function sanitizeJoReportMarkdown(markdown: string): { markdown: string; meta: J
   }
 
   const ordered = [title, ''];
+  let keptSectionCount = 0;
   for (const section of allowedH2) {
     const sectionLines = (sections.get(section) ?? []).filter((v) => v.trim().length > 0);
     ordered.push(`## ${section}`);
@@ -193,8 +197,21 @@ function sanitizeJoReportMarkdown(markdown: string): { markdown: string; meta: J
       ordered.push('- (요약 정보 없음)');
     } else {
       ordered.push(...sectionLines);
+      keptSectionCount += 1;
     }
     ordered.push('');
+  }
+  const removedSectionCount = Array.from(new Set(removedSectionTitles)).length;
+  const severityScore = removedBlockCount + removedTableCount + removedBucketLikeBlocks + removedSectionCount;
+  const sanitationSeverity: 'low' | 'medium' | 'high' =
+    severityScore >= 8 ? 'high' : severityScore >= 3 ? 'medium' : 'low';
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[jo-report-sanitize]', {
+      sanitationSeverity,
+      removedTableCount,
+      removedSectionTitles: Array.from(new Set(removedSectionTitles)),
+      removedBlockCount,
+    });
   }
   return {
     markdown: ordered.join('\n').trim(),
@@ -205,6 +222,9 @@ function sanitizeJoReportMarkdown(markdown: string): { markdown: string; meta: J
       removedTableCount,
       removedBucketLikeBlocks,
       removedPreview: removedPreview.slice(0, 2),
+      removedSectionCount,
+      keptSectionCount,
+      sanitationSeverity,
     },
   };
 }

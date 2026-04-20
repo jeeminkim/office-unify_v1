@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { InfographicSpec } from '@office-unify/shared-types';
 import { FlowLegend, flowColor } from './FlowLegend';
 import { SimpleBarChart } from './SimpleBarChart';
@@ -14,6 +14,9 @@ const HEIGHT = 1123;
 
 type Props = {
   spec: InfographicSpec;
+  showSaveButton?: boolean;
+  onBeforeSave?: () => boolean | Promise<boolean>;
+  onRenderReadyChange?: (ready: boolean) => void;
 };
 
 function zoneRect(id: string): { x: number; y: number; w: number; h: number } {
@@ -37,12 +40,25 @@ function drawArrow(
   return { x1, y1, x2, y2 };
 }
 
-export function InfographicCanvas({ spec }: Props) {
+export function InfographicCanvas({
+  spec,
+  showSaveButton = true,
+  onBeforeSave,
+  onRenderReadyChange,
+}: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const notesText = useMemo(() => wrapTextLines(spec.notes.join(' / '), 70, 4), [spec.notes]);
+  useEffect(() => {
+    onRenderReadyChange?.(Boolean(svgRef.current));
+    return () => onRenderReadyChange?.(false);
+  }, [onRenderReadyChange]);
 
   const handleSavePng = async () => {
     if (!svgRef.current) return;
+    if (onBeforeSave) {
+      const allowed = await onBeforeSave();
+      if (!allowed) return;
+    }
     const serializer = new XMLSerializer();
     const source = serializer.serializeToString(svgRef.current);
     const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
@@ -71,13 +87,15 @@ export function InfographicCanvas({ spec }: Props) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500">A4 비율 고정 템플릿 렌더</p>
-        <button
-          type="button"
-          onClick={() => void handleSavePng()}
-          className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-        >
-          PNG 저장
-        </button>
+        {showSaveButton ? (
+          <button
+            type="button"
+            onClick={() => void handleSavePng()}
+            className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            PNG 저장
+          </button>
+        ) : null}
       </div>
       <div className="overflow-auto rounded-lg border border-slate-200 bg-white">
         <svg ref={svgRef} width={WIDTH} height={HEIGHT} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="industry infographic">

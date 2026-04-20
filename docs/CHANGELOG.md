@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Stabilization Phase 4 (explainability + trust):** followup recommendedAction을 warning code + draft 필드 기반 item-aware 가이드로 고도화하고 quality strip(`정상 추출/자동 복구 적용/복구 초안 기반`)을 추가. `fallback_used` 저장 시 필드 부족 맥락을 포함한 confirm UX를 제공.
+- **Jo report quality loop:** sanitizer 메타에 `removedSectionCount`, `keptSectionCount`, `sanitationSeverity`를 추가하고 debug/로그에서 품질 회귀 감시가 가능하도록 보강.
+- **Infographic cleanup trust UX:** source cleanup 결과에 raw/cleaned 길이, cleanup notes, severity 요약 strip을 추가. 기본은 cleaned preview, raw는 debug 토글로 분리. 모바일 저장용 미리보기에서 저장 직전 확인과 렌더 준비 상태 안내를 추가.
 - **Stabilization Phase 3 (operational trust):** followup warning에 `recommendedAction` 가이드를 추가하고 `fallback_used` 저장 전 점검 confirm UX를 도입. 조일현 보고서는 whitelist sanitizer 제거 이력 메타(`removedSectionTitles`, `removedBlockCount`, `removedTableCount`, `removedBucketLikeBlocks`, `removedPreview`)를 debug 용도로 제공.
 - **Infographic cleanup + mobile export preview:** source text 추출에 cleanup 단계(`raw -> cleanup -> cleaned`)를 추가하고 `extract-source-text` 응답에 raw/cleaned 길이 및 cleanup 메타를 포함. 기본 preview는 cleaned text로 제공하고 raw text는 접기 debug로 분리. 모바일에서는 export를 `저장용 미리보기` 액션으로 확인하도록 UX 보강.
 - **Stabilization Phase 2 (UX-first):** followup warning code를 사용자 친화 문구로 매핑하고(`parse_failed`, `fallback_used` 등), `fallback_used` 초안에 `자동 복구 초안` 배지를 추가. raw code는 디버그 영역으로 분리.

@@ -39,12 +39,62 @@ const WARNING_MESSAGE_MAP: Record<string, { message: string; recommendedAction: 
   },
 };
 
+type FollowupActionHint = {
+  shortAction: string;
+  detailedAction?: string;
+  focusFields: Array<"title" | "entities" | "acceptanceCriteria" | "rationale" | "priority" | "itemType">;
+};
+
+function resolveItemAwareAction(code: string, item: CommitteeFollowupDraft): FollowupActionHint | null {
+  const hasWeakTitle = item.title.trim().length < 10 || /(추가|검토|확인|정리)/.test(item.title);
+  const hasEntities = item.entities.length > 0;
+  const hasCriteria = item.acceptanceCriteria.length > 0 && item.acceptanceCriteria.some((v) => v.length >= 8);
+  const hasRationale = item.rationale.trim().length >= 20;
+  if (code === "fallback_used") {
+    if (!hasEntities) {
+      return {
+        shortAction: "관련 종목/섹터를 먼저 보완하세요.",
+        detailedAction: "엔티티가 비어 있으면 실행 범위가 모호해집니다. 핵심 종목/섹터를 1~3개로 좁혀 적어주세요.",
+        focusFields: ["entities", "title"],
+      };
+    }
+    if (!hasCriteria) {
+      return {
+        shortAction: "완료 기준을 1~2개 구체적으로 적으세요.",
+        detailedAction: "측정 가능한 완료 기준이 있어야 저장 후 운영 보드에서 상태 전이가 쉬워집니다.",
+        focusFields: ["acceptanceCriteria", "rationale"],
+      };
+    }
+    return {
+      shortAction: "우선순위·근거·완료 기준을 마지막으로 점검하세요.",
+      detailedAction: "자동 복구 초안이므로 priority와 rationale이 실제 운영 우선순위와 맞는지 확인하세요.",
+      focusFields: ["priority", "rationale", "acceptanceCriteria"],
+    };
+  }
+  if (code === "repair_succeeded" && hasWeakTitle) {
+    return {
+      shortAction: "제목을 행동형 문장으로 바꾸세요.",
+      detailedAction: "예: '리스크 재확인'보다 '고변동 비중 20% 이하 재조정 기준 확정'처럼 바꾸면 추적이 쉬워집니다.",
+      focusFields: ["title", "itemType"],
+    };
+  }
+  if (code === "parse_failed" && (!hasRationale || !hasCriteria)) {
+    return {
+      shortAction: "근거와 완료 기준을 먼저 보강하세요.",
+      detailedAction: "파싱 실패 후 복구된 초안은 rationale/acceptanceCriteria가 약할 수 있어 저장 전 보완이 필요합니다.",
+      focusFields: ["rationale", "acceptanceCriteria"],
+    };
+  }
+  return null;
+}
+
 function toWarningUi(warnings: string[]): {
   infoMessages: string[];
   warnMessages: string[];
   recommendedActions: string[];
   rawCodes: string[];
   fallbackUsed: boolean;
+  qualityLabel: string;
 } {
   const uniq = Array.from(new Set(warnings));
   const fallbackUsed = uniq.includes("fallback_used");
@@ -62,12 +112,18 @@ function toWarningUi(warnings: string[]): {
       rawCodes.push(code);
     }
   }
+  const qualityLabel = fallbackUsed
+    ? "복구 초안 기반"
+    : uniq.includes("repair_succeeded")
+      ? "자동 복구 적용"
+      : "정상 추출";
   return {
     infoMessages,
     warnMessages,
     recommendedActions: Array.from(new Set(recommendedActions)),
     rawCodes,
     fallbackUsed,
+    qualityLabel,
   };
 }
 
@@ -85,6 +141,9 @@ export function CommitteeDiscussionClient() {
     removedTableCount: number;
     removedBucketLikeBlocks: number;
     removedPreview: string[];
+    removedSectionCount: number;
+    keptSectionCount: number;
+    sanitationSeverity: "low" | "medium" | "high";
   } | null>(null);
   const [showReportDebug, setShowReportDebug] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
@@ -209,6 +268,9 @@ export function CommitteeDiscussionClient() {
           removedTableCount: number;
           removedBucketLikeBlocks: number;
           removedPreview: string[];
+                  removedSectionCount: number;
+                  keptSectionCount: number;
+                  sanitationSeverity: "low" | "medium" | "high";
         };
         error?: string;
       };
@@ -280,7 +342,16 @@ export function CommitteeDiscussionClient() {
     const draft = followupDrafts.find((d) => d.localId === localId);
     if (!draft || draft.savedId) return;
     if (warningUi.fallbackUsed) {
-      const ok = window.confirm("자동 복구 초안입니다. 우선순위·근거·완료 기준을 확인한 뒤 저장하세요. 계속 저장할까요?");
+      const checklist = [
+        draft.entities.length === 0 ? "관련 엔티티" : null,
+        draft.acceptanceCriteria.length === 0 ? "완료 기준" : null,
+        draft.rationale.trim().length < 20 ? "근거 설명" : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const ok = window.confirm(
+        `자동 복구 초안입니다.${checklist ? ` 특히 ${checklist} 항목을 먼저 확인하세요.` : ""} 계속 저장할까요?`,
+      );
       if (!ok) return;
     }
     setSavingFollowupId(localId);
@@ -485,6 +556,15 @@ export function CommitteeDiscussionClient() {
 
       {reportMd !== null ? (
         <div className="flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-sm">
+          {reportSanitizeMeta ? (
+            <div className="rounded border border-emerald-200 bg-white px-2 py-1 text-[11px] text-emerald-900">
+              품질 요약: {reportSanitizeMeta.sanitationSeverity === "high"
+                ? "강한 정제 적용"
+                : reportSanitizeMeta.sanitationSeverity === "medium"
+                  ? "중간 정제 적용"
+                  : "경미한 정제 적용"}
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-emerald-900">GPT Builder용 Markdown</h2>
             <div className="flex gap-2">
@@ -525,6 +605,9 @@ export function CommitteeDiscussionClient() {
 
       {followupWarnings.length > 0 ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p className="mb-1 inline-flex rounded bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+            품질 요약: {warningUi.qualityLabel}
+          </p>
           <p className="font-semibold">후속작업 추출 안내</p>
           {warningUi.warnMessages.length > 0 ? (
             <ul className="mt-1 list-disc pl-4">
@@ -571,8 +654,17 @@ export function CommitteeDiscussionClient() {
 
       {followupDrafts.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 shadow-sm">
+          <p className="inline-flex w-fit rounded bg-white px-2 py-0.5 text-[11px] font-semibold text-indigo-800">
+            품질 요약: {warningUi.qualityLabel}
+          </p>
           <h2 className="text-sm font-semibold text-indigo-900">위원회 후속작업 초안</h2>
           {followupDrafts.map((draft) => (
+            (() => {
+              const itemHints = followupWarnings
+                .map((code) => resolveItemAwareAction(code, draft))
+                .filter((v): v is FollowupActionHint => v !== null);
+              const mergedFocus = Array.from(new Set(itemHints.flatMap((h) => h.focusFields)));
+              return (
             <div
               key={draft.localId}
               className={`rounded-lg border p-3 ${draft.savedId ? "border-emerald-300 bg-emerald-50" : "border-indigo-200 bg-white"}`}
@@ -600,6 +692,21 @@ export function CommitteeDiscussionClient() {
               <p className="mt-2 text-xs text-slate-600"><strong>관련 엔티티:</strong> {draft.entities.join(", ") || "-"}</p>
               <p className="mt-1 text-xs text-slate-600"><strong>필요 근거:</strong> {draft.requiredEvidence.join(" | ") || "-"}</p>
               <p className="mt-1 text-xs text-slate-600"><strong>완료 기준:</strong> {draft.acceptanceCriteria.join(" | ") || "-"}</p>
+              {itemHints.length > 0 ? (
+                <div className="mt-2 rounded border border-amber-200 bg-amber-50/60 px-2 py-2 text-[11px] text-amber-900">
+                  <p className="font-semibold">다음 확인 권장</p>
+                  <p>{itemHints[0].shortAction}</p>
+                  {itemHints[0].detailedAction ? (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-[11px] text-amber-800">상세 보기</summary>
+                      <p className="mt-1">{itemHints[0].detailedAction}</p>
+                    </details>
+                  ) : null}
+                  {mergedFocus.length > 0 ? (
+                    <p className="mt-1 text-amber-800">focus: {mergedFocus.join(", ")}</p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -618,6 +725,8 @@ export function CommitteeDiscussionClient() {
                 </button>
               </div>
             </div>
+              );
+            })()
           ))}
         </div>
       ) : null}

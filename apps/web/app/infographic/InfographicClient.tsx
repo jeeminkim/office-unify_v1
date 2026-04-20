@@ -26,6 +26,7 @@ export default function InfographicClient() {
     typeof window !== 'undefined' ? window.innerWidth < 1024 : true,
   );
   const [showMobileExportPreview, setShowMobileExportPreview] = useState(false);
+  const [mobileExportReady, setMobileExportReady] = useState(false);
   const [showRawDebug, setShowRawDebug] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const {
@@ -73,6 +74,13 @@ export default function InfographicClient() {
   const canGenerateSpec =
     sourceType === 'text' ? !!rawText.trim() : !!sourcePreviewText.trim();
   const showInlineExportCanvas = !(isMobileViewport && renderMode === 'export');
+  const cleanupSeverity: 'light' | 'moderate' | 'heavy' | null = sourcePreviewMeta
+    ? sourcePreviewMeta.cleanupNotes.length >= 8
+      ? 'heavy'
+      : sourcePreviewMeta.cleanupNotes.length >= 3
+        ? 'moderate'
+        : 'light'
+    : null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 text-slate-800">
@@ -209,6 +217,9 @@ export default function InfographicClient() {
         ) : null}
         {sourceType !== 'text' && sourcePreviewMeta ? (
           <div className="mt-3 rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+            <p className="mb-1 inline-flex rounded bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+              품질 요약: {cleanupSeverity === 'heavy' ? '강한 정리 적용' : cleanupSeverity === 'moderate' ? '중간 정리 적용' : '경미한 정리 적용'}
+            </p>
             <p>
               추출 메타: 길이 {sourcePreviewMeta.extractedTextLength.toLocaleString()}자
               {sourcePreviewMeta.sourceTitle ? ` · 제목 ${sourcePreviewMeta.sourceTitle}` : ''}
@@ -223,6 +234,11 @@ export default function InfographicClient() {
                   <li key={n}>{n}</li>
                 ))}
               </ul>
+            ) : null}
+            {cleanupSeverity === 'heavy' ? (
+              <p className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">
+                자동 정리가 많이 적용되었습니다. 구조화 전에 텍스트를 한 번 검토하세요.
+              </p>
             ) : null}
             {sourcePreviewMeta.sourceUrl ? <p className="mt-1 break-all text-slate-500">{sourcePreviewMeta.sourceUrl}</p> : null}
             {sourcePreviewMeta.extractionWarnings.length > 0 ? (
@@ -316,7 +332,18 @@ export default function InfographicClient() {
                     닫기
                   </button>
                 </div>
-                <InfographicCanvas spec={activeSpec} />
+                <p className="mb-2 text-xs text-slate-500">이 화면이 PNG로 저장됩니다.</p>
+                <InfographicCanvas
+                  spec={activeSpec}
+                  showSaveButton={mobileExportReady}
+                  onRenderReadyChange={setMobileExportReady}
+                  onBeforeSave={async () =>
+                    window.confirm("현재 보이는 저장용 레이아웃으로 PNG를 저장할까요?")
+                  }
+                />
+                <p className="mt-2 text-[11px] text-slate-500">
+                  저장 상태: {mobileExportReady ? "저장 가능" : "렌더 준비 중"}
+                </p>
               </div>
             </div>
           ) : null}
