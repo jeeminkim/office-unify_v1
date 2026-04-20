@@ -23,6 +23,8 @@ export * from './committee/committeeResponseFormat';
 export * from './committee/committeeDiscussionOrchestrator';
 export * from './committee/committeeFollowupExtractor';
 export * from './committee/committeeFollowupReanalysis';
+export * from './infographic/infographicPrompt';
+export * from './infographic/infographicExtractor';
 export * from './sheets/portfolioSheetsModel';
 export { runResearchCenterGeneration } from './research-center/researchCenterOrchestrator';
 export {

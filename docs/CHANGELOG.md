@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Infographic Generator (MVP):** `/infographic` 페이지와 `POST /api/infographic/extract` 추가. 블로그/증권사 리포트/붙여넣은 원문을 `InfographicSpec` JSON으로 정제 후, 고정 SVG 템플릿(4개 zone + flow + 보조 패널 + bar/pie/line)으로 렌더링하고 PNG 저장 지원. DB 비저장, 숫자 추정 금지, `unknown/null/empty` fallback 및 warnings 기록 원칙 적용.
 - **Committee Discussion / Followup Reanalyze Loop (Phase 3):** `POST /followups/:id/reanalyze` 추가로 저장된 followup 기반 실제 재분석 실행을 지원하고, 실행 1회당 artifact 3종(`reanalyze_payload`, `reanalyze_result_json`, `reanalyze_result_md`)을 누적 저장. `GET /followups/:id/artifacts`로 이력 조회 지원, 운영 보드 상세에서 최신 재분석 Markdown/JSON(completionAssessment, nextActions) 표시. `reanalyze-prep`는 payload 준비 전용으로 역할 분리 유지. 자동 투자 실행 금지 원칙 유지.
 - **Committee Discussion / Followup Board (Phase 2):** `/committee-followups` 운영 화면 추가(요약 카운트, 필터, 검색, 정렬, 상태 배지, 상세/artifact, 상태 변경, 재분석 준비 payload 복사). API 확장: `GET /followups`, `GET /followups/:id`, `PATCH /followups/:id`, `POST /followups/:id/reanalyze-prep`. 상태 전이 서버 검증(draft→accepted 등) 및 `done/dropped` 종료 상태 보호 적용. 자동 실행 금지 원칙 유지.
 - **Committee Discussion / Followup Layer (Phase 1):** `/api/committee-discussion/report`는 기존 사람용 Markdown 생성 책임을 유지하고, 후속작업은 `followups/extract` + `followups/save` 2단계로 분리. extractor 출력은 서버 validation(필수 필드, 모호한 제목 차단, 중복 제거, 실행 지시 차단) 후에만 카드로 노출/저장 가능. 새 DDL `docs/sql/append_web_committee_followups.sql`에 `committee_followup_items`, `committee_followup_artifacts` 추가. UI는 `/committee-discussion`에서 기존 흐름(라운드→종료→보고서→피드백)을 깨지 않고 `후속작업 추출`/카드 저장을 최소 침습으로 확장.

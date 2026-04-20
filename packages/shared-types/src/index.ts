@@ -248,3 +248,22 @@ export type {
   TrendToolUsage,
 } from './trendAnalysis';
 export { EMPTY_TREND_MEMORY_DELTA } from './trendAnalysis';
+export type {
+  InfographicBarChart,
+  InfographicCharts,
+  InfographicComparison,
+  InfographicConfidence,
+  InfographicExtractRequestBody,
+  InfographicExtractResponseBody,
+  InfographicFlow,
+  InfographicFlowType,
+  InfographicLineChart,
+  InfographicLineup,
+  InfographicPieChart,
+  InfographicRisk,
+  InfographicSourceMeta,
+  InfographicSourceType,
+  InfographicSpec,
+  InfographicZone,
+  InfographicZoneId,
+} from './infographic';

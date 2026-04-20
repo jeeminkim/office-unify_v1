@@ -153,7 +153,11 @@ export function ResearchCenterClient() {
           <Link href="/portfolio-ledger" className="text-slate-800 underline underline-offset-2">
             원장
           </Link>
-          과 분리되어 있습니다.
+          과 분리되어 있습니다. 산업 구조 시각화는{" "}
+          <Link href="/infographic" className="text-slate-800 underline underline-offset-2">
+            Infographic Generator
+          </Link>
+          를 이용하세요.
         </p>
         <ul className="mt-2 list-inside list-disc text-xs text-slate-500">
           <li>같은 종목을 롱·숏 양면에서 검토합니다. 공격적 문체가 포함될 수 있으나 사실과 추론은 구분합니다.</li>

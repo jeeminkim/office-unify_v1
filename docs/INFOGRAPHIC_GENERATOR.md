@@ -1,0 +1,65 @@
+# Infographic Generator (MVP)
+
+## 개요
+
+`/infographic`은 블로그 분석 글, 증권사 리포트, 사용자가 붙여넣은 원문을 바탕으로
+산업 구조 인포그래픽을 생성하는 무상태(MVP) 기능이다.
+
+핵심 원칙:
+
+- 생성형 이미지 모델에 텍스트 렌더링을 맡기지 않는다.
+- `정제(JSON)`와 `렌더링(SVG)`를 분리한다.
+- 숫자가 없으면 추정 생성하지 않고 `null/unknown/empty`를 허용한다.
+- DB 저장 없이 미리보기 + PNG 저장까지만 제공한다.
+
+## 데이터 흐름
+
+1. 사용자 입력: `industryName`, `rawText`
+2. API: `POST /api/infographic/extract`
+3. 서버:
+   - 입력 검증/길이 제한
+   - LLM JSON 추출 (`ai-office-engine`)
+   - normalize + validation
+4. 클라이언트:
+   - 고정 템플릿 SVG 렌더
+   - PNG 저장
+   - JSON 디버그 패널(접기/펼치기)
+
+## JSON 스키마 핵심
+
+`InfographicSpec` (shared-types):
+
+- 메타: `title`, `subtitle`, `industry`, `summary`, `sourceMeta`
+- 산업 존(고정 4개): `input`, `production`, `distribution`, `demand`
+- 흐름: `flows[]` (`goods|data|capital|service|energy|unknown`)
+- 보조 패널: `lineup`, `comparisons`, `risks`, `notes`, `warnings`
+- 차트: `charts.bar`, `charts.pie`, `charts.line`
+
+### fallback 원칙
+
+- 누락 zone은 기본 4개 템플릿으로 복구
+- 차트 값이 없으면 빈 배열 또는 `value: null`
+- 추정/가짜 수치 금지
+- fallback 발생 시 `warnings`에 사유 기록
+
+## PNG 저장 방식
+
+- 렌더 결과는 단일 SVG (`InfographicCanvas`)
+- `XMLSerializer`로 SVG 문자열화
+- `canvas`에 2x 스케일로 draw 후 PNG 다운로드
+- 한글 가독성을 위해 단색 배경 + 고정 폰트 크기 + 줄바꿈 유틸 사용
+
+## 한계와 주의사항
+
+- MVP는 템플릿 1종(A4 세로 비율) 고정
+- 복잡한 업종별 도식 프리셋은 미포함
+- 장문 원문은 API에서 길이 제한(trim) 적용
+- 결과 저장/히스토리/재호출은 2차 범위
+
+## 추후 2차 범위
+
+- 결과 스냅샷 DB 저장 + 히스토리
+- 업종 프리셋(반도체/우주/배터리 등) 세분화
+- 멀티 페이지 출력
+- 차트 단위 근거(source span) 연결
+

@@ -6,6 +6,7 @@ Next.js(App Router) + TypeScript + Tailwind입니다. **저장소 루트(`../..`
 
 - **Dev Assistant** (`/`): Flow/ Mermaid, SQL, TypeScript 생성 — Gemini는 UI 설정 또는 서버 `GEMINI_API_KEY` 사용.
 - **Persona chat**, **Private Banker**, **투자위원회**, **포트폴리오 원장** 등: Supabase + 서버 API 라우트.
+- **Infographic Generator** (`/infographic`): 원문 -> 구조화 JSON -> 고정 템플릿 SVG 인포그래픽 렌더 + PNG 저장.
 
 ## 로컬 실행
 
@@ -38,6 +39,24 @@ npm run clean:win   # apps/web 전용 — .next / node_modules 정리
 - 기타 초안·최근 결과·피드백 키 — 상세는 기존 주석/코드 참고
 
 민감 정보는 공용 PC에서 사용 후 설정에서 초기화를 권장합니다.
+
+## Infographic Generator (MVP)
+
+경로: `/infographic`
+
+- 입력: `industryName`, `rawText`
+- API: `POST /api/infographic/extract`
+- 파이프라인:
+  1. LLM이 구조화 JSON(`InfographicSpec`) 생성
+  2. 서버 normalize/validate로 누락 필드 및 4개 zone 강제 보정
+  3. 클라이언트 SVG 고정 템플릿 렌더
+  4. PNG 저장
+
+원칙:
+
+- DB 저장 없음 (무상태 MVP)
+- 차트 수치 추정 생성 금지 (`null/empty` 허용)
+- 투자 조언이 아닌 산업 구조화 도구로 동작
 
 ## Mermaid 렌더 안정화 파이프라인 (Flow)
 
