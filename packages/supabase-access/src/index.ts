@@ -29,11 +29,15 @@ export {
   updateWebCommitteeTurnExcerpt,
 } from './webCommitteeTurnsRepository';
 export {
+  createCommitteeFollowupArtifact,
   getWebCommitteeTurnForUserScope,
   getCommitteeFollowupItemById,
+  getLatestCommitteeFollowupArtifactByType,
+  getLatestCommitteeReanalyzeResult,
   insertCommitteeFollowupArtifact,
   insertCommitteeFollowupItem,
   listCommitteeFollowupArtifacts,
+  listCommitteeFollowupArtifactsByItemId,
   listCommitteeFollowupItems,
   updateCommitteeFollowupItem,
 } from './committeeFollowupRepository';

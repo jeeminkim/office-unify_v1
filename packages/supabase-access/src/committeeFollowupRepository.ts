@@ -93,14 +93,16 @@ export async function insertCommitteeFollowupArtifact(
     contentMd?: string;
     contentJson?: Record<string, unknown>;
   },
-): Promise<void> {
-  const { error } = await client.from('committee_followup_artifacts').insert({
+): Promise<{ id: string }> {
+  const { data, error } = await client.from('committee_followup_artifacts').insert({
     followup_item_id: params.followupItemId,
     artifact_type: params.artifactType,
     content_md: params.contentMd ?? null,
     content_json: params.contentJson ?? null,
-  });
+  }).select('id').single();
   if (error) throw error;
+  if (!data?.id) throw new Error('committee_followup_artifacts insert returned no id');
+  return { id: String(data.id) };
 }
 
 export async function getWebCommitteeTurnForUserScope(
@@ -221,6 +223,80 @@ export async function listCommitteeFollowupArtifacts(
         : null,
     createdAt: String(row.created_at),
   }));
+}
+
+export async function listCommitteeFollowupArtifactsByItemId(
+  client: SupabaseClient,
+  userKey: OfficeUserKey,
+  followupItemId: string,
+) {
+  return listCommitteeFollowupArtifacts(client, userKey, followupItemId);
+}
+
+export async function createCommitteeFollowupArtifact(
+  client: SupabaseClient,
+  params: {
+    followupItemId: string;
+    artifactType: string;
+    contentMd?: string;
+    contentJson?: Record<string, unknown>;
+  },
+) {
+  return insertCommitteeFollowupArtifact(client, params);
+}
+
+export async function getLatestCommitteeFollowupArtifactByType(
+  client: SupabaseClient,
+  userKey: OfficeUserKey,
+  followupItemId: string,
+  artifactType: string,
+): Promise<{
+  id: string;
+  artifactType: string;
+  contentMd: string | null;
+  contentJson: Record<string, unknown> | null;
+  createdAt: string;
+} | null> {
+  const owner = await getCommitteeFollowupItemById(client, userKey, followupItemId);
+  if (!owner) return null;
+  const { data, error } = await client
+    .from('committee_followup_artifacts')
+    .select('id,artifact_type,content_md,content_json,created_at')
+    .eq('followup_item_id', followupItemId)
+    .eq('artifact_type', artifactType)
+    .order('created_at', { ascending: false })
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    id: String(data.id),
+    artifactType: String(data.artifact_type),
+    contentMd: data.content_md ? String(data.content_md) : null,
+    contentJson:
+      data.content_json && typeof data.content_json === 'object'
+        ? (data.content_json as Record<string, unknown>)
+        : null,
+    createdAt: String(data.created_at),
+  };
+}
+
+export async function getLatestCommitteeReanalyzeResult(
+  client: SupabaseClient,
+  userKey: OfficeUserKey,
+  followupItemId: string,
+): Promise<{
+  markdown: string | null;
+  structured: Record<string, unknown> | null;
+} | null> {
+  const [latestMd, latestJson] = await Promise.all([
+    getLatestCommitteeFollowupArtifactByType(client, userKey, followupItemId, 'reanalyze_result_md'),
+    getLatestCommitteeFollowupArtifactByType(client, userKey, followupItemId, 'reanalyze_result_json'),
+  ]);
+  if (!latestMd && !latestJson) return null;
+  return {
+    markdown: latestMd?.contentMd ?? null,
+    structured: latestJson?.contentJson ?? null,
+  };
 }
 
 export async function updateCommitteeFollowupItem(

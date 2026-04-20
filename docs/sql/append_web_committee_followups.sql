@@ -51,6 +51,8 @@ create index if not exists committee_followup_artifacts_item_idx
   on public.committee_followup_artifacts (followup_item_id);
 create index if not exists committee_followup_artifacts_created_at_idx
   on public.committee_followup_artifacts (created_at desc);
+create index if not exists committee_followup_artifacts_item_type_created_idx
+  on public.committee_followup_artifacts (followup_item_id, artifact_type, created_at desc);
 
 create or replace function public.set_current_timestamp_updated_at()
 returns trigger as $$

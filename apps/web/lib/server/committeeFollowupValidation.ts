@@ -1,8 +1,10 @@
 import type {
   CommitteeFollowupDraft,
+  CommitteeFollowupItem,
   CommitteeFollowupExtractResponse,
   CommitteeFollowupItemType,
   CommitteeFollowupPriority,
+  CommitteeFollowupReanalyzeResult,
   CommitteeFollowupSaveRequest,
   CommitteeFollowupStatus,
 } from '@office-unify/shared-types';
@@ -245,5 +247,30 @@ export function validateDoneStatePatch(
   const changedKeys = Object.keys(patch).filter((k) => patch[k] !== undefined);
   const blocked = changedKeys.filter((k) => !PATCHABLE_DONE_FIELDS.has(k));
   return blocked.map((k) => `done_state_field_update_blocked:${k}`);
+}
+
+export function validateReanalyzeCandidate(item: CommitteeFollowupItem): {
+  ok: boolean;
+  warnings: string[];
+  error?: string;
+} {
+  const warnings: string[] = [];
+  if (!item.title.trim()) return { ok: false, error: 'title_required', warnings };
+  if (item.rationale.trim().length < 20) return { ok: false, error: 'rationale_too_short', warnings };
+  if (item.acceptanceCriteria.length < 1) return { ok: false, error: 'acceptanceCriteria_required', warnings };
+  if (item.entities.length < 1) return { ok: false, error: 'entities_required_or_exception_note', warnings };
+  if (item.status === 'dropped') return { ok: false, error: 'reanalyze_blocked_for_dropped', warnings };
+  if (item.status === 'done') warnings.push('reanalyze_on_done_status');
+  return { ok: true, warnings };
+}
+
+export function validateReanalyzeResultPayload(result: CommitteeFollowupReanalyzeResult): string[] {
+  const errors: string[] = [];
+  if (!result.summary?.trim()) errors.push('reanalyze_result_summary_required');
+  if (!['unmet', 'partial', 'met'].includes(result.completionAssessment)) {
+    errors.push('reanalyze_completion_assessment_invalid');
+  }
+  if (result.nextActions.length < 1) errors.push('reanalyze_next_actions_recommended');
+  return errors;
 }
 

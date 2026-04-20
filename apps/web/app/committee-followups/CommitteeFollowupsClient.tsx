@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type {
+  CommitteeFollowupCompletionAssessment,
   CommitteeFollowupDetailResponse,
   CommitteeFollowupItem,
   CommitteeFollowupListResponse,
+  CommitteeFollowupReanalyzeResponse,
   CommitteeFollowupStatus,
 } from "@office-unify/shared-types";
 
@@ -60,6 +62,10 @@ export function CommitteeFollowupsClient() {
   const [detail, setDetail] = useState<CommitteeFollowupDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [reanalysisPayload, setReanalysisPayload] = useState<string | null>(null);
+  const [reanalyzingId, setReanalyzingId] = useState<string | null>(null);
+  const [artifacts, setArtifacts] = useState<
+    { id: string; artifactType: string; contentMd: string | null; contentJson: Record<string, unknown> | null; createdAt: string; preview?: string }[]
+  >([]);
 
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
@@ -125,6 +131,7 @@ export function CommitteeFollowupsClient() {
       const data = (await res.json()) as CommitteeFollowupDetailResponse & { error?: string };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setDetail(data);
+      setArtifacts(data.artifacts ?? []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "상세 조회 실패");
     } finally {
@@ -168,6 +175,60 @@ export function CommitteeFollowupsClient() {
       setError(e instanceof Error ? e.message : "재분석 준비 실패");
     }
   };
+
+  const executeReanalysis = async (id: string) => {
+    setReanalyzingId(id);
+    try {
+      const res = await fetch(`/api/committee-discussion/followups/${id}/reanalyze`, {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const data = (await res.json()) as CommitteeFollowupReanalyzeResponse & { error?: string; warnings?: string[] };
+      if (!res.ok) {
+        throw new Error([data.error, ...(data.warnings ?? [])].filter(Boolean).join(" | "));
+      }
+      await openDetail(id);
+      setReanalysisPayload(JSON.stringify(data.structuredResult, null, 2));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "재분석 실행 실패");
+    } finally {
+      setReanalyzingId(null);
+    }
+  };
+
+  const loadArtifacts = async (id: string) => {
+    try {
+      const res = await fetch(`/api/committee-discussion/followups/${id}/artifacts`, {
+        credentials: "same-origin",
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        items?: { id: string; artifactType: string; contentMd: string | null; contentJson: Record<string, unknown> | null; createdAt: string; preview?: string }[];
+      };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setArtifacts(data.items ?? []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "artifact 조회 실패");
+    }
+  };
+
+  const latestMd = useMemo(
+    () => artifacts.find((a) => a.artifactType === "reanalyze_result_md"),
+    [artifacts],
+  );
+  const latestJson = useMemo(
+    () => artifacts.find((a) => a.artifactType === "reanalyze_result_json"),
+    [artifacts],
+  );
+  const completionAssessment = useMemo(() => {
+    const raw = latestJson?.contentJson?.completionAssessment;
+    if (raw === "unmet" || raw === "partial" || raw === "met") return raw as CommitteeFollowupCompletionAssessment;
+    return null;
+  }, [latestJson]);
+  const nextActions = useMemo(() => {
+    const raw = latestJson?.contentJson?.nextActions;
+    return Array.isArray(raw) ? raw.map(String) : [];
+  }, [latestJson]);
 
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-4 bg-slate-50 p-6 text-slate-900">
@@ -251,6 +312,14 @@ export function CommitteeFollowupsClient() {
                 <button type="button" className="rounded border border-indigo-300 bg-white px-2 py-1 text-xs text-indigo-900" onClick={() => void prepareReanalysis(item.id)}>
                   재분석 준비
                 </button>
+                <button
+                  type="button"
+                  className="rounded border border-violet-300 bg-white px-2 py-1 text-xs text-violet-900 disabled:opacity-50"
+                  disabled={reanalyzingId === item.id}
+                  onClick={() => void executeReanalysis(item.id)}
+                >
+                  {reanalyzingId === item.id ? "재분석 실행 중…" : "재분석 실행"}
+                </button>
               </div>
             </div>
           ))}
@@ -270,18 +339,62 @@ export function CommitteeFollowupsClient() {
               <p className="text-xs text-slate-600"><strong>verificationNote:</strong> {detail.item.verificationNote || "-"}</p>
               <p className="text-xs text-slate-600"><strong>duePolicy:</strong> {detail.item.duePolicy || "-"}</p>
               <p className="text-xs text-slate-500">source: {detail.item.sourceReportKind} · committeeTurnId: {detail.item.committeeTurnId}</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-violet-300 bg-white px-2 py-1 text-xs text-violet-900 disabled:opacity-50"
+                  disabled={reanalyzingId === detail.item.id}
+                  onClick={() => void executeReanalysis(detail.item.id)}
+                >
+                  {reanalyzingId === detail.item.id ? "재분석 실행 중…" : "재분석 실행"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-indigo-300 bg-white px-2 py-1 text-xs text-indigo-900"
+                  onClick={() => void prepareReanalysis(detail.item.id)}
+                >
+                  재분석 준비 payload
+                </button>
+              </div>
               <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                <p className="text-xs font-semibold text-slate-700">artifacts</p>
-                {detail.artifacts.length === 0 ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-slate-700">artifacts</p>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px]"
+                    onClick={() => void loadArtifacts(detail.item.id)}
+                  >
+                    새로고침
+                  </button>
+                </div>
+                {artifacts.length === 0 ? (
                   <p className="text-xs text-slate-400">artifact 없음</p>
                 ) : (
-                  detail.artifacts.map((a) => (
+                  artifacts.map((a) => (
                     <div key={a.id} className="mt-1 rounded border border-slate-200 bg-white p-2 text-xs">
                       <p>{a.artifactType} · {a.createdAt}</p>
-                      {a.contentMd ? <p className="mt-1 whitespace-pre-wrap">{a.contentMd}</p> : null}
+                      {a.preview ? <p className="mt-1 text-slate-600">{a.preview}</p> : null}
                     </div>
                   ))
                 )}
+              </div>
+              <div className="rounded border border-indigo-200 bg-indigo-50 p-2">
+                <p className="text-xs font-semibold text-indigo-900">최근 재분석 결과</p>
+                {latestMd?.contentMd ? (
+                  <p className="mt-1 whitespace-pre-wrap text-xs text-indigo-950">{latestMd.contentMd}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-indigo-700">재분석 결과 없음</p>
+                )}
+                {completionAssessment ? (
+                  <span className="mt-2 inline-block rounded bg-white px-2 py-0.5 text-[11px] text-indigo-900">
+                    completionAssessment: {completionAssessment}
+                  </span>
+                ) : null}
+                {nextActions.length > 0 ? (
+                  <ul className="mt-1 list-disc pl-4 text-xs text-indigo-900">
+                    {nextActions.map((n, i) => <li key={`${n}-${i}`}>{n}</li>)}
+                  </ul>
+                ) : null}
               </div>
             </div>
           ) : null}

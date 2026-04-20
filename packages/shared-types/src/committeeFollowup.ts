@@ -84,3 +84,27 @@ export type CommitteeFollowupDetailResponse = {
   }[];
 };
 
+export type CommitteeFollowupCompletionAssessment = 'unmet' | 'partial' | 'met';
+
+export type CommitteeFollowupReanalyzeResult = {
+  summary: string;
+  findings: string[];
+  openQuestions: string[];
+  completionAssessment: CommitteeFollowupCompletionAssessment;
+  nextActions: string[];
+  warnings?: string[];
+};
+
+export type CommitteeFollowupReanalyzeResponse = {
+  ok: true;
+  followupId: string;
+  markdownSummary: string;
+  structuredResult: CommitteeFollowupReanalyzeResult;
+  warnings: string[];
+  artifactIds: {
+    payloadArtifactId: string;
+    resultJsonArtifactId: string;
+    resultMdArtifactId: string;
+  };
+};
+

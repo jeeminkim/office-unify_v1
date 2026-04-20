@@ -39,12 +39,14 @@
 
 - `user_key`, `committee_turn_id`, `status`, `created_at desc`
 - 운영 조회 최적화: `user_key + status + updated_at desc`, `user_key + committee_turn_id`
+- artifact 최신 조회 최적화: `followup_item_id + artifact_type + created_at desc`
 
 핵심 원칙:
 
 - 조일현 Markdown(`report`)은 사람용 문서이며, DB 저장용 후속작업은 별도 JSON 계약으로 분리한다.
 - 저장은 사용자 명시 액션(`followups/save`)에서만 수행한다.
 - 자동 주문/자동 매매/원장 자동 반영과 무관한 추적 테이블이다.
+- `reanalyze` 실행 결과는 artifact를 append-only로 누적 저장한다(`reanalyze_payload`, `reanalyze_result_json`, `reanalyze_result_md`).
 
 ## 미적용 시 동작 (Trend memory)
 

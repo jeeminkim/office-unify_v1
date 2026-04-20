@@ -5,10 +5,15 @@ import type { CommitteeDiscussionLineDto, OfficeUserKey } from '@office-unify/sh
 import {
   runCommitteeDiscussionClosing,
   runCommitteeFollowupExtract,
+  runCommitteeFollowupReanalysis,
   runCommitteeDiscussionJoReport,
   runCommitteeDiscussionRound,
 } from '@office-unify/ai-office-engine';
-import type { CommitteeFollowupExtractResponse } from '@office-unify/shared-types';
+import type {
+  CommitteeFollowupExtractResponse,
+  CommitteeFollowupItem,
+  CommitteeFollowupReanalyzeResult,
+} from '@office-unify/shared-types';
 
 /**
  * 위원회 토론·조일현 보고서 API가 공통으로 쓰는 LLM 환경변수.
@@ -102,5 +107,25 @@ export async function executeCommitteeDiscussionFollowupExtract(params: {
     transcript: params.transcript,
     closing: params.closing,
     joMarkdown: params.joMarkdown,
+  });
+}
+
+export async function executeCommitteeDiscussionFollowupReanalyze(params: {
+  supabase: SupabaseClient;
+  geminiApiKey: string;
+  openAiApiKey: string;
+  followup: CommitteeFollowupItem;
+  latestArtifactContext?: string;
+}): Promise<{
+  markdownSummary: string;
+  structuredResult: CommitteeFollowupReanalyzeResult;
+  warnings: string[];
+}> {
+  return runCommitteeFollowupReanalysis({
+    supabase: params.supabase,
+    geminiApiKey: params.geminiApiKey,
+    openAiApiKey: params.openAiApiKey,
+    followup: params.followup,
+    latestArtifactContext: params.latestArtifactContext,
   });
 }
