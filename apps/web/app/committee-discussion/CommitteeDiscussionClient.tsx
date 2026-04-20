@@ -153,6 +153,11 @@ export function CommitteeDiscussionClient() {
       const transcriptText = transcript
         .map((line) => `${line.displayName}(${line.slug}): ${line.content}`)
         .join("\n\n");
+      const druckerSummary =
+        [...transcript]
+          .reverse()
+          .find((line) => line.slug === "drucker")
+          ?.content?.trim() || undefined;
       const res = await fetch("/api/committee-discussion/followups/extract", {
         method: "POST",
         headers: jsonHeaders,
@@ -161,6 +166,7 @@ export function CommitteeDiscussionClient() {
           topic: topic.trim(),
           transcript: transcriptText,
           closing: closingSummary ?? undefined,
+          druckerSummary,
           joMarkdown: reportMd ?? undefined,
           committeeTurnId,
         }),

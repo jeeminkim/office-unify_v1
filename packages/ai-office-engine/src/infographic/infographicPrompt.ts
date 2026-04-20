@@ -37,7 +37,7 @@ export function buildInfographicSystemPrompt(): string {
   "notes": ["string"],
   "warnings": ["string"],
   "sourceMeta": {
-    "sourceType":"blog|securities_report|pasted_text|unknown",
+    "sourceType":"blog|securities_report|pasted_text|text|url|pdf_upload|pdf_url|unknown",
     "generatedAt":"ISO datetime string",
     "confidence":"low|medium|high"
   }
@@ -48,10 +48,14 @@ export function buildInfographicUserPrompt(params: {
   industryName: string;
   rawText: string;
   sourceType: InfographicSourceType;
+  sourceUrl?: string;
+  sourceTitle?: string;
 }): string {
   return `[입력]
 industryName: ${params.industryName}
 sourceType: ${params.sourceType}
+sourceUrl: ${params.sourceUrl ?? 'unknown'}
+sourceTitle: ${params.sourceTitle ?? 'unknown'}
 
 [원문]
 ${params.rawText}

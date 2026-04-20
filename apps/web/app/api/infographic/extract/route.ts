@@ -8,6 +8,26 @@ import {
   validateInfographicSpec,
 } from '@/lib/server/infographicValidation';
 import { normalizeInfographicForRender } from '@/lib/server/infographicNormalize';
+import { resolveInfographicSourceText } from '@/lib/server/infographicSourceExtract';
+
+async function parseMultipartBody(req: Request): Promise<unknown> {
+  const form = await req.formData();
+  const sourceType = String(form.get('sourceType') ?? 'pdf_upload');
+  const industryName = String(form.get('industryName') ?? '').trim();
+  const sourceUrl = String(form.get('sourceUrl') ?? '').trim();
+  const pdfUrl = String(form.get('pdfUrl') ?? '').trim();
+  const rawText = String(form.get('rawText') ?? '').trim();
+  const pdfFileRaw = form.get('pdfFile');
+  const pdfFile = pdfFileRaw instanceof File ? pdfFileRaw : undefined;
+  return {
+    sourceType,
+    industryName,
+    sourceUrl: sourceUrl || undefined,
+    pdfUrl: pdfUrl || undefined,
+    rawText: rawText || undefined,
+    pdfFile,
+  };
+}
 
 export async function POST(req: Request) {
   const auth = await requirePersonaChatAuth();
@@ -28,7 +48,8 @@ export async function POST(req: Request) {
 
   let body: unknown;
   try {
-    body = await req.json();
+    const contentType = req.headers.get('content-type') ?? '';
+    body = contentType.includes('multipart/form-data') ? await parseMultipartBody(req) : await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
@@ -39,17 +60,36 @@ export async function POST(req: Request) {
   }
 
   try {
+    const bodyRecord = body as Record<string, unknown>;
+    const sourceResolved = await resolveInfographicSourceText({
+      sourceType: parsed.value.sourceType,
+      rawText: parsed.value.rawText,
+      sourceUrl: parsed.value.sourceUrl,
+      pdfUrl: parsed.value.pdfUrl,
+      pdfFile: bodyRecord.pdfFile instanceof File ? bodyRecord.pdfFile : undefined,
+    });
     const extracted = await executeInfographicExtract({
       geminiApiKey: llm.geminiApiKey,
       industryName: parsed.value.industryName,
-      rawText: parsed.value.rawText,
+      rawText: sourceResolved.rawText,
+      sourceUrl: sourceResolved.sourceUrl,
+      sourceTitle: sourceResolved.sourceTitle,
+      extractionWarnings: sourceResolved.extractionWarnings,
     });
     const normalized = normalizeInfographicForRender(
       extracted.spec,
       parsed.value.industryName,
     );
+    normalized.sourceMeta = {
+      ...normalized.sourceMeta,
+      sourceType: parsed.value.sourceType,
+      sourceUrl: sourceResolved.sourceUrl,
+      sourceTitle: sourceResolved.sourceTitle,
+      extractionWarnings: sourceResolved.extractionWarnings,
+      extractedTextLength: sourceResolved.rawText.length,
+    };
     const validationErrors = validateInfographicSpec(normalized);
-    const warnings = [...(extracted.warnings ?? []), ...validationErrors];
+    const warnings = [...(extracted.warnings ?? []), ...validationErrors, ...sourceResolved.extractionWarnings];
     const response: InfographicExtractResponseBody = {
       ok: true,
       spec: { ...normalized, warnings: [...normalized.warnings, ...validationErrors] },

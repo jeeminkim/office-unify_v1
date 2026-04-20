@@ -2,6 +2,7 @@ import type {
   InfographicCharts,
   InfographicExtractRequestBody,
   InfographicFlow,
+  InfographicInputSourceType,
   InfographicRisk,
   InfographicSpec,
   InfographicZone,
@@ -10,6 +11,7 @@ import type {
 
 const MAX_RAW_TEXT = 22000;
 const REQUIRED_ZONE_ORDER: InfographicZoneId[] = ['input', 'production', 'distribution', 'demand'];
+const INPUT_SOURCE_TYPES: InfographicInputSourceType[] = ['text', 'url', 'pdf_upload', 'pdf_url'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -20,16 +22,25 @@ export function parseInfographicExtractRequest(input: unknown):
   | { ok: false; errors: string[] } {
   if (!isRecord(input)) return { ok: false, errors: ['invalid_body'] };
   const industryName = typeof input.industryName === 'string' ? input.industryName.trim() : '';
+  const sourceType = typeof input.sourceType === 'string' ? (input.sourceType.trim() as InfographicInputSourceType) : 'text';
   const rawText = typeof input.rawText === 'string' ? input.rawText.trim() : '';
+  const sourceUrl = typeof input.sourceUrl === 'string' ? input.sourceUrl.trim() : undefined;
+  const pdfUrl = typeof input.pdfUrl === 'string' ? input.pdfUrl.trim() : undefined;
   const errors: string[] = [];
   if (!industryName) errors.push('industryName_required');
-  if (!rawText) errors.push('rawText_required');
+  if (!INPUT_SOURCE_TYPES.includes(sourceType)) errors.push('sourceType_invalid');
+  if (sourceType === 'text' && !rawText) errors.push('rawText_required');
+  if (sourceType === 'url' && !sourceUrl) errors.push('sourceUrl_required');
+  if (sourceType === 'pdf_url' && !pdfUrl) errors.push('pdfUrl_required');
   if (errors.length > 0) return { ok: false, errors };
   return {
     ok: true,
     value: {
       industryName: industryName.slice(0, 100),
+      sourceType,
       rawText: rawText.slice(0, MAX_RAW_TEXT),
+      sourceUrl,
+      pdfUrl,
     },
   };
 }
@@ -156,6 +167,15 @@ export function normalizeInfographicSpec(spec: InfographicSpec, industryName: st
       sourceType: spec.sourceMeta?.sourceType ?? 'unknown',
       generatedAt: spec.sourceMeta?.generatedAt ?? new Date().toISOString(),
       confidence: spec.sourceMeta?.confidence ?? 'low',
+      sourceUrl: spec.sourceMeta?.sourceUrl,
+      sourceTitle: spec.sourceMeta?.sourceTitle,
+      extractionWarnings: Array.isArray(spec.sourceMeta?.extractionWarnings)
+        ? spec.sourceMeta?.extractionWarnings.map(String)
+        : [],
+      extractedTextLength:
+        typeof spec.sourceMeta?.extractedTextLength === 'number'
+          ? spec.sourceMeta.extractedTextLength
+          : undefined,
     },
   };
 }

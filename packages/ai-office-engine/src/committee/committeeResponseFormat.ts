@@ -18,22 +18,31 @@ const COMMITTEE_SOFT_REMEDIATION_SLUGS = new Set<string>([
 ]);
 
 function softRemediationFooter(slug: string): string {
-  if (slug === 'ray-dalio') {
-    return '[형식 안내] 가능하면 [핵심 리스크], [깨질 수 있는 전제], [리스크 관리 행동]을 소제목으로 넣어 주세요.';
-  }
-  if (slug === 'jim-simons') {
-    return '[형식 안내] 가능하면 [시장 전이 경로], [검증 변수 3개], [유효기간]을 소제목으로 넣어 주세요.';
-  }
-  if (slug === 'hindenburg') {
-    return '[형식 안내] 가능하면 [핵심 착각], [구조적 취약점], [무효화 조건]을 소제목으로 넣어 주세요.';
-  }
-  if (slug === 'drucker') {
-    return '[형식 안내] 가능하면 [이번 주 할 일 3개], [하지 말 것 3개], [다음 점검 시점]을 소제목으로 넣어 주세요.';
-  }
-  if (slug === 'cio') {
-    return '[형식 안내] 가능하면 [최종 판정], [유지 버킷 / 감축 검토 버킷 / 관찰 버킷], [지금 보류할 행동]을 소제목으로 넣어 주세요.';
-  }
+  if (slug === 'ray-dalio') return '[핵심 리스크], [깨질 수 있는 전제], [리스크 관리 행동] 소제목 형식을 유지해 주세요.';
+  if (slug === 'jim-simons') return '[시장 전이 경로], [검증 변수 3개], [유효기간] 소제목 형식을 유지해 주세요.';
+  if (slug === 'hindenburg') return '[핵심 착각], [구조적 취약점], [무효화 조건] 소제목 형식을 유지해 주세요.';
+  if (slug === 'drucker') return '[이번 주 할 일 3개], [하지 말 것 3개], [다음 점검 시점] 소제목 형식을 유지해 주세요.';
+  if (slug === 'cio') return '[최종 판정], [유지 버킷 / 감축 검토 버킷 / 관찰 버킷], [지금 보류할 행동] 소제목 형식을 유지해 주세요.';
   return '';
+}
+
+function stripMetaFormatGuidance(text: string): { text: string; removed: boolean } {
+  const patterns: RegExp[] = [
+    /\[\s*형식\s*안내[^\]]*\][\s\S]*$/i,
+    /형식\s*안내[\s\S]*$/i,
+    /가능하면[\s\S]*소제목으로[\s\S]*$/i,
+    /출력\s*형식[\s\S]*$/i,
+    /다음\s*형식을\s*따르세요[\s\S]*$/i,
+  ];
+  let out = text;
+  let removed = false;
+  for (const pattern of patterns) {
+    if (pattern.test(out)) {
+      out = out.replace(pattern, '').trim();
+      removed = true;
+    }
+  }
+  return { text: out, removed };
 }
 
 /** 대괄호 라벨이 본문에 있는지(공백 허용) */
@@ -144,7 +153,8 @@ export function remediateCommitteePersonaReply(slug: string, raw: string): Commi
     return { text: raw.trim(), note: null };
   }
 
-  const trimmed = raw.trim();
+  const stripped = stripMetaFormatGuidance(raw.trim());
+  const trimmed = stripped.text.trim();
   if (!trimmed) {
     return {
       text: '[형식 보정] 응답이 비어 있습니다. 질문과 맥락을 다시 보내 주세요.',
@@ -185,11 +195,11 @@ export function remediateCommitteePersonaReply(slug: string, raw: string): Commi
       text: out.trim(),
       note:
         missing.length > 0 || !commonOk
-          ? `응답 형식 보정을 완화했습니다(위원회 필수 대괄호 생략 시).${guardNoteParts.length ? ` ${guardNoteParts.join('·')} 안내 포함.` : ''}`
+          ? `응답 형식 보정을 완화했습니다(위원회 필수 대괄호 생략 시).${guardNoteParts.length ? ` ${guardNoteParts.join('·')} 안내 포함.` : ''}${stripped.removed ? ' 형식 메타 문구 제거.' : ''}`
           : guardNoteParts.length > 0
-            ? `${guardNoteParts.join('·')} 안내를 추가했습니다.`
+            ? `${guardNoteParts.join('·')} 안내를 추가했습니다.${stripped.removed ? ' 형식 메타 문구 제거.' : ''}`
             : null,
-      debugTags: [...guarded.debugTags, ...(missing.length > 0 ? ['missing-sections'] : []), ...(!commonOk ? ['weak-common-four'] : [])],
+      debugTags: [...guarded.debugTags, ...(missing.length > 0 ? ['missing-sections'] : []), ...(!commonOk ? ['weak-common-four'] : []), ...(stripped.removed ? ['meta-guidance-removed'] : [])],
     };
   }
 
@@ -215,14 +225,14 @@ export function remediateCommitteePersonaReply(slug: string, raw: string): Commi
 
   const note =
     missing.length > 0 || !commonOk
-      ? `일부 필수 섹션이 서버에서 안전하게 보정되었습니다.${guardNoteParts.length ? ` ${guardNoteParts.join('·')} 안내 포함.` : ''}`
+      ? `일부 필수 섹션이 서버에서 안전하게 보정되었습니다.${guardNoteParts.length ? ` ${guardNoteParts.join('·')} 안내 포함.` : ''}${stripped.removed ? ' 형식 메타 문구 제거.' : ''}`
       : guardNoteParts.length > 0
-        ? `${guardNoteParts.join('·')} 안내를 추가했습니다.`
+        ? `${guardNoteParts.join('·')} 안내를 추가했습니다.${stripped.removed ? ' 형식 메타 문구 제거.' : ''}`
         : null;
 
   return {
     text: out.trim(),
     note,
-    debugTags: [...guarded.debugTags, ...(missing.length > 0 ? ['missing-sections'] : []), ...(!commonOk ? ['weak-common-four'] : [])],
+    debugTags: [...guarded.debugTags, ...(missing.length > 0 ? ['missing-sections'] : []), ...(!commonOk ? ['weak-common-four'] : []), ...(stripped.removed ? ['meta-guidance-removed'] : [])],
   };
 }

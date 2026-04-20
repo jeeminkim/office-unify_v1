@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { InfographicSpec } from '@office-unify/shared-types';
+import type { InfographicInputSourceType, InfographicSpec } from '@office-unify/shared-types';
 import { InfographicCanvas } from '@/components/infographic/InfographicCanvas';
+import { ResponsiveInfographicView } from '@/components/infographic/ResponsiveInfographicView';
 import { useInfographicGenerator } from '@/hooks/useInfographicGenerator';
 import { SEMICONDUCTOR_SAMPLE_SPEC, SPACE_SAMPLE_SPEC } from '@/lib/infographic/samples';
 
@@ -14,10 +15,34 @@ const SAMPLE_TEXT = `반도체 산업은 소재·장비 공급 안정성, 파운
 export default function InfographicClient() {
   const [industryName, setIndustryName] = useState('반도체');
   const [rawText, setRawText] = useState(SAMPLE_TEXT);
+  const [sourceType, setSourceType] = useState<InfographicInputSourceType>('text');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [pdfUrl, setPdfUrl] = useState('');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [renderMode, setRenderMode] = useState<'responsive' | 'export'>('responsive');
   const [showDebug, setShowDebug] = useState(false);
   const { loading, error, spec, warnings, setSpec, generate } = useInfographicGenerator();
 
   const activeSpec = useMemo<InfographicSpec | null>(() => spec, [spec]);
+
+  const onGenerate = () =>
+    generate(
+      {
+        industryName: industryName.trim(),
+        sourceType,
+        rawText: sourceType === 'text' ? rawText.trim() : undefined,
+        sourceUrl: sourceType === 'url' ? sourceUrl.trim() : undefined,
+        pdfUrl: sourceType === 'pdf_url' ? pdfUrl.trim() : undefined,
+      },
+      sourceType === 'pdf_upload' ? pdfFile : null,
+    );
+
+  const canGenerate =
+    !!industryName.trim() &&
+    ((sourceType === 'text' && !!rawText.trim()) ||
+      (sourceType === 'url' && !!sourceUrl.trim()) ||
+      (sourceType === 'pdf_url' && !!pdfUrl.trim()) ||
+      (sourceType === 'pdf_upload' && !!pdfFile));
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 text-slate-800">
@@ -40,19 +65,68 @@ export default function InfographicClient() {
             />
           </label>
           <label className="flex flex-col gap-1 text-xs sm:col-span-2">
-            <span className="text-slate-600">원문 (요약/리포트/블로그 본문)</span>
-            <textarea
-              className="min-h-[220px] rounded border border-slate-300 px-3 py-2 text-sm"
-              value={rawText}
-              onChange={(e) => setRawText(e.target.value)}
-            />
+            <span className="text-slate-600">입력 소스 타입</span>
+            <select
+              className="rounded border border-slate-300 px-2 py-2 text-sm"
+              value={sourceType}
+              onChange={(e) => setSourceType(e.target.value as InfographicInputSourceType)}
+            >
+              <option value="text">text (붙여넣기)</option>
+              <option value="url">url</option>
+              <option value="pdf_upload">pdf_upload</option>
+              <option value="pdf_url">pdf_url</option>
+            </select>
           </label>
+
+          {sourceType === 'text' ? (
+            <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+              <span className="text-slate-600">원문 (요약/리포트/블로그 본문)</span>
+              <textarea
+                className="min-h-[220px] rounded border border-slate-300 px-3 py-2 text-sm"
+                value={rawText}
+                onChange={(e) => setRawText(e.target.value)}
+              />
+            </label>
+          ) : null}
+          {sourceType === 'url' ? (
+            <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+              <span className="text-slate-600">URL</span>
+              <input
+                className="rounded border border-slate-300 px-2 py-2 text-sm"
+                value={sourceUrl}
+                onChange={(e) => setSourceUrl(e.target.value)}
+                placeholder="https://..."
+              />
+            </label>
+          ) : null}
+          {sourceType === 'pdf_upload' ? (
+            <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+              <span className="text-slate-600">PDF 업로드</span>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                className="rounded border border-slate-300 px-2 py-2 text-sm"
+                onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          ) : null}
+          {sourceType === 'pdf_url' ? (
+            <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+              <span className="text-slate-600">PDF URL</span>
+              <input
+                className="rounded border border-slate-300 px-2 py-2 text-sm"
+                value={pdfUrl}
+                onChange={(e) => setPdfUrl(e.target.value)}
+                placeholder="https://.../report.pdf"
+              />
+            </label>
+          ) : null}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => void generate({ industryName: industryName.trim(), rawText: rawText.trim() })}
-            disabled={loading || !industryName.trim() || !rawText.trim()}
+            onClick={() => void onGenerate()}
+            disabled={loading || !canGenerate}
             className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {loading ? '구조화 요약 생성 중…' : '구조화 요약 생성'}
@@ -87,7 +161,23 @@ export default function InfographicClient() {
 
       {activeSpec ? (
         <section className="space-y-3">
-          <InfographicCanvas spec={activeSpec} />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setRenderMode('responsive')}
+              className={`rounded px-3 py-1.5 text-xs ${renderMode === 'responsive' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}
+            >
+              Responsive 보기
+            </button>
+            <button
+              type="button"
+              onClick={() => setRenderMode('export')}
+              className={`rounded px-3 py-1.5 text-xs ${renderMode === 'export' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}
+            >
+              Export 보기
+            </button>
+          </div>
+          {renderMode === 'responsive' ? <ResponsiveInfographicView spec={activeSpec} /> : <InfographicCanvas spec={activeSpec} />}
           <button
             type="button"
             onClick={() => setShowDebug((v) => !v)}

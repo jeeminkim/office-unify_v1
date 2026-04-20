@@ -55,6 +55,7 @@ export function parseFollowupExtractRequest(input: unknown): {
     topic: string;
     transcript: string;
     closing?: string;
+    druckerSummary?: string;
     joMarkdown?: string;
     committeeTurnId: string;
   };
@@ -67,13 +68,14 @@ export function parseFollowupExtractRequest(input: unknown): {
   const transcript = typeof input.transcript === 'string' ? input.transcript.trim() : '';
   const committeeTurnId = typeof input.committeeTurnId === 'string' ? input.committeeTurnId.trim() : '';
   const closing = typeof input.closing === 'string' ? input.closing.trim() : undefined;
+  const druckerSummary = typeof input.druckerSummary === 'string' ? input.druckerSummary.trim() : undefined;
   const joMarkdown = typeof input.joMarkdown === 'string' ? input.joMarkdown.trim() : undefined;
   const errors: string[] = [];
   if (!topic) errors.push('topic_required');
   if (!transcript) errors.push('transcript_required');
   if (!committeeTurnId) errors.push('committeeTurnId_required');
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, value: { topic, transcript, closing, joMarkdown, committeeTurnId } };
+  return { ok: true, value: { topic, transcript, closing, druckerSummary, joMarkdown, committeeTurnId } };
 }
 
 function normalizeDraft(item: CommitteeFollowupDraft): CommitteeFollowupDraft {

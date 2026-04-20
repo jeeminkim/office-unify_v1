@@ -19,15 +19,82 @@ function truncate(text: string, max: number): string {
   return `${text.slice(0, max - 30)}\n\n... [truncated]`;
 }
 
-function parseJsonBlock(raw: string): unknown {
+function stripFences(raw: string): string {
   let text = raw.trim();
-  if (text.startsWith('```json')) text = text.slice(7);
-  else if (text.startsWith('```')) text = text.slice(3);
-  if (text.endsWith('```')) text = text.slice(0, -3);
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  const candidate = start >= 0 && end > start ? text.slice(start, end + 1) : text;
-  return JSON.parse(candidate) as unknown;
+  text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+  return text;
+}
+
+function extractJsonCandidate(raw: string): string {
+  const text = stripFences(raw);
+  const objStart = text.indexOf('{');
+  const objEnd = text.lastIndexOf('}');
+  if (objStart >= 0 && objEnd > objStart) return text.slice(objStart, objEnd + 1);
+  const arrStart = text.indexOf('[');
+  const arrEnd = text.lastIndexOf(']');
+  if (arrStart >= 0 && arrEnd > arrStart) {
+    return `{"items": ${text.slice(arrStart, arrEnd + 1)}, "warnings": []}`;
+  }
+  return text;
+}
+
+function repairJsonText(candidate: string): string {
+  return candidate
+    .replace(/^\uFEFF/, '')
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/\u201C|\u201D/g, '"')
+    .replace(/\u2018|\u2019/g, "'");
+}
+
+function parseJsonWithRepair(raw: string): { parsed: unknown; warningCodes: string[] } {
+  const candidate = extractJsonCandidate(raw);
+  try {
+    return { parsed: JSON.parse(candidate) as unknown, warningCodes: [] };
+  } catch {
+    const repaired = repairJsonText(candidate);
+    const parsed = JSON.parse(repaired) as unknown;
+    return { parsed, warningCodes: ['repair_succeeded'] };
+  }
+}
+
+function buildHeuristicFallbackItems(params: {
+  topic: string;
+  closing?: string;
+  druckerSummary?: string;
+  joMarkdown?: string;
+}): CommitteeFollowupDraft[] {
+  const context = [params.topic, params.closing, params.druckerSummary, params.joMarkdown]
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 6000);
+  const hasRisk = /리스크|변동성|집중|손실|하방|노출/i.test(context);
+  const hasMonitor = /모니터|점검|지표|검증|조건/i.test(context);
+  const base: CommitteeFollowupDraft[] = [
+    {
+      title: '포트폴리오 집중 리스크 재점검 항목 정리',
+      itemType: 'risk_reduction_plan',
+      priority: 'high',
+      rationale: '토론 요약에서 집중/변동성 리스크 관리 필요성이 반복되어 우선 검증 항목을 재정의해야 합니다.',
+      entities: ['portfolio'],
+      requiredEvidence: ['현재 포지션 비중', '고변동 자산 비중 추이'],
+      acceptanceCriteria: ['리스크 상위 3개와 대응 액션을 명시'],
+      ownerPersona: 'drucker',
+      status: 'draft',
+    },
+    {
+      title: '다음 점검 시점 기준 모니터링 체크리스트 확정',
+      itemType: 'portfolio_policy_update',
+      priority: 'medium',
+      rationale: '행동 지침형 운영을 위해 다음 점검 시점까지 확인할 지표를 고정해야 합니다.',
+      entities: ['portfolio', 'macro'],
+      requiredEvidence: ['점검 주기 제안', '핵심 지표 후보'],
+      acceptanceCriteria: ['다음 점검 일정과 지표 3개 이상 확정'],
+      ownerPersona: 'cio',
+      status: 'draft',
+    },
+  ];
+  if (hasRisk && hasMonitor) return base;
+  return base.slice(0, 2);
 }
 
 function toExtractResponse(parsed: unknown): CommitteeFollowupExtractResponse {
@@ -61,6 +128,8 @@ const FOLLOWUP_EXTRACT_APPEND = `
 [추가 임무 — 위원회 후속작업 추출 JSON]
 - 사람용 보고서 재작성 금지. 실행 가능한 후속작업 항목만 추출한다.
 - 반드시 JSON 객체 하나만 출력한다. 코드펜스, 설명문, 마크다운 금지.
+- JSON 외 모든 텍스트(서문/후문/주석/추가 설명) 금지.
+- 배열 또는 객체 외 텍스트 금지.
 - 출력 형식:
 {
   "items": [
@@ -92,6 +161,7 @@ export async function runCommitteeFollowupExtract(params: {
   topic: string;
   transcript: string;
   closing?: string;
+  druckerSummary?: string;
   joMarkdown?: string;
 }): Promise<CommitteeFollowupExtractResponse> {
   const slug = 'jo-il-hyeon';
@@ -104,6 +174,9 @@ ${params.transcript.trim()}
 
 ## closing
 ${(params.closing ?? '').trim() || '(none)'}
+
+## drucker_summary
+${(params.druckerSummary ?? '').trim() || '(none)'}
 
 ## jo_markdown
 ${(params.joMarkdown ?? '').trim() || '(none)'}
@@ -143,11 +216,32 @@ ${(params.joMarkdown ?? '').trim() || '(none)'}
       });
 
   try {
-    return toExtractResponse(parseJsonBlock(text));
+    const parsed = parseJsonWithRepair(text);
+    const extracted = toExtractResponse(parsed.parsed);
+    const warnings = [...extracted.warnings, ...parsed.warningCodes];
+    if (extracted.items.length === 0) {
+      const fallbackItems = buildHeuristicFallbackItems({
+        topic: params.topic,
+        closing: params.closing,
+        druckerSummary: params.druckerSummary,
+        joMarkdown: params.joMarkdown,
+      });
+      return {
+        items: fallbackItems,
+        warnings: [...warnings, 'empty_items', 'fallback_used'],
+      };
+    }
+    return { items: extracted.items, warnings };
   } catch {
+    const fallbackItems = buildHeuristicFallbackItems({
+      topic: params.topic,
+      closing: params.closing,
+      druckerSummary: params.druckerSummary,
+      joMarkdown: params.joMarkdown,
+    });
     return {
-      items: [],
-      warnings: ['extractor_json_parse_failed'],
+      items: fallbackItems,
+      warnings: ['parse_failed', 'fallback_used'],
     };
   }
 }

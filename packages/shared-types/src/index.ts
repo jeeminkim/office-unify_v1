@@ -257,6 +257,7 @@ export type {
   InfographicExtractResponseBody,
   InfographicFlow,
   InfographicFlowType,
+  InfographicInputSourceType,
   InfographicLineChart,
   InfographicLineup,
   InfographicPieChart,

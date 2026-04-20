@@ -17,11 +17,17 @@ export async function executeInfographicExtract(params: {
   geminiApiKey: string;
   industryName: string;
   rawText: string;
+  sourceUrl?: string;
+  sourceTitle?: string;
+  extractionWarnings?: string[];
 }): Promise<InfographicExtractResponseBody> {
   return runInfographicExtraction({
     geminiApiKey: params.geminiApiKey,
     industryName: params.industryName,
     rawText: params.rawText,
+    sourceUrl: params.sourceUrl,
+    sourceTitle: params.sourceTitle,
+    extractionWarnings: params.extractionWarnings,
   });
 }
 

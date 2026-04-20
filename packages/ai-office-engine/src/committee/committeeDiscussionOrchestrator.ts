@@ -72,10 +72,43 @@ const CLOSING_DRUCKER_APPEND = `
 
 const JO_REPORT_APPEND = `
 [추가 임무 — GPT Builder용 마크다운 보고서]
-아래에 토론 기록이 포함되어 있다. 토론에서 **도출된 종목(티커)·섹터**가 있으면, 복사해 넣기 좋은 **마크다운(.md) 보고서 한 편**만 출력한다.
-- 제목, 요약, 표(가능하면), 리스크, 다음 행동을 간결히.
-- 종목·섹터가 없거나 불명확하면 한두 문장으로 "명확히 도출된 종목/섹터 없음"만 쓰고 억지로 채우지 않는다.
-- SQL·원장 반영 초안은 쓰지 않는다(이 응답은 보고서 전용).`;
+아래에 토론 기록이 포함되어 있다. 복사해 넣기 좋은 **행동 지침형 마크다운(.md) 보고서 한 편**만 출력한다.
+
+[출력 섹션 고정]
+- # 제목
+- ## 요약
+- ## 핵심 리스크
+- ## 다음 행동
+- ## 하지 말 것
+- ## 모니터링 포인트
+- ## 다음 점검 시점
+
+[금지]
+- 종목 나열 표, 섹터 버킷 표, 유지/확대/감축/관찰 표 금지
+- 긴 종목별 논평 금지
+- 마크다운 테이블(| --- |) 금지
+
+[허용]
+- 포트폴리오 차원의 집중 리스크
+- 행동 우선순위와 보수적 운영 지침
+- 다음 점검 시점
+- SQL·원장 반영 초안 금지(이 응답은 보고서 전용).`;
+
+function sanitizeJoReportMarkdown(markdown: string): { markdown: string; warnings: string[] } {
+  const warnings: string[] = [];
+  let text = markdown.trim();
+  const tableBlockPattern = /(^|\n)(\|[^\n]*\|\n\|[\s:-]+\|[\s\S]*?)(?=\n#|\n##|\n###|\n\n[A-Z가-힣]|\n$)/g;
+  if (tableBlockPattern.test(text)) {
+    warnings.push('jo_report_table_removed');
+    text = text.replace(tableBlockPattern, '\n');
+  }
+  const forbiddenRows = /(유지\s*\/\s*확대\s*\/\s*감축\s*\/\s*관찰|유지 버킷|감축 검토 버킷)/gi;
+  if (forbiddenRows.test(text)) {
+    warnings.push('jo_report_bucket_table_style_removed');
+    text = text.replace(forbiddenRows, '운영 우선순위');
+  }
+  return { markdown: text.trim(), warnings };
+}
 
 async function loadLedgerSnapshot(supabase: SupabaseClient, userKey: OfficeUserKey): Promise<string> {
   const [holdings, watchlist] = await Promise.all([
@@ -354,7 +387,8 @@ export async function runCommitteeDiscussionJoReport(params: {
           contents,
         }),
     });
-    return { markdown: out.text.trim() };
+    const sanitized = sanitizeJoReportMarkdown(out.text.trim());
+    return { markdown: sanitized.markdown };
   }
 
   const text = await generateGeminiPersonaReply({
@@ -363,5 +397,6 @@ export async function runCommitteeDiscussionJoReport(params: {
     systemInstruction,
     contents,
   });
-  return { markdown: text.trim() };
+  const sanitized = sanitizeJoReportMarkdown(text.trim());
+  return { markdown: sanitized.markdown };
 }

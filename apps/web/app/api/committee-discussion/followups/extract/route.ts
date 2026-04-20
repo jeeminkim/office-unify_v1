@@ -59,6 +59,7 @@ export async function POST(req: Request) {
       topic: parsedReq.value.topic,
       transcript: parsedReq.value.transcript,
       closing: parsedReq.value.closing,
+      druckerSummary: parsedReq.value.druckerSummary,
       joMarkdown: parsedReq.value.joMarkdown,
     });
 

@@ -1,6 +1,15 @@
 export type InfographicFlowType = 'goods' | 'data' | 'capital' | 'service' | 'energy' | 'unknown';
 
-export type InfographicSourceType = 'blog' | 'securities_report' | 'pasted_text' | 'unknown';
+export type InfographicSourceType =
+  | 'blog'
+  | 'securities_report'
+  | 'pasted_text'
+  | 'text'
+  | 'url'
+  | 'pdf_upload'
+  | 'pdf_url'
+  | 'unknown';
+export type InfographicInputSourceType = 'text' | 'url' | 'pdf_upload' | 'pdf_url';
 
 export type InfographicConfidence = 'low' | 'medium' | 'high';
 
@@ -62,6 +71,10 @@ export type InfographicSourceMeta = {
   sourceType: InfographicSourceType;
   generatedAt: string;
   confidence: InfographicConfidence;
+  sourceUrl?: string;
+  sourceTitle?: string;
+  extractionWarnings?: string[];
+  extractedTextLength?: number;
 };
 
 export type InfographicSpec = {
@@ -82,7 +95,10 @@ export type InfographicSpec = {
 
 export type InfographicExtractRequestBody = {
   industryName: string;
-  rawText: string;
+  sourceType: InfographicInputSourceType;
+  rawText?: string;
+  sourceUrl?: string;
+  pdfUrl?: string;
 };
 
 export type InfographicExtractResponseBody = {

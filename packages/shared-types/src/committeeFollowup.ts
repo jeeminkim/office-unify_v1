@@ -34,6 +34,7 @@ export type CommitteeFollowupExtractRequestBody = {
   topic: string;
   transcript: string;
   closing?: string;
+  druckerSummary?: string;
   joMarkdown?: string;
   committeeTurnId: string;
 };

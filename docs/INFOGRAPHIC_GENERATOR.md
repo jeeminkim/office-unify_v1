@@ -2,7 +2,7 @@
 
 ## 개요
 
-`/infographic`은 블로그 분석 글, 증권사 리포트, 사용자가 붙여넣은 원문을 바탕으로
+`/infographic`은 블로그 분석 글, 증권사 리포트, 사용자가 붙여넣은 원문/URL/PDF를 바탕으로
 산업 구조 인포그래픽을 생성하는 무상태(MVP) 기능이다.
 
 핵심 원칙:
@@ -14,14 +14,19 @@
 
 ## 데이터 흐름
 
-1. 사용자 입력: `industryName`, `rawText`
+1. 사용자 입력: `industryName`, `sourceType(text|url|pdf_upload|pdf_url)`
 2. API: `POST /api/infographic/extract`
 3. 서버:
-   - 입력 검증/길이 제한
+   - 입력 검증/길이 제한/파일 크기 제한
+   - sourceType별 본문 추출
+     - `text`: rawText 그대로
+     - `url`: HTML fetch 후 본문 텍스트 추출
+     - `pdf_upload`/`pdf_url`: 텍스트 레이어 PDF 파싱(OCR 미포함)
    - LLM JSON 추출 (`ai-office-engine`)
    - normalize + validation
 4. 클라이언트:
-   - 고정 템플릿 SVG 렌더
+   - `responsive` 읽기 뷰(모바일 우선)
+   - `export` A4 SVG 뷰(저장용)
    - PNG 저장
    - JSON 디버그 패널(접기/펼치기)
 
@@ -30,6 +35,16 @@
 `InfographicSpec` (shared-types):
 
 - 메타: `title`, `subtitle`, `industry`, `summary`, `sourceMeta`
+`sourceMeta` 확장:
+
+- `sourceType`
+- `sourceUrl?`
+- `sourceTitle?`
+- `extractionWarnings?`
+- `extractedTextLength?`
+- `generatedAt`
+- `confidence`
+
 - 산업 존(고정 4개): `input`, `production`, `distribution`, `demand`
 - 흐름: `flows[]` (`goods|data|capital|service|energy|unknown`)
 - 보조 패널: `lineup`, `comparisons`, `risks`, `notes`, `warnings`
@@ -41,6 +56,7 @@
 - 차트 값이 없으면 빈 배열 또는 `value: null`
 - 추정/가짜 수치 금지
 - fallback 발생 시 `warnings`에 사유 기록
+- URL/PDF 본문 추출 실패 또는 본문 과소 추출 시 `extractionWarnings` 기록
 
 ## PNG 저장 방식
 
@@ -54,6 +70,7 @@
 - MVP는 템플릿 1종(A4 세로 비율) 고정
 - 복잡한 업종별 도식 프리셋은 미포함
 - 장문 원문은 API에서 길이 제한(trim) 적용
+- PDF는 텍스트 레이어 중심 파싱이며 OCR 미지원
 - 결과 저장/히스토리/재호출은 2차 범위
 
 ## 추후 2차 범위

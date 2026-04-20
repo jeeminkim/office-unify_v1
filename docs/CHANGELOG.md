@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Committee Stabilization (real-use fixes):** Drucker 응답에서 `[형식 안내]`/`출력 형식` 등 메타 지시문 노출 제거(프롬프트+서버 후처리). 조일현 보고서를 행동 지침형 섹션으로 단순화하고 markdown table 패턴 제거 후처리 추가. followup extractor를 `strict parse -> repair parse -> heuristic fallback`으로 강화하고 warning code(`parse_failed`, `repair_succeeded`, `empty_items`, `fallback_used`)를 구조화.
+- **Infographic Generator hardening:** 입력 소스를 `text | url | pdf_upload | pdf_url`로 확장, URL/PDF 본문 추출 파이프라인 추가(파일 크기 제한/timeout/추출 warning). `sourceMeta`에 `sourceUrl/sourceTitle/extractionWarnings/extractedTextLength` 확장. 렌더 모드를 `responsive`(읽기용)와 `export`(A4 PNG 저장용)로 분리해 모바일 가독성 개선.
 - **Infographic Generator (MVP):** `/infographic` 페이지와 `POST /api/infographic/extract` 추가. 블로그/증권사 리포트/붙여넣은 원문을 `InfographicSpec` JSON으로 정제 후, 고정 SVG 템플릿(4개 zone + flow + 보조 패널 + bar/pie/line)으로 렌더링하고 PNG 저장 지원. DB 비저장, 숫자 추정 금지, `unknown/null/empty` fallback 및 warnings 기록 원칙 적용.
 - **Committee Discussion / Followup Reanalyze Loop (Phase 3):** `POST /followups/:id/reanalyze` 추가로 저장된 followup 기반 실제 재분석 실행을 지원하고, 실행 1회당 artifact 3종(`reanalyze_payload`, `reanalyze_result_json`, `reanalyze_result_md`)을 누적 저장. `GET /followups/:id/artifacts`로 이력 조회 지원, 운영 보드 상세에서 최신 재분석 Markdown/JSON(completionAssessment, nextActions) 표시. `reanalyze-prep`는 payload 준비 전용으로 역할 분리 유지. 자동 투자 실행 금지 원칙 유지.
 - **Committee Discussion / Followup Board (Phase 2):** `/committee-followups` 운영 화면 추가(요약 카운트, 필터, 검색, 정렬, 상태 배지, 상세/artifact, 상태 변경, 재분석 준비 payload 복사). API 확장: `GET /followups`, `GET /followups/:id`, `PATCH /followups/:id`, `POST /followups/:id/reanalyze-prep`. 상태 전이 서버 검증(draft→accepted 등) 및 `done/dropped` 종료 상태 보호 적용. 자동 실행 금지 원칙 유지.

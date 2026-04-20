@@ -81,6 +81,9 @@ export async function runInfographicExtraction(params: {
   geminiApiKey: string;
   industryName: string;
   rawText: string;
+  sourceUrl?: string;
+  sourceTitle?: string;
+  extractionWarnings?: string[];
 }): Promise<InfographicExtractResponseBody> {
   const sourceType = detectSourceType(params.rawText);
   const raw = await generateGeminiResearchReport({
@@ -90,16 +93,35 @@ export async function runInfographicExtraction(params: {
       industryName: params.industryName,
       rawText: params.rawText,
       sourceType,
+      sourceUrl: params.sourceUrl,
+      sourceTitle: params.sourceTitle,
     }),
   });
 
   try {
     const parsed = parseJsonBlock(raw);
     const spec = toSpecOrFallback(parsed, params.industryName, sourceType);
-    return { ok: true, spec, warnings: spec.warnings ?? [] };
+    const nextSpec: InfographicSpec = {
+      ...spec,
+      sourceMeta: {
+        ...spec.sourceMeta,
+        sourceUrl: params.sourceUrl,
+        sourceTitle: params.sourceTitle,
+        extractionWarnings: params.extractionWarnings ?? [],
+        extractedTextLength: params.rawText.length,
+      },
+    };
+    return { ok: true, spec: nextSpec, warnings: [...(nextSpec.warnings ?? []), ...(params.extractionWarnings ?? [])] };
   } catch {
     const spec = buildFallbackSpec(params.industryName, sourceType);
-    spec.warnings = [...spec.warnings, 'extractor_json_parse_failed'];
+    spec.warnings = [...spec.warnings, 'extractor_json_parse_failed', ...(params.extractionWarnings ?? [])];
+    spec.sourceMeta = {
+      ...spec.sourceMeta,
+      sourceUrl: params.sourceUrl,
+      sourceTitle: params.sourceTitle,
+      extractionWarnings: params.extractionWarnings ?? [],
+      extractedTextLength: params.rawText.length,
+    };
     return { ok: true, spec, warnings: spec.warnings };
   }
 }

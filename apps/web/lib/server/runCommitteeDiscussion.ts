@@ -97,6 +97,7 @@ export async function executeCommitteeDiscussionFollowupExtract(params: {
   topic: string;
   transcript: string;
   closing?: string;
+  druckerSummary?: string;
   joMarkdown?: string;
 }): Promise<CommitteeFollowupExtractResponse> {
   return runCommitteeFollowupExtract({
@@ -106,6 +107,7 @@ export async function executeCommitteeDiscussionFollowupExtract(params: {
     topic: params.topic,
     transcript: params.transcript,
     closing: params.closing,
+    druckerSummary: params.druckerSummary,
     joMarkdown: params.joMarkdown,
   });
 }
