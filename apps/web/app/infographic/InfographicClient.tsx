@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type {
   InfographicArticlePattern,
@@ -67,11 +67,12 @@ export default function InfographicClient() {
   const [renderMode, setRenderMode] = useState<'responsive' | 'export'>(() =>
     typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'export' : 'responsive',
   );
-  const [isMobileViewport] = useState(() =>
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 1024 : true,
   );
   const [showMobileExportPreview, setShowMobileExportPreview] = useState(false);
   const [mobileExportReady, setMobileExportReady] = useState(false);
+  const [mobileExportIntent, setMobileExportIntent] = useState<'preview' | 'save'>('preview');
   const [showRawDebug, setShowRawDebug] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [articlePatternOverride, setArticlePatternOverride] = useState<string>('auto');
@@ -93,6 +94,17 @@ export default function InfographicClient() {
   } = useInfographicGenerator();
 
   const activeSpec = useMemo<InfographicSpec | null>(() => spec, [spec]);
+  useEffect(() => {
+    const onResize = () => setIsMobileViewport(window.innerWidth < 1024);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useEffect(() => {
+    if (isMobileViewport && renderMode === 'export') {
+      setRenderMode('responsive');
+    }
+  }, [isMobileViewport, renderMode]);
 
   const onGenerateFromSource = () =>
     extractSourceText(
@@ -130,7 +142,7 @@ export default function InfographicClient() {
 
   const canGenerateSpec =
     sourceType === 'text' ? !!rawText.trim() : !!sourcePreviewText.trim();
-  const showInlineExportCanvas = !(isMobileViewport && renderMode === 'export');
+  const showInlineExportCanvas = !isMobileViewport && renderMode === 'export';
   const cleanupSeverity: 'light' | 'moderate' | 'heavy' | null = sourcePreviewMeta
     ? sourcePreviewMeta.cleanupNotes.length >= 8
       ? 'heavy'
@@ -568,21 +580,38 @@ export default function InfographicClient() {
             >
               Responsive 보기
             </button>
-            <button
-              type="button"
-              onClick={() => setRenderMode('export')}
-              className={`rounded px-3 py-1.5 text-xs ${renderMode === 'export' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}
-            >
-              Export 보기
-            </button>
-            {isMobileViewport ? (
+            {!isMobileViewport ? (
               <button
                 type="button"
-                onClick={() => setShowMobileExportPreview(true)}
+                onClick={() => setRenderMode('export')}
+                className={`rounded px-3 py-1.5 text-xs ${renderMode === 'export' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-700'}`}
+              >
+                Export 보기
+              </button>
+            ) : null}
+            {isMobileViewport ? (
+              <>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileExportIntent('preview');
+                  setShowMobileExportPreview(true);
+                }}
                 className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700"
               >
                 저장용 미리보기
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileExportIntent('save');
+                  setShowMobileExportPreview(true);
+                }}
+                className="rounded border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs text-white"
+              >
+                PNG 저장
+              </button>
+              </>
             ) : null}
           </div>
           {renderMode === 'responsive' ? (
@@ -607,10 +636,14 @@ export default function InfographicClient() {
                     닫기
                   </button>
                 </div>
-                <p className="mb-2 text-xs text-slate-500">이 화면이 PNG로 저장됩니다.</p>
+                <p className="mb-2 text-xs text-slate-500">
+                  {mobileExportIntent === 'save'
+                    ? '이 화면 기준으로 PNG를 저장합니다.'
+                    : '저장용 레이아웃 미리보기 화면입니다.'}
+                </p>
                 <InfographicCanvas
                   spec={activeSpec}
-                  showSaveButton={mobileExportReady}
+                  showSaveButton={mobileExportReady && mobileExportIntent === 'save'}
                   onRenderReadyChange={setMobileExportReady}
                   onBeforeSave={async () =>
                     window.confirm("현재 보이는 저장용 레이아웃으로 PNG를 저장할까요?")

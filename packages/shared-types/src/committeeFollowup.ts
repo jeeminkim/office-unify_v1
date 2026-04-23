@@ -27,6 +27,11 @@ export type CommitteeFollowupDraft = {
   ownerPersona?: string;
   duePolicy?: string;
   verificationNote?: string;
+  extractionMeta?: {
+    recoveredFrom: 'model_output' | 'repair' | 'fallback';
+    parseStage: 'strict' | 'repair' | 'fallback';
+    quality: 'normal' | 'repaired' | 'degraded_draft';
+  };
   status: CommitteeFollowupStatus;
 };
 

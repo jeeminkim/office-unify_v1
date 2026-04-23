@@ -17,22 +17,22 @@ const jsonHeaders: HeadersInit = {
 const TOPIC_MAX = 8000;
 
 const WARNING_MESSAGE_MAP: Record<string, { message: string; recommendedAction: string; severity: "warn" | "info" }> = {
-  parse_failed: {
-    message: "초안 추출 형식이 불안정해 복구를 시도했습니다.",
+  extractor_json_parse_failed: {
+    message: "후속작업 초안 형식이 불안정해 자동 복구를 시도했습니다.",
     recommendedAction: "항목 제목과 완료 기준을 한 번 더 확인하세요.",
     severity: "warn",
   },
   repair_succeeded: {
-    message: "일부 형식 문제를 자동 복구했습니다.",
+    message: "형식 문제를 자동으로 복구했습니다.",
     recommendedAction: "자동 복구된 표현이 어색하지 않은지 검토하세요.",
     severity: "info",
   },
   fallback_used: {
-    message: "요약 내용을 바탕으로 후속작업 초안을 복구 생성했습니다.",
-    recommendedAction: "자동 복구 초안이므로 저장 전에 우선순위·근거·완료 기준을 점검하세요.",
+    message: "요약 내용을 바탕으로 후속작업 초안을 다시 만들었습니다.",
+    recommendedAction: "저장 전 제목·완료 기준·관련 종목/섹터를 한 번 더 확인하세요.",
     severity: "warn",
   },
-  empty_items: {
+  extractor_items_empty: {
     message: "작업 항목이 비어 있어 최소 초안을 다시 만들었습니다.",
     recommendedAction: "토론 요약을 바탕으로 핵심 작업 2~3개만 먼저 남기세요.",
     severity: "warn",
@@ -78,7 +78,7 @@ function resolveItemAwareAction(code: string, item: CommitteeFollowupDraft): Fol
       focusFields: ["title", "itemType"],
     };
   }
-  if (code === "parse_failed" && (!hasRationale || !hasCriteria)) {
+  if (code === "extractor_json_parse_failed" && (!hasRationale || !hasCriteria)) {
     return {
       shortAction: "근거와 완료 기준을 먼저 보강하세요.",
       detailedAction: "파싱 실패 후 복구된 초안은 rationale/acceptanceCriteria가 약할 수 있어 저장 전 보완이 필요합니다.",
@@ -113,9 +113,9 @@ function toWarningUi(warnings: string[]): {
     }
   }
   const qualityLabel = fallbackUsed
-    ? "복구 초안 기반"
+    ? "제한적 복구"
     : uniq.includes("repair_succeeded")
-      ? "자동 복구 적용"
+      ? "복구 추출"
       : "정상 추출";
   return {
     infoMessages,
@@ -524,7 +524,7 @@ export function CommitteeDiscussionClient() {
           <div className="border-t border-dashed border-emerald-200 bg-emerald-50/40 px-3 py-3 text-sm">
             <h3 className="font-semibold text-emerald-900">조일현 Markdown 보고서 (요청 시에만)</h3>
             <p className="mt-1 text-xs text-emerald-900/80">
-              토론·정리 발언과 무관하게 자동 생성되지 않습니다. GPT Builder에 붙일 .md가 필요할 때만 아래 버튼을 누르세요.
+              복사용 Markdown 보고서 생성 전용입니다. 후속작업 JSON 추출과는 역할이 분리되어 있으며 자동 생성되지 않습니다.
             </p>
             <button
               type="button"
@@ -532,7 +532,7 @@ export function CommitteeDiscussionClient() {
               disabled={loadingReport || busyRound || busyClosing}
               onClick={() => void generateReport()}
             >
-              {loadingReport ? "보고서 작성 중…" : "보고서 생성 (서버 호출)"}
+              {loadingReport ? "보고서 작성 중…" : "복사용 Markdown 보고서 생성"}
             </button>
             <button
               type="button"
@@ -540,7 +540,7 @@ export function CommitteeDiscussionClient() {
               disabled={extractingFollowups || busyRound || busyClosing || !committeeTurnId}
               onClick={() => void extractFollowups()}
             >
-              {extractingFollowups ? "후속작업 추출 중…" : "후속작업 추출"}
+              {extractingFollowups ? "후속작업 초안 생성 중…" : "토론 요약 기반 작업 초안 생성"}
             </button>
             {committeeTurnId ? (
               <Link
@@ -673,6 +673,10 @@ export function CommitteeDiscussionClient() {
                 {warningUi.fallbackUsed ? (
                   <span className="rounded bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">
                     자동 복구 초안
+                  </span>
+                ) : warningUi.qualityLabel === "복구 추출" ? (
+                  <span className="rounded bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-900">
+                    복구 추출
                   </span>
                 ) : null}
                 <input

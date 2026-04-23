@@ -241,6 +241,8 @@ AI 협업 도구(Cursor, GPT Builder 등)와의 연결도 쉬워진다.
 - source extraction 성공과 spec generation 실패를 단계적으로 분리해 표시하고, spec 생성은 domain-aware mapping + semantic/numeric fallback으로 복구 가능성을 높인다.
 - 산업 리포트뿐 아니라 블로그/칼럼/시황 코멘트도 articlePattern classifier + opinion-aware 경로로 구조화하여 템플릿 재사용성과 범용성을 동시에 확보한다.
 - 최종 사용 단계에서는 자동 분류를 신뢰하되 사용자가 즉시 교정(override)할 수 있게 하여 예측 가능성과 재시도 용이성을 높인다.
+- 모바일 실사용 기준에서는 reader-first 원칙(읽기 화면 우선, 저장 export 후순위)을 유지해 과밀도를 줄인다.
+- 위원회 후속작업 추출은 strict JSON 성공만 의존하지 않고 repair/salvage/fallback까지 포함해 "오류처럼 보이는 체감"을 줄인다.
 
 즉, 지금 단계는 “완성형 제품”이 아니라,
 **올바른 구조로 가기 위한 첫 번째 안정화 단계**다.

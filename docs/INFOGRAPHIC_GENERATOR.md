@@ -82,8 +82,11 @@
 - `responsive`: 읽기 UX 중심
 - `export`: PNG 저장 기준 레이아웃
 - PNG 저장은 항상 export 기준으로 수행
-- 모바일에서는 `저장용 미리보기` 액션으로 export 레이아웃을 확인한다.
-- 저장용 미리보기에서 "이 화면이 PNG로 저장됩니다." 안내 후 저장을 수행한다.
+- 모바일은 `reader-first / export-second`를 강제한다:
+  - 기본 화면은 responsive reader만 노출
+  - export inline 기본 노출 금지
+  - `저장용 미리보기`, `PNG 저장` 액션에서만 export 레이아웃을 연다
+- 저장용 미리보기는 lazy 렌더를 허용한다.
 
 ## Export 템플릿 분기 (저장본 전용)
 
@@ -105,6 +108,12 @@
 - 선형: 유효 점 **2개 이상**일 때만 슬롯 사용(그렇지 않으면 export에서 생략)
 
 빈 '데이터 없음' 상자는 export에서 가급적 그리지 않는다(`SimplePieChart`/`SimpleLineChart`의 export 모드).
+
+모바일 responsive reader 정책:
+
+- 유효 차트만 기본 노출(최대 1개)
+- 데이터 없는 차트/박스는 기본 비노출
+- 나머지는 `차트 더 보기` 접기 패널로 접근
 
 ## Export 텍스트 compact
 
@@ -206,4 +215,16 @@
 - 업종 프리셋(반도체/우주/배터리 등) 세분화
 - 멀티 페이지 출력
 - 차트 단위 근거(source span) 연결
+
+## 모바일 수동 QA 시나리오
+
+- 모바일 viewport에서 `/infographic` 진입 시 responsive reader 기본 진입 확인
+- `저장용 미리보기`/`PNG 저장` 버튼으로만 export 접근 가능한지 확인
+- 기본 화면에서 zone/플레이어/리스크/차트 과밀도가 줄었는지 확인
+  - zone 항목 기본 3개
+  - notes 기본 2개
+  - 리스크는 제목 + 1줄 설명
+  - 플레이어 설명은 펼침에서만 확인
+- 빈 차트/`데이터 없음` 박스가 기본 화면에 노출되지 않는지 확인
+- PNG 저장 결과가 export 레이아웃 기준으로 정상 저장되는지 확인
 

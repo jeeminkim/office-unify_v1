@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Mobile infographic reader-first stabilization:** 모바일 기본 노출을 responsive reader로 고정하고 export inline 기본 렌더를 제거. `저장용 미리보기`/`PNG 저장` 액션에서만 저장 레이아웃을 열도록 조정하고, responsive 뷰는 zone(3개), notes(2개), 차트(유효 1개 우선 + 더보기) 중심으로 과밀도를 완화.
+- **Committee followup extractor resilience:** 후속작업 파서를 `trim -> fence/prose 제거 -> JSON candidate 추출 -> strict parse -> repair parse -> semantic fallback`로 강화. 실패 시 `extractor_json_parse_failed` + `fallback_used`로 상태를 남기고 최소 실행 가능한 draft(2~5개, 핵심 필드 보강, extractionMeta 포함)를 보장.
+- **User-facing warning cleanup:** 후속작업 화면에서 raw warning code 기본 노출을 유지하지 않고 자연어 메시지/품질 배지/다음 행동 가이드 중심으로 정리. raw code는 debug 토글에서만 확인 가능.
+- **Role separation copy refinement:** `/committee-discussion` 버튼 문구를 `복사용 Markdown 보고서 생성` vs `토론 요약 기반 작업 초안 생성`으로 분리해 report와 extractor 책임을 UI에서 명확히 구분.
 - **Infographic export renderer v2:** 저장용 SVG를 `IndustryStructureExport`/`MarketOpinionExport` 2종으로 분기하고, flow는 외곽 레인+요약(시황형은 번호 흐름), 차트는 유효 슬롯만 auto-compact, PNG는 기본적으로 경고·디버그 메타 비노출·짧은 품질 배지 최대 2개. 시황형 상단 **핵심 수치 카드**·K-엔터 회귀 fixture/`exportLayout.test.ts` 추가.
 - **Infographic control + predictability polish:** 자동 분류(articlePattern/industryPattern) override UI와 reset-to-auto를 추가해 사용자 교정 루프를 강화.
 - **Degraded fallback action guide:** degraded reason classifier를 도입하고 reason별 행동 문구/CTA(재시도, 텍스트 축약, 패턴 전환)를 제공.
