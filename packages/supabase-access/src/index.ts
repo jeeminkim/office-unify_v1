@@ -61,6 +61,28 @@ export type {
   DevSupportRating,
   DevSupportTaskType,
 } from './devSupportRepository';
+export {
+  getDefaultInvestmentPrincipleSet,
+  getTradeJournalAnalytics,
+  getTradeJournalCheckResultsByEntryId,
+  getTradeJournalEntryById,
+  getTradeJournalEvaluationByEntryId,
+  insertInvestmentPrinciple,
+  insertInvestmentPrincipleSet,
+  insertTradeJournalCheckResults,
+  insertTradeJournalEntry,
+  insertTradeJournalEvaluation,
+  insertTradeJournalReflection,
+  insertTradeJournalReview,
+  listInvestmentPrincipleSets,
+  listInvestmentPrinciples,
+  listTradeJournalEntries,
+  listTradeJournalFollowupsByEntryId,
+  listTradeJournalReflectionsByEntryId,
+  listTradeJournalReviewsByEntryId,
+  updateInvestmentPrinciple,
+  upsertTradeJournalFollowup,
+} from './tradeJournalRepository';
 
 /**
  * 서버 전용 Supabase 클라이언트 (예: service role).

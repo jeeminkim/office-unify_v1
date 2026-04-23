@@ -48,6 +48,32 @@
 - 자동 주문/자동 매매/원장 자동 반영과 무관한 추적 테이블이다.
 - `reanalyze` 실행 결과는 artifact를 append-only로 누적 저장한다(`reanalyze_payload`, `reanalyze_result_json`, `reanalyze_result_md`).
 
+## Trade Journal / Investment Principles
+
+**파일:** `docs/sql/append_web_trade_journal.sql`
+
+| 테이블 | 역할 |
+|--------|------|
+| `investment_principle_sets` | 사용자별 원칙 세트(기본 세트 포함) |
+| `investment_principles` | buy/sell/common/risk 체크리스트 규칙 |
+| `trade_journal_entries` | 매매일지 본문 |
+| `trade_journal_check_results` | 원칙별 점검 결과(met/not_met/unclear/manual_required) |
+| `trade_journal_evaluations` | 일지 단위 점검 요약 점수/차단 위반 |
+| `trade_journal_reviews` | PB/페르소나 2차 검토 결과 |
+| `trade_journal_reflections` | 거래 후 회고 기록 |
+| `trade_journal_followups` | 회고/검토 리마인더 일정 |
+
+핵심 원칙:
+
+- 자동 매매/자동 주문/원장 자동 수정은 이 계층의 책임이 아니다.
+- 체크리스트 평가가 1차 기준, PB/페르소나 검토는 2차 보조다.
+- blocking 규칙은 점수와 별도로 집계한다.
+- `investment_principles`는 `rule_text` 외 구조 필드(`rule_key`, `target_metric`, `operator`, `threshold_value`, `threshold_unit`, `applies_when_json`)를 함께 저장한다.
+- 코드 레벨에서는 `operator`를 `comparisonOperator`로 alias 해석해 규칙 비교 의도를 명확히 한다.
+- `trade_journal_entries`는 `entry_type`/`exit_type`/`conviction_level`로 진입/청산 의도를 구조화한다.
+- `trade_journal_reviews`는 `entry_snapshot_json`/`evaluation_snapshot_json`으로 리뷰 시점의 상태를 고정 저장한다.
+- `trade_journal_check_results`는 `evidence_json`으로 구조화된 판정 근거를 저장한다.
+
 ## 미적용 시 동작 (Trend memory)
 
 DDL을 적용하지 않으면 `trend_report_runs` 조회가 실패하고, 엔진은 **SQL memory만 끄고** 리포트 본문·OpenAI/Gemini 경로는 그대로 둔다. 응답 `meta.memoryEnabled=false`, `warnings`에 안내 문자열.

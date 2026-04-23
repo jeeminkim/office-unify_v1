@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Trade Journal structured executor hardening:** 구조 규칙 실행기를 명확화해 `target_metric + operator` 기반 자동 평가를 우선 적용하고, 코드 내부에서는 `operator`를 `comparisonOperator` alias로 해석. 판정 불가 시 기존 텍스트 휴리스틱/수동 판정으로 fallback.
+- **Sell checklist deepening:** `exit_type`별(thesis_broken/target_reached/risk_reduction/stop_loss/event_avoidance) 점검 근거를 강화하고 기본 원칙 seed에 sell 전용 구조화 규칙을 추가.
+- **Structured evidence persistence:** `trade_journal_check_results`에 `evidence_json` 저장을 추가해 explanation 텍스트 + 구조 근거를 함께 보존.
+- **Horizon-type validation warnings:** `strategy_horizon × entry_type/exit_type` 조합 검증을 강화해 명백한 오류는 차단하고 어색한 조합은 warning으로 반환.
+- **Sell-aware analytics expansion:** 기존 핵심 KPI는 유지하면서 details 섹션에 sell 품질 지표(exit_type 평균 점수, thesis_broken 근거율, stop_loss 기준 입력률, sell blocking 위반률, sell reflection 패턴)를 추가.
+- **Trade Journal hardening (operational quality):** `investment_principles`에 rule 구조 필드(`rule_key`, `target_metric`, `operator`, `threshold_value`, `threshold_unit`, `requires_user_input`, `applies_when_json`, `evaluation_hint`)를 추가하고 check_method를 `blocking_boolean|boolean|threshold_numeric|portfolio_exposure|score|manual`로 확장.
+- **Journal intent fields:** `trade_journal_entries`에 `entry_type`, `exit_type`, `conviction_level`을 추가해 buy/sell 의도를 구조화하고 side-타입 불일치 입력을 서버 검증으로 차단.
+- **Sell checklist 강화:** 평가 엔진이 구조 필드 우선으로 판정하고, sell 시 thesis 훼손/목표 도달/손절/이벤트 회피/감정 매도 신호를 더 직접적으로 점검.
+- **Review snapshot persistence:** `trade_journal_reviews`에 `entry_snapshot_json`, `evaluation_snapshot_json` 저장을 추가해 리뷰 시점 상태를 고정.
+- **Analytics KPI 정리:** `/trade-journal/analytics`를 초기 운영 5개 KPI 중심(평균 충족률, blocking 비율, buy-sell 차이, 위반 원칙 Top5, reflection 실패 패턴 Top5)으로 정리하고 세부 지표는 접기 영역으로 분리.
+- **Trade Journal + Principle Checklist (Phase 1~3 baseline):** 사용자 원칙 세트/규칙 저장(`investment_principle_sets`, `investment_principles`)과 매매일지 점검 계층(`trade_journal_entries`, `trade_journal_check_results`, `trade_journal_evaluations`)을 추가. 자동 판단/수동 확인을 분리하고 blocking 위반을 별도 집계.
+- **Persona/PB review for journal:** 체크리스트 결과를 포함한 입력으로 `POST /api/trade-journal/review`를 추가해 PB/등록 페르소나가 2차 검토를 수행하도록 연결. verdict/missing checks/risks/next actions 구조화 응답 지원.
+- **Post-trade reflection + analytics:** 회고 저장(`trade_journal_reflections`) 및 followup 스케줄(`trade_journal_followups`) 기반 확장 포인트를 추가하고, `/api/trade-journal/analytics` 및 `/trade-journal/analytics`에서 충족률/차단 위반/buy-sell 차이/verdict 분포/실패 패턴 요약 제공.
+- **UI workflow:** `/trade-journal` 화면에 원칙 관리, 매매일지 입력, 자동 점검 결과, 페르소나 검토, 회고 저장 흐름을 추가.
 - **Mobile infographic reader-first stabilization:** 모바일 기본 노출을 responsive reader로 고정하고 export inline 기본 렌더를 제거. `저장용 미리보기`/`PNG 저장` 액션에서만 저장 레이아웃을 열도록 조정하고, responsive 뷰는 zone(3개), notes(2개), 차트(유효 1개 우선 + 더보기) 중심으로 과밀도를 완화.
 - **Committee followup extractor resilience:** 후속작업 파서를 `trim -> fence/prose 제거 -> JSON candidate 추출 -> strict parse -> repair parse -> semantic fallback`로 강화. 실패 시 `extractor_json_parse_failed` + `fallback_used`로 상태를 남기고 최소 실행 가능한 draft(2~5개, 핵심 필드 보강, extractionMeta 포함)를 보장.
 - **User-facing warning cleanup:** 후속작업 화면에서 raw warning code 기본 노출을 유지하지 않고 자연어 메시지/품질 배지/다음 행동 가이드 중심으로 정리. raw code는 debug 토글에서만 확인 가능.
