@@ -30,12 +30,15 @@ export async function POST() {
         market: holding.market,
         symbol: holding.symbol,
         displayName: holding.name,
+        quoteSymbol: holding.quote_symbol ?? undefined,
+        googleTicker: holding.google_ticker ?? undefined,
       })),
     );
     return NextResponse.json({
       ok: true,
       refreshRequested: true,
-      message: 'Google Sheets 계산 반영 후 잠시 뒤 다시 조회하세요.',
+      message: 'Google Sheets 시세 수식을 갱신했습니다. 30~90초 뒤 다시 조회하세요.',
+      nextRecommendedPollSeconds: 60,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';

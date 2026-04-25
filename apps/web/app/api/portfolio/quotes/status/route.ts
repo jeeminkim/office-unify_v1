@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
+import { getServiceSupabase } from '@/lib/server/supabase-service';
+import { listWebPortfolioHoldingsForUser } from '@office-unify/supabase-access';
 import {
+  normalizeQuoteKey,
+  buildGoogleFinanceTickerCandidates,
   isGoogleFinanceQuoteConfigured,
   readGoogleFinanceQuoteSheetRows,
 } from '@/lib/server/googleFinanceSheetQuoteService';
@@ -8,33 +12,116 @@ import {
 export async function GET() {
   const auth = await requirePersonaChatAuth();
   if (!auth.ok) return auth.response;
-  if (!isGoogleFinanceQuoteConfigured()) {
+  const supabase = getServiceSupabase();
+  if (!supabase) {
+    return NextResponse.json({ error: 'Supabase is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).' }, { status: 503 });
+  }
+  const configured = isGoogleFinanceQuoteConfigured();
+  const holdings = await listWebPortfolioHoldingsForUser(supabase, auth.userKey).catch(() => []);
+  if (!configured) {
     return NextResponse.json({
       ok: false,
-      provider: 'none',
-      readBackSucceeded: false,
-      message: 'Google Sheets quote provider is not configured.',
+      generatedAt: new Date().toISOString(),
+      sheet: {
+        spreadsheetIdConfigured: Boolean(process.env.GOOGLE_SHEETS_SPREADSHEET_ID?.trim()),
+        sheetName: process.env.PORTFOLIO_QUOTES_SHEET_NAME?.trim() || 'portfolio_quotes',
+        tabFound: false,
+        readSucceeded: false,
+        writeConfigured: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()),
+      },
+      fx: { ticker: 'CURRENCY:USDKRW', status: 'missing' },
+      rows: holdings.map((holding) => ({
+        market: holding.market,
+        symbol: holding.symbol.toUpperCase(),
+        name: holding.name,
+        googleTicker: buildGoogleFinanceTickerCandidates({
+          market: holding.market,
+          symbol: holding.symbol,
+          displayName: holding.name,
+          quoteSymbol: holding.quote_symbol ?? undefined,
+          googleTicker: holding.google_ticker ?? undefined,
+        })[0] ?? holding.symbol.toUpperCase(),
+        quoteSymbol: holding.quote_symbol ?? undefined,
+        rowStatus: 'missing_row',
+        message: 'Google Sheets quote provider is not configured.',
+      })),
+      summary: {
+        totalRows: holdings.length,
+        okRows: 0,
+        emptyRows: holdings.length,
+        parseFailedRows: 0,
+        tickerMismatchRows: 0,
+      },
+      warnings: ['googlefinance_not_configured'],
     });
   }
   try {
     const data = await readGoogleFinanceQuoteSheetRows();
-    const validRows = data.rows.filter((row) => row.price != null);
+    const rowByKey = new Map(data.rows.map((row) => [normalizeQuoteKey(row.market, row.symbol), row]));
+    const rows = holdings.map((holding) => {
+      const key = normalizeQuoteKey(holding.market, holding.symbol);
+      const row = rowByKey.get(key);
+      const googleTicker = row?.googleTicker ?? buildGoogleFinanceTickerCandidates({
+        market: holding.market,
+        symbol: holding.symbol,
+        displayName: holding.name,
+        quoteSymbol: holding.quote_symbol ?? undefined,
+        googleTicker: holding.google_ticker ?? undefined,
+      })[0] ?? holding.symbol.toUpperCase();
+      return {
+        market: holding.market,
+        symbol: holding.market === 'KR' ? holding.symbol.toUpperCase().padStart(6, '0') : holding.symbol.toUpperCase(),
+        name: holding.name,
+        googleTicker,
+        quoteSymbol: holding.quote_symbol ?? undefined,
+        priceFormula: row?.priceFormula,
+        rawPrice: row?.rawPrice,
+        parsedPrice: row?.price,
+        currency: row?.currency,
+        tradeTime: row?.tradetime,
+        delayMinutes: row?.datadelay,
+        rowStatus: row?.rowStatus ?? 'missing_row',
+        message: row?.message ?? 'portfolio_quotes 행 없음',
+      };
+    });
+    const okRows = rows.filter((row) => row.rowStatus === 'ok').length;
+    const parseFailedRows = rows.filter((row) => row.rowStatus === 'parse_failed').length;
+    const tickerMismatchRows = rows.filter((row) => row.rowStatus === 'ticker_mismatch').length;
+    const emptyRows = rows.length - okRows;
+    const fxRawPrice = data.fxRate != null ? String(data.fxRate) : undefined;
     return NextResponse.json({
       ok: true,
-      provider: 'google_sheets_googlefinance',
-      readBackSucceeded: data.readBackSucceeded,
-      quoteRowCount: data.rows.length,
-      validQuoteRowCount: validRows.length,
-      fxAvailable: data.fxRate != null,
-      delayed: true,
-      maxDelayMinutes:
-        validRows.length > 0
-          ? Math.max(...validRows.map((row) => Number(row.datadelay ?? 0)))
-          : undefined,
+      generatedAt: new Date().toISOString(),
+      sheet: {
+        spreadsheetIdConfigured: data.spreadsheetIdConfigured,
+        sheetName: data.sheetName,
+        tabFound: data.tabFound,
+        readSucceeded: data.readBackSucceeded,
+        writeConfigured: data.writeConfigured,
+      },
+      fx: {
+        ticker: 'CURRENCY:USDKRW',
+        price: data.fxRate,
+        rawPrice: fxRawPrice,
+        status: data.fxRate != null ? 'ok' : data.tabFound ? 'empty' : 'missing',
+      },
+      rows,
+      summary: {
+        totalRows: rows.length,
+        okRows,
+        emptyRows,
+        parseFailedRows,
+        tickerMismatchRows,
+      },
+      warnings: [
+        ...(rows.some((row) => row.rowStatus === 'formula_pending') ? ['googlefinance_formula_pending'] : []),
+        ...(rows.some((row) => row.rowStatus === 'missing_row') ? ['googlefinance_missing_rows'] : []),
+        ...(rows.some((row) => row.rowStatus === 'ticker_mismatch') ? ['googlefinance_ticker_mismatch'] : []),
+      ],
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
-    return NextResponse.json({ ok: false, provider: 'google_sheets_googlefinance', error: message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
 

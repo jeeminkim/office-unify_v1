@@ -6,6 +6,8 @@ export type PortfolioLedgerHoldingInput = {
   market: 'KR' | 'US';
   symbol: string;
   name: string;
+  google_ticker?: string | null;
+  quote_symbol?: string | null;
   sector?: string | null;
   investment_memo?: string | null;
   qty?: number | null;

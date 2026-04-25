@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Ticker override for KR mismatch:** `web_portfolio_holdings`에 `google_ticker`/`quote_symbol` 수동 보정 컬럼을 도입하고 quote 우선순위를 override 기반으로 확장.
+- **Inline ticker fix UX:** `/portfolio` 시세 상태 테이블에서 mismatch/empty/parse_failed 종목에 대해 ticker 수정/저장을 직접 지원하고 refresh 재요청 안내를 추가.
+- **Ledger override edit:** `/portfolio-ledger` 빠른 수정에 `google_ticker`/`quote_symbol` 입력 칸을 추가.
+- **Quote read-back diagnostics hardening:** `/api/portfolio/quotes/status`를 종목별 진단(rawPrice/parsedPrice/googleTicker/rowStatus/message) 중심으로 확장해 formula pending/ticker mismatch/parse failed/missing row를 구분 가능하게 개선.
+- **Google Sheets parsing stabilization:** Sheets `values.get`에 `valueRenderOption` 옵션을 추가하고 숫자 파서가 `113,500`, `₩113,500`, `Loading...`, `#N/A` 등 formatted/invalid 값을 안전하게 처리하도록 보강.
+- **Quote key normalization + sheet layout update:** `normalizeQuoteKey(market,symbol)` 기준으로 read-back/summary 매칭을 통일하고 `portfolio_quotes` 컬럼을 `normalized_key`, `google_ticker`, formula/value 분리 구조로 정리.
+- **Portfolio quote UX upgrade:** `/portfolio`에 “시세 상태 확인” 버튼과 진단 테이블(rowStatus/rawPrice/parsedPrice)을 추가하고 refresh 직후에는 계산 지연(30~90초) 안내를 명시.
+- **Realized PnL + goal funding flow:** 실현손익 이벤트(`realized_profit_events`), 목표(`financial_goals`), 배분(`goal_allocations`) 계층을 추가하고 매도 반영 시 실현손익 자동 기록/선택 목표 배분을 지원.
+- **New dashboards:** `/realized-pnl`(기간/종목/최근 이벤트/목표 연결 현황)과 `/financial-goals`(목표 생성/달성률/연결 이벤트)를 추가.
+- **Portfolio ledger sell UX expansion:** 매도 반영 입력에 수수료/세금/매도사유/목표연결/배분액을 추가하고 반영 완료 후 실현손익·목표 화면 이동 CTA를 제공.
+- **Home/portfolio summary integration:** 홈(`/api/dashboard/overview`)과 `/portfolio`에 실현손익 요약 및 목표 연결 진입 버튼을 추가해 평가손익/실현손익을 분리 노출.
 - **Quote no-data correctness fix:** quote 전부 실패 시 총 평가금액/손익/손익률을 0/-100%로 계산하지 않고 NO_DATA로 반환하도록 수정. 비중은 매입금액 기준 fallback만 유지.
 - **Google Sheets quote provider:** `GOOGLEFINANCE` read-back 기반 quote provider를 추가하고 수동 새로고침 API(`POST /api/portfolio/quotes/refresh`) 및 상태 API(`GET /api/portfolio/quotes/status`)를 추가.
 - **Provider priority meta expansion:** portfolio summary `dataQuality`에 providerUsed/delayed/fxAvailable/missingQuoteSymbols/readBackSucceeded/quoteFallbackUsed를 추가.

@@ -9,6 +9,8 @@ export type WebPortfolioHoldingRow = {
   market: string;
   symbol: string;
   name: string;
+  google_ticker: string | null;
+  quote_symbol: string | null;
   sector: string | null;
   investment_memo: string | null;
   qty: number | string | null;
@@ -38,7 +40,7 @@ export async function listWebPortfolioHoldingsForUser(
   const { data, error } = await client
     .from('web_portfolio_holdings')
     .select(
-      'market,symbol,name,sector,investment_memo,qty,avg_price,target_price,judgment_memo,updated_at',
+      'market,symbol,name,google_ticker,quote_symbol,sector,investment_memo,qty,avg_price,target_price,judgment_memo,updated_at',
     )
     .eq('user_key', userKey as string)
     .order('market', { ascending: true })
@@ -69,22 +71,26 @@ export async function upsertPortfolioHolding(
   row: PortfolioLedgerHoldingInput,
 ): Promise<void> {
   const pk = userKey as string;
-  const { error } = await client.from('web_portfolio_holdings').upsert(
-    {
-      user_key: pk,
-      market: row.market,
-      symbol: row.symbol.trim(),
-      name: row.name.trim(),
-      sector: row.sector ?? null,
-      investment_memo: row.investment_memo ?? null,
-      qty: row.qty ?? null,
-      avg_price: row.avg_price ?? null,
-      target_price: row.target_price ?? null,
-      judgment_memo: row.judgment_memo ?? null,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_key,market,symbol' },
-  );
+  const payload: Record<string, unknown> = {
+    user_key: pk,
+    market: row.market,
+    symbol: row.symbol.trim(),
+    name: row.name.trim(),
+    sector: row.sector ?? null,
+    investment_memo: row.investment_memo ?? null,
+    qty: row.qty ?? null,
+    avg_price: row.avg_price ?? null,
+    target_price: row.target_price ?? null,
+    judgment_memo: row.judgment_memo ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  if (row.google_ticker !== undefined) {
+    payload.google_ticker = row.google_ticker?.trim() || null;
+  }
+  if (row.quote_symbol !== undefined) {
+    payload.quote_symbol = row.quote_symbol?.trim() || null;
+  }
+  const { error } = await client.from('web_portfolio_holdings').upsert(payload, { onConflict: 'user_key,market,symbol' });
   if (error) throw error;
 }
 

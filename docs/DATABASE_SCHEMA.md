@@ -25,6 +25,8 @@
 | `docs/sql/append_web_portfolio_ledger.sql` | 포트폴리오 원장 |
 | `docs/sql/append_web_llm_usage_monthly.sql` | LLM 사용량 |
 | `docs/sql/append_web_committee_followups.sql` | 투자위원회 후속작업(추출 draft 저장) |
+| `docs/sql/append_web_realized_pnl_and_goals.sql` | 실현손익 이벤트 + 목표 자금 + 목표 배분 |
+| `docs/sql/append_web_portfolio_quote_overrides.sql` | 보유 종목 quote ticker 수동 override 컬럼 |
 
 ## Committee Followups (조일현 보고서 후속작업)
 
@@ -89,8 +91,28 @@
 - `/portfolio-ledger`는 동일 테이블/`web_portfolio_watchlist`를 수정하는 관리 화면이다.
 - `apply-trade`는 실제 주문 실행이 아닌 사후 기록 반영:
   - buy: 수량 증가 + 가중평균 단가 재계산
-  - sell: 수량 감소(전량 시 삭제, 옵션으로 watchlist 이동)
+  - sell: 수량 감소(전량 시 삭제, 옵션으로 watchlist 이동) + 실현손익 이벤트 저장
   - correct: 수량/평단 직접 정정
+- `web_portfolio_holdings`의 `google_ticker`/`quote_symbol`은 시세 연동 수동 보정 필드:
+  - `google_ticker`: Google Sheets `GOOGLEFINANCE` read-back용 우선 ticker
+  - `quote_symbol`: Yahoo fallback 등 일반 quote provider용 우선 심볼
+
+## Realized PnL + Financial Goals
+
+**파일:** `docs/sql/append_web_realized_pnl_and_goals.sql`
+
+| 테이블 | 역할 |
+|--------|------|
+| `realized_profit_events` | 매도 확정 손익(손실 포함), 수수료/세금/순실현손익 저장 |
+| `financial_goals` | 단기/중기 목표 금액, 배분 누계, 상태 관리 |
+| `goal_allocations` | 실현손익/수동현금/조정 기반 목표 배분 이력 |
+
+핵심 원칙:
+
+- 기존 웹 앱 사용자 스코프와 맞추기 위해 `user_id` 대신 `user_key`를 사용한다.
+- 실현손익은 외부 체결 후 기록하며, 주문 실행 기능은 없다.
+- 목표 배분은 자금 흐름 추적 보조이며 실제 계좌 이체가 아니다.
+- 기본 제한: 실현손익 배분액은 해당 이벤트 순실현손익을 초과할 수 없다(수동 현금 배분은 별도 타입).
 
 Quote read-back 운영 메모:
 

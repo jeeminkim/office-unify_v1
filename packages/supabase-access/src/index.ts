@@ -83,6 +83,25 @@ export {
   updateInvestmentPrinciple,
   upsertTradeJournalFollowup,
 } from './tradeJournalRepository';
+export {
+  deleteFinancialGoal,
+  deleteGoalAllocation,
+  deleteRealizedProfitEvent,
+  insertFinancialGoal,
+  insertGoalAllocation,
+  insertRealizedProfitEvent,
+  listFinancialGoalsForUser,
+  listGoalAllocationsForUser,
+  listRealizedProfitEventsForUser,
+  recalculateGoalAllocated,
+  updateFinancialGoal,
+  updateRealizedProfitEvent,
+} from './realizedPnlGoalsRepository';
+export type {
+  DbFinancialGoalRow,
+  DbGoalAllocationRow,
+  DbRealizedProfitEventRow,
+} from './realizedPnlGoalsRepository';
 
 /**
  * 서버 전용 Supabase 클라이언트 (예: service role).

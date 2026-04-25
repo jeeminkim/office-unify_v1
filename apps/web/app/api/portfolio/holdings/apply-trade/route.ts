@@ -3,7 +3,11 @@ import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import {
   deletePortfolioHolding,
+  insertGoalAllocation,
+  insertRealizedProfitEvent,
+  listFinancialGoalsForUser,
   listWebPortfolioHoldingsForUser,
+  recalculateGoalAllocated,
   upsertPortfolioHolding,
   upsertPortfolioWatchlist,
 } from '@office-unify/supabase-access';
@@ -18,6 +22,11 @@ type ApplyTradeRequest = {
   newAveragePrice?: number;
   memo?: string;
   moveToWatchlistOnFullSell?: boolean;
+  feeKrw?: number;
+  taxKrw?: number;
+  tradeReason?: string;
+  linkedGoalId?: string;
+  allocationAmountKrw?: number;
 };
 
 function asNumber(v: unknown): number | undefined {
@@ -59,6 +68,8 @@ export async function POST(req: Request) {
   const currentAvg = asNumber(current?.avg_price) ?? 0;
   const tradeQty = asNumber(body.quantity);
   const tradePrice = asNumber(body.price);
+  const feeKrw = Math.max(0, asNumber(body.feeKrw) ?? 0);
+  const taxKrw = Math.max(0, asNumber(body.taxKrw) ?? 0);
 
   try {
     if (body.action === 'buy') {
@@ -71,6 +82,8 @@ export async function POST(req: Request) {
         market,
         symbol,
         name: current?.name ?? symbol,
+        google_ticker: current?.google_ticker ?? null,
+        quote_symbol: current?.quote_symbol ?? null,
         sector: current?.sector ?? null,
         investment_memo: body.memo ?? current?.investment_memo ?? null,
         qty: newQty,
@@ -82,8 +95,8 @@ export async function POST(req: Request) {
     }
 
     if (body.action === 'sell') {
-      if (!tradeQty || tradeQty <= 0) {
-        return NextResponse.json({ error: 'sell requires quantity>0' }, { status: 400 });
+      if (!tradeQty || tradeQty <= 0 || !tradePrice || tradePrice <= 0) {
+        return NextResponse.json({ error: 'sell requires quantity>0 and price>0' }, { status: 400 });
       }
       if (tradeQty > currentQty) {
         return NextResponse.json({ error: 'sell quantity cannot exceed holding quantity' }, { status: 400 });
@@ -91,6 +104,53 @@ export async function POST(req: Request) {
       const remainQty = currentQty - tradeQty;
       if (remainQty < 0) {
         return NextResponse.json({ error: 'negative quantity is not allowed' }, { status: 400 });
+      }
+      const realizedPnl = (tradePrice - currentAvg) * tradeQty;
+      const realizedPnlRate = currentAvg > 0 ? (tradePrice - currentAvg) / currentAvg : undefined;
+      const netRealizedPnl = realizedPnl - feeKrw - taxKrw;
+      const linkedGoalId = body.linkedGoalId?.trim() || null;
+      const allocationAmountKrw = asNumber(body.allocationAmountKrw);
+      if (allocationAmountKrw != null && allocationAmountKrw < 0) {
+        return NextResponse.json({ error: 'allocationAmountKrw must be >= 0' }, { status: 400 });
+      }
+      if (allocationAmountKrw != null && allocationAmountKrw > netRealizedPnl) {
+        return NextResponse.json({ error: 'allocation cannot exceed net realized pnl' }, { status: 400 });
+      }
+      if (linkedGoalId) {
+        const goals = await listFinancialGoalsForUser(supabase, auth.userKey);
+        if (!goals.some((goal) => goal.id === linkedGoalId)) {
+          return NextResponse.json({ error: 'linkedGoalId not found.' }, { status: 404 });
+        }
+      }
+      const realizedEvent = await insertRealizedProfitEvent(supabase, auth.userKey, {
+        market,
+        symbol,
+        name: current?.name ?? symbol,
+        sell_date: new Date().toISOString().slice(0, 10),
+        sell_quantity: tradeQty,
+        avg_buy_price: currentAvg,
+        sell_price: tradePrice,
+        realized_pnl_krw: realizedPnl,
+        realized_pnl_rate: realizedPnlRate ?? null,
+        fee_krw: feeKrw,
+        tax_krw: taxKrw,
+        net_realized_pnl_krw: netRealizedPnl,
+        trade_reason: body.tradeReason?.trim() || null,
+        memo: body.memo ?? null,
+        linked_goal_id: linkedGoalId,
+        source: 'portfolio_ledger',
+      });
+      let goalAllocated: number | undefined;
+      if (linkedGoalId && allocationAmountKrw != null && allocationAmountKrw > 0) {
+        await insertGoalAllocation(supabase, auth.userKey, {
+          goal_id: linkedGoalId,
+          realized_event_id: realizedEvent.id,
+          amount_krw: allocationAmountKrw,
+          allocation_date: new Date().toISOString().slice(0, 10),
+          allocation_type: 'realized_profit',
+          memo: body.memo?.trim() || '매도 반영 시 자동 배분',
+        });
+        goalAllocated = await recalculateGoalAllocated(supabase, auth.userKey, linkedGoalId);
       }
       if (remainQty === 0) {
         await deletePortfolioHolding(supabase, auth.userKey, market, symbol);
@@ -107,12 +167,26 @@ export async function POST(req: Request) {
             priority: '중',
           });
         }
-        return NextResponse.json({ ok: true, action: 'sell', newQuantity: 0, removed: true });
+        return NextResponse.json({
+          ok: true,
+          action: 'sell',
+          newQuantity: 0,
+          removed: true,
+          realizedEvent: {
+            id: realizedEvent.id,
+            realizedPnlKrw: realizedPnl,
+            netRealizedPnlKrw: netRealizedPnl,
+            linkedGoalId,
+            goalAllocated,
+          },
+        });
       }
       await upsertPortfolioHolding(supabase, auth.userKey, {
         market,
         symbol,
         name: current?.name ?? symbol,
+        google_ticker: current?.google_ticker ?? null,
+        quote_symbol: current?.quote_symbol ?? null,
         sector: current?.sector ?? null,
         investment_memo: body.memo ?? current?.investment_memo ?? null,
         qty: remainQty,
@@ -120,7 +194,19 @@ export async function POST(req: Request) {
         target_price: asNumber(current?.target_price) ?? null,
         judgment_memo: current?.judgment_memo ?? null,
       });
-      return NextResponse.json({ ok: true, action: 'sell', newQuantity: remainQty, newAveragePrice: currentAvg });
+      return NextResponse.json({
+        ok: true,
+        action: 'sell',
+        newQuantity: remainQty,
+        newAveragePrice: currentAvg,
+        realizedEvent: {
+          id: realizedEvent.id,
+          realizedPnlKrw: realizedPnl,
+          netRealizedPnlKrw: netRealizedPnl,
+          linkedGoalId,
+          goalAllocated,
+        },
+      });
     }
 
     const correctedQty = asNumber(body.newQuantity);
@@ -135,6 +221,8 @@ export async function POST(req: Request) {
       market,
       symbol,
       name: current?.name ?? symbol,
+      google_ticker: current?.google_ticker ?? null,
+      quote_symbol: current?.quote_symbol ?? null,
       sector: current?.sector ?? null,
       investment_memo: body.memo ?? current?.investment_memo ?? null,
       qty: correctedQty,

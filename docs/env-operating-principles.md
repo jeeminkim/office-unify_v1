@@ -49,5 +49,7 @@
 - Google Finance 직접 API 호출은 사용하지 않는다.
 - Sheets read-back 실패 시 Yahoo quote(`KRW=X` 포함)를 fallback provider로 사용한다.
 - Sheets 계산 직후에는 값이 비어 있을 수 있어 지연(delayed) 상태를 표시한다.
+- refresh 응답 후 즉시 재조회하지 말고 30~90초 후 `/api/portfolio/quotes/status`로 row 상태를 점검한다.
+- status API는 `googleTicker/rawPrice/parsedPrice/rowStatus`를 제공해 ticker mismatch/parse failure를 분리 진단한다.
 - 시세/환율 실패 시 임의 가격을 생성하지 않는다.
 - 시세 실패는 손실과 다르므로 손익률을 -100% 같은 값으로 계산하지 않고 NO_DATA로 처리한다.

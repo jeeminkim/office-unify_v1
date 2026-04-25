@@ -1,5 +1,6 @@
 import 'server-only';
 import {
+  normalizeQuoteKey,
   isGoogleFinanceQuoteConfigured,
   readGoogleFinanceQuoteSheetRows,
   syncGoogleFinanceQuoteSheetRows,
@@ -9,6 +10,8 @@ type HoldingInput = {
   market: string;
   symbol: string;
   displayName?: string;
+  quoteSymbol?: string;
+  googleTicker?: string;
 };
 
 export type HoldingQuote = {
@@ -55,7 +58,7 @@ type YahooQuoteResult = {
 };
 
 function holdingKey(market: string, symbol: string): string {
-  return `${market}:${symbol.toUpperCase()}`;
+  return normalizeQuoteKey(market, symbol);
 }
 
 function isNumericKrCode(symbol: string): boolean {
@@ -69,6 +72,12 @@ function buildYahooCandidates(market: string, symbol: string): string[] {
     return [`${upper}.KS`, `${upper}.KQ`, upper];
   }
   return [upper];
+}
+
+function buildYahooCandidatesForHolding(holding: HoldingInput): string[] {
+  const override = holding.quoteSymbol?.trim().toUpperCase();
+  if (override) return [override];
+  return buildYahooCandidates(holding.market, holding.symbol);
 }
 
 async function fetchYahooQuotes(symbols: string[]): Promise<Map<string, YahooQuoteResult>> {
@@ -112,12 +121,13 @@ export async function loadHoldingQuotes(
         await syncGoogleFinanceQuoteSheetRows(holdings);
       }
       const sheet = await readGoogleFinanceQuoteSheetRows();
+      const sheetByKey = new Map(sheet.rows.map((row) => [normalizeQuoteKey(row.market, row.symbol), row]));
       holdings.forEach((holding) => {
         const key = holdingKey(holding.market, holding.symbol);
-        const row = sheet.rows.find((it) => it.market === holding.market && it.symbol === holding.symbol.toUpperCase());
+        const row = sheetByKey.get(key);
         quoteByHolding.set(key, {
           market: holding.market,
-          symbol: holding.symbol.toUpperCase(),
+          symbol: holding.market === 'KR' ? holding.symbol.toUpperCase().padStart(6, '0') : holding.symbol.toUpperCase(),
           currentPrice: row?.price,
           currency: row?.currency,
           stale: !row?.price,
@@ -162,7 +172,7 @@ export async function loadHoldingQuotes(
   const symbolCandidates = new Map<string, string[]>();
   holdings.forEach((holding) => {
     const key = holdingKey(holding.market, holding.symbol);
-    symbolCandidates.set(key, buildYahooCandidates(holding.market, holding.symbol));
+    symbolCandidates.set(key, buildYahooCandidatesForHolding(holding));
   });
   const yahooSymbols = Array.from(
     new Set([...symbolCandidates.values()].flat().concat(['KRW=X'])),

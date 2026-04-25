@@ -6,6 +6,7 @@ import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { listWebPortfolioHoldingsForUser } from '@office-unify/supabase-access';
 import { loadHoldingQuotes } from '@/lib/server/marketQuoteService';
+import { normalizeQuoteKey } from '@/lib/server/googleFinanceSheetQuoteService';
 
 type EnhancedPortfolioSummaryResponse = {
   ok: boolean;
@@ -95,13 +96,15 @@ export async function GET(req: Request) {
       market: holding.market,
       symbol: holding.symbol,
       displayName: holding.name,
+      quoteSymbol: holding.quote_symbol ?? undefined,
+      googleTicker: holding.google_ticker ?? undefined,
     })));
     const quoteWarnings = [...quoteBundle.warnings];
 
     const topPositionsRaw = holdings.map((holding) => {
       const quantity = toNumber(holding.qty);
       const avgPrice = toNumber(holding.avg_price);
-      const quote = quoteBundle.quoteByHolding.get(`${holding.market}:${holding.symbol.toUpperCase()}`);
+      const quote = quoteBundle.quoteByHolding.get(normalizeQuoteKey(holding.market, holding.symbol));
       const currency = holding.market === 'US' ? 'USD' : 'KRW';
       const fx = currency === 'USD' ? quoteBundle.usdKrwRate : 1;
       const avgCostNative = quantity * avgPrice;

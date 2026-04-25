@@ -13,6 +13,8 @@ type HoldingRow = {
   market: "KR" | "US";
   symbol: string;
   name: string;
+  google_ticker: string | null;
+  quote_symbol: string | null;
   sector: string | null;
   investment_memo: string | null;
   qty: number | string | null;
@@ -22,6 +24,14 @@ type HoldingRow = {
 };
 
 type WatchlistRow = { market: "KR" | "US"; symbol: string; name: string };
+type GoalRow = {
+  id: string;
+  goalName: string;
+  goalType: string;
+  targetAmountKrw: number;
+  currentAllocatedKrw: number;
+  status: string;
+};
 
 const EXAMPLE_SQL = `-- 보유 upsert (KR 예시) — 수정도 동일 형식 INSERT 한 줄(upsert). UPDATE 문은 거부됩니다.
 INSERT INTO web_portfolio_holdings (market, symbol, name, sector, investment_memo, qty, avg_price, target_price, judgment_memo)
@@ -49,12 +59,16 @@ export function PortfolioLedgerClient() {
   );
   const [loadingQueue, setLoadingQueue] = useState(false);
   const [snapshot, setSnapshot] = useState<{ holdings: HoldingRow[]; watchlist: WatchlistRow[] } | null>(null);
+  const [goals, setGoals] = useState<GoalRow[]>([]);
   const [loadingSnapshot, setLoadingSnapshot] = useState(false);
+  const [tradeInfo, setTradeInfo] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{
     name: string;
     qty: string;
     avg_price: string;
+    google_ticker: string;
+    quote_symbol: string;
     investment_memo: string;
     target_price: string;
     judgment_memo: string;
@@ -68,6 +82,11 @@ export function PortfolioLedgerClient() {
     newAveragePrice: string;
     memo: string;
     moveToWatchlistOnFullSell: boolean;
+    feeKrw: string;
+    taxKrw: string;
+    tradeReason: string;
+    linkedGoalId: string;
+    allocationAmountKrw: string;
   }>({
     key: null,
     action: "buy",
@@ -77,6 +96,11 @@ export function PortfolioLedgerClient() {
     newAveragePrice: "",
     memo: "",
     moveToWatchlistOnFullSell: false,
+    feeKrw: "",
+    taxKrw: "",
+    tradeReason: "",
+    linkedGoalId: "",
+    allocationAmountKrw: "",
   });
 
   const runValidate = useCallback(async () => {
@@ -150,6 +174,17 @@ export function PortfolioLedgerClient() {
     }
   }, []);
 
+  const loadGoals = useCallback(async () => {
+    try {
+      const res = await fetch("/api/financial-goals", { credentials: "same-origin" });
+      const data = (await res.json()) as { goals?: GoalRow[]; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setGoals(data.goals ?? []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "목표 목록 로드 실패");
+    }
+  }, []);
+
   const startEdit = (row: HoldingRow) => {
     const key = `${row.market}:${row.symbol}`;
     setEditingKey(key);
@@ -157,6 +192,8 @@ export function PortfolioLedgerClient() {
       name: row.name ?? row.symbol,
       qty: String(row.qty ?? ""),
       avg_price: String(row.avg_price ?? ""),
+      google_ticker: row.google_ticker ?? "",
+      quote_symbol: row.quote_symbol ?? "",
       investment_memo: row.investment_memo ?? "",
       target_price: String(row.target_price ?? ""),
       judgment_memo: row.judgment_memo ?? "",
@@ -185,6 +222,8 @@ export function PortfolioLedgerClient() {
           name: editDraft.name.trim(),
           qty,
           avg_price: avg,
+          google_ticker: editDraft.google_ticker.trim() || null,
+          quote_symbol: editDraft.quote_symbol.trim() || null,
           investment_memo: editDraft.investment_memo.trim() || null,
           target_price: editDraft.target_price.trim() ? Number(editDraft.target_price) : null,
           judgment_memo: editDraft.judgment_memo.trim() || null,
@@ -231,6 +270,11 @@ export function PortfolioLedgerClient() {
       newAveragePrice: tradeDraft.newAveragePrice.trim() ? Number(tradeDraft.newAveragePrice) : undefined,
       memo: tradeDraft.memo.trim() || undefined,
       moveToWatchlistOnFullSell: tradeDraft.moveToWatchlistOnFullSell,
+      feeKrw: tradeDraft.feeKrw.trim() ? Number(tradeDraft.feeKrw) : undefined,
+      taxKrw: tradeDraft.taxKrw.trim() ? Number(tradeDraft.taxKrw) : undefined,
+      tradeReason: tradeDraft.tradeReason.trim() || undefined,
+      linkedGoalId: tradeDraft.linkedGoalId || undefined,
+      allocationAmountKrw: tradeDraft.allocationAmountKrw.trim() ? Number(tradeDraft.allocationAmountKrw) : undefined,
     };
     try {
       const res = await fetch("/api/portfolio/holdings/apply-trade", {
@@ -239,14 +283,36 @@ export function PortfolioLedgerClient() {
         credentials: "same-origin",
         body: JSON.stringify(body),
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as {
+        error?: string;
+        realizedEvent?: { id: string; linkedGoalId?: string | null; goalAllocated?: number };
+      };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setTradeDraft((prev) => ({ ...prev, quantity: "", price: "", newAveragePrice: "", newQuantity: "", memo: "" }));
+      setTradeDraft((prev) => ({
+        ...prev,
+        quantity: "",
+        price: "",
+        newAveragePrice: "",
+        newQuantity: "",
+        memo: "",
+        feeKrw: "",
+        taxKrw: "",
+        tradeReason: "",
+        allocationAmountKrw: "",
+      }));
+      if (data.realizedEvent?.id) {
+        const lines = ["실현손익이 기록되었습니다."];
+        if (data.realizedEvent.linkedGoalId) lines.push("목표에 배분되었습니다.");
+        setTradeInfo(lines.join(" "));
+      } else {
+        setTradeInfo(null);
+      }
       await loadSnapshot();
+      await loadGoals();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "매수/매도 반영 실패");
     }
-  }, [tradeDraft, loadSnapshot]);
+  }, [tradeDraft, loadSnapshot, loadGoals]);
 
   const fetchSheetsPreview = useCallback(async () => {
     setError(null);
@@ -353,6 +419,13 @@ export function PortfolioLedgerClient() {
           >
             {loadingSnapshot ? "로딩 중..." : "보유 목록 불러오기"}
           </button>
+          <button
+            type="button"
+            className="rounded border border-slate-300 bg-white px-3 py-1.5"
+            onClick={() => void loadGoals()}
+          >
+            목표 목록 불러오기
+          </button>
         </div>
         {snapshot?.holdings?.length ? (
           <div className="mt-3 overflow-auto">
@@ -362,6 +435,8 @@ export function PortfolioLedgerClient() {
                   <th className="px-2 py-1 text-left">종목</th>
                   <th className="px-2 py-1 text-left">수량</th>
                   <th className="px-2 py-1 text-left">평단</th>
+                  <th className="px-2 py-1 text-left">google_ticker</th>
+                  <th className="px-2 py-1 text-left">quote_symbol</th>
                   <th className="px-2 py-1 text-left">메모</th>
                   <th className="px-2 py-1 text-left">관리</th>
                 </tr>
@@ -378,6 +453,26 @@ export function PortfolioLedgerClient() {
                       </td>
                       <td className="px-2 py-1">{isEditing ? <input className="w-20 rounded border border-slate-300 px-1 py-0.5" value={editDraft.qty} onChange={(e) => setEditDraft({ ...editDraft, qty: e.target.value })} /> : String(row.qty ?? "NO_DATA")}</td>
                       <td className="px-2 py-1">{isEditing ? <input className="w-24 rounded border border-slate-300 px-1 py-0.5" value={editDraft.avg_price} onChange={(e) => setEditDraft({ ...editDraft, avg_price: e.target.value })} /> : String(row.avg_price ?? "NO_DATA")}</td>
+                      <td className="px-2 py-1">
+                        {isEditing ? (
+                          <input
+                            className="w-32 rounded border border-slate-300 px-1 py-0.5"
+                            placeholder="예: KRX:005930"
+                            value={editDraft.google_ticker}
+                            onChange={(e) => setEditDraft({ ...editDraft, google_ticker: e.target.value })}
+                          />
+                        ) : (row.google_ticker ?? "-")}
+                      </td>
+                      <td className="px-2 py-1">
+                        {isEditing ? (
+                          <input
+                            className="w-28 rounded border border-slate-300 px-1 py-0.5"
+                            placeholder="예: 005930.KS"
+                            value={editDraft.quote_symbol}
+                            onChange={(e) => setEditDraft({ ...editDraft, quote_symbol: e.target.value })}
+                          />
+                        ) : (row.quote_symbol ?? "-")}
+                      </td>
                       <td className="px-2 py-1">{isEditing ? <textarea className="w-48 rounded border border-slate-300 px-1 py-0.5" value={editDraft.investment_memo} onChange={(e) => setEditDraft({ ...editDraft, investment_memo: e.target.value })} /> : (row.investment_memo ?? "-")}</td>
                       <td className="px-2 py-1">
                         <div className="flex flex-wrap gap-1">
@@ -417,6 +512,24 @@ export function PortfolioLedgerClient() {
               {tradeDraft.action === "correct" ? <input className="rounded border border-slate-300 px-2 py-1" placeholder="새 수량" value={tradeDraft.newQuantity} onChange={(e) => setTradeDraft({ ...tradeDraft, newQuantity: e.target.value })} /> : null}
               {tradeDraft.action === "correct" ? <input className="rounded border border-slate-300 px-2 py-1" placeholder="새 평균단가" value={tradeDraft.newAveragePrice} onChange={(e) => setTradeDraft({ ...tradeDraft, newAveragePrice: e.target.value })} /> : null}
               <input className="min-w-[260px] rounded border border-slate-300 px-2 py-1" placeholder="실현손익 메모/정정 이유" value={tradeDraft.memo} onChange={(e) => setTradeDraft({ ...tradeDraft, memo: e.target.value })} />
+              {tradeDraft.action === "sell" ? <input className="rounded border border-slate-300 px-2 py-1" placeholder="수수료" value={tradeDraft.feeKrw} onChange={(e) => setTradeDraft({ ...tradeDraft, feeKrw: e.target.value })} /> : null}
+              {tradeDraft.action === "sell" ? <input className="rounded border border-slate-300 px-2 py-1" placeholder="세금" value={tradeDraft.taxKrw} onChange={(e) => setTradeDraft({ ...tradeDraft, taxKrw: e.target.value })} /> : null}
+              {tradeDraft.action === "sell" ? <input className="min-w-[220px] rounded border border-slate-300 px-2 py-1" placeholder="매도 사유" value={tradeDraft.tradeReason} onChange={(e) => setTradeDraft({ ...tradeDraft, tradeReason: e.target.value })} /> : null}
+              {tradeDraft.action === "sell" ? (
+                <select
+                  className="rounded border border-slate-300 px-2 py-1"
+                  value={tradeDraft.linkedGoalId}
+                  onChange={(e) => setTradeDraft({ ...tradeDraft, linkedGoalId: e.target.value })}
+                >
+                  <option value="">목표 연결 없음</option>
+                  {goals.filter((goal) => goal.status === "active").map((goal) => (
+                    <option key={goal.id} value={goal.id}>
+                      {goal.goalName}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {tradeDraft.action === "sell" ? <input className="rounded border border-slate-300 px-2 py-1" placeholder="목표 배분액" value={tradeDraft.allocationAmountKrw} onChange={(e) => setTradeDraft({ ...tradeDraft, allocationAmountKrw: e.target.value })} /> : null}
               {tradeDraft.action === "sell" ? (
                 <label className="flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1">
                   <input type="checkbox" checked={tradeDraft.moveToWatchlistOnFullSell} onChange={(e) => setTradeDraft({ ...tradeDraft, moveToWatchlistOnFullSell: e.target.checked })} />
@@ -425,6 +538,18 @@ export function PortfolioLedgerClient() {
               ) : null}
               <button type="button" className="rounded border border-blue-300 bg-blue-50 px-3 py-1 text-blue-900" onClick={() => void applyTrade()}>반영 저장</button>
             </div>
+            {tradeInfo ? (
+              <div className="mt-2 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-900">
+                {tradeInfo}{" "}
+                <Link href="/realized-pnl" className="underline">
+                  실현손익 대시보드로 이동
+                </Link>{" "}
+                ·{" "}
+                <Link href="/financial-goals" className="underline">
+                  목표 자금 화면으로 이동
+                </Link>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

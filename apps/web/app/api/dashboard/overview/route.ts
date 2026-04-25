@@ -13,6 +13,12 @@ type DailyRoutineStep = {
   actionLabel: string;
 };
 
+type GoalProgressCard = {
+  goalId: string;
+  goalName: string;
+  progressRate: number;
+};
+
 type PortfolioSignal = {
   symbol: string;
   displayName?: string;
@@ -49,7 +55,13 @@ export async function GET() {
     warnings.push(error instanceof Error ? error.message : 'holdings_fetch_failed');
     return [];
   });
-  const quoteBundle = await loadHoldingQuotes(holdings.map((holding) => ({ market: holding.market, symbol: holding.symbol }))).catch(() => ({
+  const quoteBundle = await loadHoldingQuotes(holdings.map((holding) => ({
+    market: holding.market,
+    symbol: holding.symbol,
+    displayName: holding.name,
+    quoteSymbol: holding.quote_symbol ?? undefined,
+    googleTicker: holding.google_ticker ?? undefined,
+  }))).catch(() => ({
     quoteByHolding: new Map<string, { currentPrice?: number }>(),
     usdKrwRate: undefined,
     warnings: ['quote_fetch_failed'],
@@ -117,6 +129,72 @@ export async function GET() {
       }
       return Number(res.count ?? 0);
     });
+
+  const realizedEvents = await supabase
+    .from('realized_profit_events')
+    .select('sell_date,net_realized_pnl_krw')
+    .eq('user_key', auth.userKey as string)
+    .then((res) => {
+      if (res.error) {
+        warnings.push('realized_profit_events_unavailable');
+        return [] as Array<{ sell_date?: string; net_realized_pnl_krw?: number | string | null }>;
+      }
+      return (res.data ?? []) as Array<{ sell_date?: string; net_realized_pnl_krw?: number | string | null }>;
+    });
+  const goalRows = await supabase
+    .from('financial_goals')
+    .select('id,goal_name,target_amount_krw,current_allocated_krw,status')
+    .eq('user_key', auth.userKey as string)
+    .then((res) => {
+      if (res.error) {
+        warnings.push('financial_goals_unavailable');
+        return [] as Array<Record<string, unknown>>;
+      }
+      return (res.data ?? []) as Array<Record<string, unknown>>;
+    });
+  const allocations = await supabase
+    .from('goal_allocations')
+    .select('amount_krw')
+    .eq('user_key', auth.userKey as string)
+    .then((res) => {
+      if (res.error) {
+        warnings.push('goal_allocations_unavailable');
+        return [] as Array<{ amount_krw?: number | string | null }>;
+      }
+      return (res.data ?? []) as Array<{ amount_krw?: number | string | null }>;
+    });
+  const toNum = (v: unknown) => {
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  const realizedMonth = realizedEvents
+    .filter((row) => {
+      const d = new Date(String(row.sell_date ?? ''));
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+    })
+    .reduce((acc, row) => acc + toNum(row.net_realized_pnl_krw), 0);
+  const realizedYear = realizedEvents
+    .filter((row) => new Date(String(row.sell_date ?? '')).getFullYear() === currentYear)
+    .reduce((acc, row) => acc + toNum(row.net_realized_pnl_krw), 0);
+  const totalRealized = realizedEvents.reduce((acc, row) => acc + toNum(row.net_realized_pnl_krw), 0);
+  const allocatedRealized = allocations.reduce((acc, row) => acc + toNum(row.amount_krw), 0);
+  const unallocatedRealized = totalRealized - allocatedRealized;
+  const goalProgressTop3: GoalProgressCard[] = goalRows
+    .map((goal) => {
+      const target = toNum(goal.target_amount_krw);
+      const allocated = toNum(goal.current_allocated_krw);
+      return {
+        goalId: String(goal.id ?? ''),
+        goalName: String(goal.goal_name ?? 'NO_DATA'),
+        progressRate: target > 0 ? (allocated / target) * 100 : 0,
+      };
+    })
+    .filter((row) => row.goalId)
+    .sort((a, b) => b.progressRate - a.progressRate)
+    .slice(0, 3);
 
   const repeatedKeywords = (() => {
     const counter = new Map<string, number>();
@@ -250,6 +328,12 @@ export async function GET() {
       noDataMessage: trendRuns.length === 0 ? '최근 Trend 분석 기록이 없습니다. Trend 분석을 먼저 실행하세요.' : null,
     },
     portfolioSignals,
+    realizedPnl: {
+      month: realizedMonth,
+      year: realizedYear,
+      unallocated: unallocatedRealized,
+    },
+    goalProgressTop3,
     dailyRoutine: steps,
     usageBadges: [
       { key: 'openai', active: trendRuns.some((run) => JSON.stringify(run).toLowerCase().includes('openai')), label: 'OpenAI 사용' },

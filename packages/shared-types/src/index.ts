@@ -309,3 +309,9 @@ export type {
   TradeJournalSide,
   TradeJournalStrategyHorizon,
 } from './tradeJournal';
+export type {
+  FinancialGoal,
+  GoalAllocation,
+  RealizedPnlSummaryResponseBody,
+  RealizedProfitEvent,
+} from './realizedPnlGoals';

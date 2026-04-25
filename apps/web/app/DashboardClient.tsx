@@ -38,6 +38,16 @@ type DashboardResponse = {
     summary: string;
     confidence: "low" | "medium" | "high";
   }>;
+  realizedPnl?: {
+    month: number;
+    year: number;
+    unallocated: number;
+  };
+  goalProgressTop3?: Array<{
+    goalId: string;
+    goalName: string;
+    progressRate: number;
+  }>;
   dailyRoutine: Array<{
     key: string;
     title: string;
@@ -106,6 +116,8 @@ export function DashboardClient() {
           <Link href="/dev-assistant" className="rounded border border-slate-300 bg-white px-3 py-1.5">Dev Assistant</Link>
           <Link href="/portfolio" className="rounded border border-slate-300 bg-white px-3 py-1.5">Portfolio</Link>
           <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">Portfolio Ledger</Link>
+          <Link href="/realized-pnl" className="rounded border border-slate-300 bg-white px-3 py-1.5">Realized PnL</Link>
+          <Link href="/financial-goals" className="rounded border border-slate-300 bg-white px-3 py-1.5">Financial Goals</Link>
           <Link href="/trade-journal" className="rounded border border-slate-300 bg-white px-3 py-1.5">Trade Journal</Link>
         </div>
       </div>
@@ -163,6 +175,33 @@ export function DashboardClient() {
               </span>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="mb-5 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-xs text-slate-500">실현손익 요약</p>
+          <p className="mt-1 text-sm text-slate-700">이번 달 {overview?.realizedPnl?.month?.toLocaleString?.() ?? "NO_DATA"} KRW</p>
+          <p className="mt-1 text-sm text-slate-700">올해 {overview?.realizedPnl?.year?.toLocaleString?.() ?? "NO_DATA"} KRW</p>
+          <p className="mt-1 text-xs text-slate-500">미배분 실현수익 {overview?.realizedPnl?.unallocated?.toLocaleString?.() ?? "NO_DATA"} KRW</p>
+          <div className="mt-2 flex gap-2 text-xs">
+            <Link href="/realized-pnl" className="rounded border border-slate-300 bg-white px-2 py-1">실현손익 보기</Link>
+            <Link href="/financial-goals" className="rounded border border-slate-300 bg-white px-2 py-1">목표에 배분하기</Link>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-xs text-slate-500">목표 달성률 Top 3</p>
+          {(overview?.goalProgressTop3 ?? []).length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500">NO_DATA</p>
+          ) : (
+            <ul className="mt-2 space-y-2 text-xs">
+              {(overview?.goalProgressTop3 ?? []).map((goal) => (
+                <li key={goal.goalId} className="rounded border border-slate-200 bg-slate-50 px-2 py-1">
+                  {goal.goalName} · {goal.progressRate.toFixed(1)}%
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
 

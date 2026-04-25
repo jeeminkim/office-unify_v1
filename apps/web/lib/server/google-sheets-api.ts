@@ -142,12 +142,20 @@ export async function sheetsValuesAppend(params: {
 export async function sheetsValuesGet(params: {
   spreadsheetId: string;
   rangeA1: string;
-}): Promise<string[][]> {
+  valueRenderOption?: 'FORMATTED_VALUE' | 'UNFORMATTED_VALUE' | 'FORMULA';
+  dateTimeRenderOption?: 'SERIAL_NUMBER' | 'FORMATTED_STRING';
+}): Promise<unknown[][]> {
   const token = await getSheetsAccessToken();
   if (!token) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not configured');
   const url = new URL(
     `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(params.spreadsheetId)}/values/${encodeURIComponent(params.rangeA1)}`,
   );
+  if (params.valueRenderOption) {
+    url.searchParams.set('valueRenderOption', params.valueRenderOption);
+  }
+  if (params.dateTimeRenderOption) {
+    url.searchParams.set('dateTimeRenderOption', params.dateTimeRenderOption);
+  }
   const res = await fetch(url.toString(), {
     method: 'GET',
     headers: {
@@ -159,6 +167,6 @@ export async function sheetsValuesGet(params: {
     const t = await res.text();
     throw new Error(`Sheets values.get failed: ${res.status} ${t.slice(0, 400)}`);
   }
-  const data = (await res.json()) as { values?: string[][] };
+  const data = (await res.json()) as { values?: unknown[][] };
   return data.values ?? [];
 }

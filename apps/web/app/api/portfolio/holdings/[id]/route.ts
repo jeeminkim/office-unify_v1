@@ -3,6 +3,7 @@ import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import {
   deletePortfolioHolding,
+  listWebPortfolioHoldingsForUser,
   upsertPortfolioHolding,
 } from '@office-unify/supabase-access';
 import type { PortfolioLedgerHoldingInput } from '@office-unify/shared-types';
@@ -37,26 +38,38 @@ export async function PATCH(req: Request, context: Params) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
-  const qty = body.qty == null ? undefined : Number(body.qty);
-  const avg = body.avg_price == null ? undefined : Number(body.avg_price);
-  if (qty != null && (!Number.isFinite(qty) || qty < 0)) {
+  const holdings = await listWebPortfolioHoldingsForUser(supabase, auth.userKey);
+  const current = holdings.find((row) => row.market === parsed.market && row.symbol.toUpperCase() === parsed.symbol);
+  if (!current) {
+    return NextResponse.json({ error: 'Holding not found.' }, { status: 404 });
+  }
+  const qty = body.qty == null ? Number(current.qty ?? 0) : Number(body.qty);
+  const avg = body.avg_price == null ? Number(current.avg_price ?? 0) : Number(body.avg_price);
+  if (!Number.isFinite(qty) || qty < 0) {
     return NextResponse.json({ error: 'qty must be >= 0' }, { status: 400 });
   }
-  if (avg != null && (!Number.isFinite(avg) || avg <= 0)) {
+  if (!Number.isFinite(avg) || avg <= 0) {
     return NextResponse.json({ error: 'avg_price must be > 0' }, { status: 400 });
   }
   try {
-    await upsertPortfolioHolding(supabase, auth.userKey, {
+    const holdingPatch: PortfolioLedgerHoldingInput = {
       market: parsed.market,
       symbol: parsed.symbol,
-      name: (body.name ?? parsed.symbol).trim(),
-      sector: body.sector ?? null,
-      investment_memo: body.investment_memo ?? null,
-      qty: qty ?? null,
-      avg_price: avg ?? null,
-      target_price: body.target_price == null ? null : Number(body.target_price),
-      judgment_memo: body.judgment_memo ?? null,
-    });
+      name: (body.name ?? current.name ?? parsed.symbol).trim(),
+      sector: body.sector ?? current.sector ?? null,
+      investment_memo: body.investment_memo ?? current.investment_memo ?? null,
+      qty,
+      avg_price: avg,
+      target_price: body.target_price == null ? Number(current.target_price ?? 0) || null : Number(body.target_price),
+      judgment_memo: body.judgment_memo ?? current.judgment_memo ?? null,
+    };
+    if (Object.prototype.hasOwnProperty.call(body, 'google_ticker')) {
+      holdingPatch.google_ticker = body.google_ticker?.trim() || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'quote_symbol')) {
+      holdingPatch.quote_symbol = body.quote_symbol?.trim() || null;
+    }
+    await upsertPortfolioHolding(supabase, auth.userKey, holdingPatch);
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
