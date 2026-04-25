@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { listWebPortfolioHoldingsForUser } from '@office-unify/supabase-access';
+import { loadHoldingQuotes } from '@/lib/server/marketQuoteService';
 
 type DailyRoutineStep = {
   key: 'portfolio' | 'trend' | 'private_banker' | 'committee' | 'trade_journal';
@@ -48,6 +49,34 @@ export async function GET() {
     warnings.push(error instanceof Error ? error.message : 'holdings_fetch_failed');
     return [];
   });
+  const quoteBundle = await loadHoldingQuotes(holdings.map((holding) => ({ market: holding.market, symbol: holding.symbol }))).catch(() => ({
+    quoteByHolding: new Map<string, { currentPrice?: number }>(),
+    usdKrwRate: undefined,
+    warnings: ['quote_fetch_failed'],
+    quoteAvailable: false,
+  }));
+  warnings.push(...quoteBundle.warnings);
+  const calcNumber = (v: number | string | null | undefined) => {
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const estimatedRows = holdings.map((holding) => {
+    const qty = calcNumber(holding.qty);
+    const avg = calcNumber(holding.avg_price);
+    const quote = quoteBundle.quoteByHolding.get(`${holding.market}:${holding.symbol.toUpperCase()}`);
+    const current = Number(quote?.currentPrice ?? NaN);
+    const fx = holding.market === 'US' ? quoteBundle.usdKrwRate : 1;
+    const cost = qty * avg * (fx ?? 0);
+    const value = Number.isFinite(current) && fx ? qty * current * fx : cost;
+    return { symbol: holding.symbol, cost, value, weight: 0 };
+  });
+  const totalValue = estimatedRows.reduce((acc, row) => acc + row.value, 0);
+  estimatedRows.forEach((row) => {
+    row.weight = totalValue > 0 ? (row.value / totalValue) * 100 : 0;
+  });
+  const totalCost = estimatedRows.reduce((acc, row) => acc + row.cost, 0);
+  const totalPnlRate = totalCost > 0 ? ((totalValue - totalCost) / totalCost) * 100 : undefined;
+  const topWeight = [...estimatedRows].sort((a, b) => b.weight - a.weight)[0];
 
   const trendRuns = await supabase
     .from('trend_report_runs')
@@ -145,7 +174,7 @@ export async function GET() {
       title: '포트폴리오 현황 확인',
       status: holdings.length > 0 ? 'done' : 'needs_data',
       summary: holdings.length > 0 ? `보유 종목 ${holdings.length}개` : '아직 원장 데이터가 없습니다.',
-      href: '/portfolio-ledger',
+      href: '/portfolio',
       actionLabel: holdings.length > 0 ? '현황 점검' : '원장 등록',
     },
     {
@@ -187,6 +216,9 @@ export async function GET() {
     generatedAt: new Date().toISOString(),
     portfolio: {
       totalPositions: holdings.length,
+      totalPnlRate,
+      topWeightSymbol: topWeight?.symbol ?? null,
+      quoteAvailable: quoteBundle.quoteAvailable,
       topPositions: holdings.slice(0, 5).map((holding) => ({
         symbol: holding.symbol,
         displayName: holding.name,

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Portfolio status dashboard route:** `/portfolio` 화면을 추가해 총 평가/손익/비중/종목 테이블/진단 경고를 점검 전용으로 제공하고, 루틴의 portfolio 단계를 원장 화면이 아닌 현황 대시보드로 연결.
+- **Ledger UX for post-trade reflection:** `/portfolio-ledger`에 보유 목록 빠른 수정, buy/sell/correct 사후 반영, 전량 매도 시 watchlist 이동 옵션을 추가(주문 실행 기능 없음).
+- **Holdings management APIs:** `GET /api/portfolio/holdings`, `PATCH|DELETE /api/portfolio/holdings/[id]`, `POST /api/portfolio/holdings/apply-trade`를 추가.
 - **Lint green recovery:** `InfographicClient`의 `useEffect` 내 `setState`를 제거하고 `effectiveRenderMode` derived state 패턴으로 전환해 `react-hooks/set-state-in-effect` 오류를 해소.
 - **Portfolio quote/fx integration:** `/api/portfolio/summary`에 서버 quote 서비스(`marketQuoteService`)를 연결해 현재가/평가금액/손익률 계산을 추가. quote/환율 실패 시 임의값 없이 warning + dataQuality degrade 유지.
 - **Badge consistency across result screens:** Private Banker/Committee/Trend/Research 결과에 outputQuality/modelUsage/fallback/memory/sheets 상태 배지를 일관 노출.

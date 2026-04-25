@@ -13,6 +13,8 @@
   - 하루 10분 루틴
   - 포트폴리오-신호 연결
 - `/dev-assistant` : 기존 개발 보조 기능 분리 진입점
+- `/portfolio` : 포트폴리오 현황 대시보드(점검 전용)
+- `/portfolio-ledger` : 보유 종목 관리/원장 반영(사후 기록 반영 전용)
 
 ## 서버 API 계층
 
@@ -26,6 +28,12 @@
   - 개인 콘솔용 확장 요약
   - Yahoo quote + `KRW=X` 환율 조회를 우선 사용
   - quote/환율 실패 시 `dataQuality.quoteAvailable=false` 및 warning으로 degrade
+- `/api/portfolio/holdings`
+  - 보유/관심 목록 조회
+- `/api/portfolio/holdings/[id]`
+  - 보유 종목 빠른 수정(PATCH) / 삭제(DELETE)
+- `/api/portfolio/holdings/apply-trade`
+  - buy/sell/correct 사후 반영(주문 실행 아님)
 - 기존 투자 도구 API
   - `/api/private-banker/message`
   - `/api/committee-discussion/*`
@@ -46,4 +54,5 @@
 - 계산 불가 항목은 `undefined/null + warning`으로 반환
 - 메모리/시트/테이블 미설정 시 기능 전체 중단 대신 섹션 단위 경고로 degrade
 - PB/위원회/Trend/Research 결과 화면은 outputQuality/model usage badge를 함께 표시
+- 전량 매도 시 보유 제거 후 선택적으로 watchlist 이동 가능
 

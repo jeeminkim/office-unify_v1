@@ -17,6 +17,9 @@ type DashboardResponse = {
   generatedAt: string;
   portfolio: {
     totalPositions: number;
+    totalPnlRate?: number;
+    topWeightSymbol?: string | null;
+    quoteAvailable?: boolean;
     topPositions: Array<{ symbol: string; displayName?: string; market?: string; sector?: string | null }>;
     noDataMessage?: string | null;
   };
@@ -101,6 +104,7 @@ export function DashboardClient() {
         </div>
         <div className="flex gap-2 text-xs">
           <Link href="/dev-assistant" className="rounded border border-slate-300 bg-white px-3 py-1.5">Dev Assistant</Link>
+          <Link href="/portfolio" className="rounded border border-slate-300 bg-white px-3 py-1.5">Portfolio</Link>
           <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">Portfolio Ledger</Link>
           <Link href="/trade-journal" className="rounded border border-slate-300 bg-white px-3 py-1.5">Trade Journal</Link>
         </div>
@@ -133,6 +137,13 @@ export function DashboardClient() {
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-xs text-slate-500">보유 종목</p>
           <p className="mt-1 text-2xl font-bold">{overview?.portfolio.totalPositions ?? 0}</p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            손익률 {overview?.portfolio.totalPnlRate == null ? "NO_DATA" : `${overview.portfolio.totalPnlRate.toFixed(2)}%`}
+            {" · "}최대비중 {overview?.portfolio.topWeightSymbol ?? "NO_DATA"}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            quote {overview?.portfolio.quoteAvailable ? "ok" : "warn/no_data"}
+          </p>
           {overview?.portfolio.noDataMessage ? <p className="mt-2 text-xs text-amber-700">{overview.portfolio.noDataMessage}</p> : null}
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">

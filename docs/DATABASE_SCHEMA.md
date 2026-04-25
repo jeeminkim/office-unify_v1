@@ -83,6 +83,15 @@
 - `trend_memory_topics`
 - `trade_journal_entries`
 
+## Portfolio dashboard vs ledger responsibilities
+
+- `/portfolio`는 `web_portfolio_holdings`를 읽어 현황(평가/비중/경고)을 보여주는 점검 화면이다.
+- `/portfolio-ledger`는 동일 테이블/`web_portfolio_watchlist`를 수정하는 관리 화면이다.
+- `apply-trade`는 실제 주문 실행이 아닌 사후 기록 반영:
+  - buy: 수량 증가 + 가중평균 단가 재계산
+  - sell: 수량 감소(전량 시 삭제, 옵션으로 watchlist 이동)
+  - correct: 수량/평단 직접 정정
+
 ## 미적용 시 동작 (Trend memory)
 
 DDL을 적용하지 않으면 `trend_report_runs` 조회가 실패하고, 엔진은 **SQL memory만 끄고** 리포트 본문·OpenAI/Gemini 경로는 그대로 둔다. 응답 `meta.memoryEnabled=false`, `warnings`에 안내 문자열.
