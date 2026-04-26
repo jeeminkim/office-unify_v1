@@ -26,6 +26,9 @@ export async function POST() {
   }
   try {
     const holdings = await listWebPortfolioHoldingsForUser(supabase, auth.userKey);
+    const holdingsTotal = holdings.length;
+    const holdingsWithGoogleTicker = holdings.filter((h) => Boolean(h.google_ticker?.trim())).length;
+    const holdingsMissingGoogleTicker = holdingsTotal - holdingsWithGoogleTicker;
     const missingTickerSymbols = holdings
       .filter((h) => !h.google_ticker?.trim())
       .map((h) => `${h.market}:${h.symbol.toUpperCase()}`);
@@ -38,10 +41,14 @@ export async function POST() {
         googleTicker: holding.google_ticker ?? undefined,
       })),
     );
+    const refreshedCount = Math.max(0, holdings.length - missingTickerSymbols.length);
     return NextResponse.json({
       ok: true,
       refreshRequested: true,
-      refreshedCount: Math.max(0, holdings.length - missingTickerSymbols.length),
+      holdingsTotal,
+      holdingsWithGoogleTicker,
+      holdingsMissingGoogleTicker,
+      refreshedCount,
       missingTickerSymbols,
       fxRefreshIncluded: true,
       message: 'Google Sheets 시세 수식을 갱신했습니다. 30~90초 뒤 다시 조회하세요.',

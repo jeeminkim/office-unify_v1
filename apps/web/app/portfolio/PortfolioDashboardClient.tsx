@@ -71,6 +71,14 @@ type TickerResolverRecommendationDto = {
   recommendedQuoteSymbol?: string;
   confidence: string;
   reason: string;
+  defaultApplyCandidate?: {
+    googleTicker: string;
+    quoteSymbol?: string;
+    confidence: "high" | "medium" | "low";
+    reason: string;
+    verified: false;
+  };
+  canApplyDefaultBeforeVerification?: boolean;
   applyState?: {
     autoApplicable: boolean;
     manualRequired?: boolean;
@@ -146,6 +154,7 @@ export function PortfolioDashboardClient() {
       totalSymbols: number;
       autoApplicableCount: number;
       manualRequiredCount: number;
+      defaultApplicableCount?: number;
     };
   } | null>(null);
   const [alerts, setAlerts] = useState<PortfolioAlert[]>([]);
@@ -188,10 +197,32 @@ export function PortfolioDashboardClient() {
         method: "POST",
         credentials: "same-origin",
       });
-      const r = (await refresh.json()) as { message?: string; error?: string };
+      const r = (await refresh.json()) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+        warning?: string;
+        actionHint?: string;
+        holdingsTotal?: number;
+        holdingsWithGoogleTicker?: number;
+        holdingsMissingGoogleTicker?: number;
+        refreshedCount?: number;
+      };
       if (!refresh.ok) throw new Error(r.error ?? `HTTP ${refresh.status}`);
+      if (r.ok === false) {
+        setInfo([r.message, r.warning, r.actionHint].filter(Boolean).join(" "));
+        return;
+      }
       setQuoteRefreshRequested(true);
-      setInfo(r.message ?? "Google Sheets 계산 반영까지 시간이 걸릴 수 있습니다. 1분 뒤 다시 조회하세요.");
+      let msg =
+        r.message ?? "Google Sheets 계산 반영까지 시간이 걸릴 수 있습니다. 1분 뒤 다시 조회하세요.";
+      if (r.holdingsTotal != null && r.holdingsWithGoogleTicker === 0) {
+        msg +=
+          " DB에 google_ticker가 없어 portfolio_quotes 행을 만들 수 없습니다. ticker 적용 후 다시 시세 새로고침하세요.";
+      } else if (r.refreshedCount != null && r.refreshedCount > 0) {
+        msg += ` portfolio_quotes 갱신 요청: ${r.refreshedCount}개 종목(google_ticker 보유).`;
+      }
+      setInfo(msg);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "시세 새로고침 요청 실패");
     } finally {
@@ -288,7 +319,12 @@ export function PortfolioDashboardClient() {
       const data = (await res.json()) as {
         rows?: TickerResolverRowDto[];
         recommendations?: TickerResolverRecommendationDto[];
-        summary?: { totalSymbols: number; autoApplicableCount: number; manualRequiredCount: number };
+        summary?: {
+          totalSymbols: number;
+          autoApplicableCount: number;
+          manualRequiredCount: number;
+          defaultApplicableCount?: number;
+        };
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -301,6 +337,78 @@ export function PortfolioDashboardClient() {
       setError(e instanceof Error ? e.message : "추천 결과 로드 실패");
     } finally {
       setTickerResolverStatusBusy(false);
+    }
+  };
+
+  const applyDefaultBeforeVerifyBulk = async (mode: "high_only" | "all_confidences") => {
+    const recs = (tickerResolverData?.recommendations ?? []).filter(
+      (r) =>
+        r.canApplyDefaultBeforeVerification
+        && r.defaultApplyCandidate
+        && (r.market === "KR" || r.market === "US"),
+    );
+    const filtered =
+      mode === "high_only"
+        ? recs.filter((r) => r.defaultApplyCandidate!.confidence === "high")
+        : recs;
+    if (filtered.length === 0) {
+      setInfo(
+        mode === "high_only"
+          ? "고신뢰(검증 전) 기본 추천으로 적용할 KR/US 종목이 없습니다."
+          : "검증 전 기본 추천으로 적용할 KR/US 종목이 없습니다.",
+      );
+      return;
+    }
+    setBulkApplying(true);
+    setError(null);
+    try {
+      const items = filtered.map((r) => ({
+        targetType: (r.targetType === "watchlist" ? "watchlist" : "holding") as "holding" | "watchlist",
+        market: r.market as "KR" | "US",
+        symbol: r.symbol,
+        googleTicker: r.defaultApplyCandidate!.googleTicker,
+        quoteSymbol: r.defaultApplyCandidate!.quoteSymbol,
+        source: "default_unverified" as const,
+      }));
+      const res = await fetch("/api/portfolio/ticker-resolver/apply-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ items }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        appliedCount?: number;
+        failedItems?: Array<{ reason: string }>;
+        warnings?: string[];
+        ok?: boolean;
+      };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if ((data.appliedCount ?? 0) === 0) {
+        setError(
+          (data.failedItems ?? []).map((f) => f.reason).join(" · ") || "적용된 항목이 없습니다.",
+        );
+        return;
+      }
+      const warnLine = (data.warnings ?? []).join(" ");
+      await requestQuoteRefresh();
+      const partial =
+        (data.failedItems?.length ?? 0) > 0
+          ? ` (${data.failedItems!.length}건 실패)`
+          : "";
+      setInfo(
+        [
+          `기본 ticker를 저장했습니다(${data.appliedCount ?? 0}건)${partial}. 30~90초 뒤 「시세 상태 확인」으로 검증하세요.`,
+          warnLine,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+      await loadSummary();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "기본 추천 적용 실패");
+    } finally {
+      setBulkApplying(false);
     }
   };
 
@@ -346,6 +454,34 @@ export function PortfolioDashboardClient() {
     if ((quoteStatus?.summary?.okRows ?? 0) > 0) return "quote_ready";
     return "partial_failure";
   }, [missingTickerSymbols.length, tickerResolverRequestId, tickerResolverData, autoApplicableItems.length, tickerAppliedCount, quoteRefreshRequested, quoteStatus]);
+
+  const defaultBeforeVerifyHighCount = useMemo(
+    () =>
+      (tickerResolverData?.recommendations ?? []).filter(
+        (r) =>
+          r.canApplyDefaultBeforeVerification
+          && r.defaultApplyCandidate?.confidence === "high"
+          && (r.market === "KR" || r.market === "US"),
+      ).length,
+    [tickerResolverData],
+  );
+  const defaultBeforeVerifyAnyCount = useMemo(
+    () =>
+      (tickerResolverData?.recommendations ?? []).filter(
+        (r) =>
+          r.canApplyDefaultBeforeVerification
+          && r.defaultApplyCandidate
+          && (r.market === "KR" || r.market === "US"),
+      ).length,
+    [tickerResolverData],
+  );
+  const quoteRowDiagnostic = useMemo(() => {
+    const rows = quoteStatus?.rows ?? [];
+    const tickerSavedButMissingRow = rows.some(
+      (row) => row.rowStatus === "missing_row" && Boolean(row.googleTicker?.trim()),
+    );
+    return { tickerSavedButMissingRow };
+  }, [quoteStatus]);
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-slate-900">
@@ -408,7 +544,30 @@ export function PortfolioDashboardClient() {
         <p className="font-semibold text-violet-950">시세 연동 복구 패널</p>
         <p className="mt-1 text-violet-900">
           상태: <span className="font-semibold">{recoveryState}</span> · 미설정 ticker {missingTickerSymbols.length}개 · 자동 적용 가능 {autoApplicableItems.length}개
+          {tickerResolverData?.summary?.defaultApplicableCount != null
+            ? ` · 검증 전 기본 적용 가능 ${tickerResolverData.summary.defaultApplicableCount}개`
+            : null}
         </p>
+        {missingTickerSymbols.length > 0 ? (
+          <p className="mt-2 rounded border border-amber-200 bg-amber-50/90 px-2 py-1.5 text-amber-950">
+            ticker가 DB에 저장되지 않아 portfolio_quotes 행을 만들 수 없습니다. 「추천 ticker 찾기」 후 「검증 전 기본 추천 적용」으로 먼저 저장하거나 원장에서 직접 입력하세요.
+          </p>
+        ) : null}
+        {quoteStatus && quoteRowDiagnostic.tickerSavedButMissingRow ? (
+          <p className="mt-2 flex flex-wrap items-center gap-2 rounded border border-blue-200 bg-blue-50/90 px-2 py-1.5 text-blue-950">
+            ticker는 저장되어 있지만 portfolio_quotes에 행이 없을 수 있습니다.
+            <button
+              type="button"
+              className="rounded border border-blue-400 bg-white px-2 py-0.5"
+              disabled={refreshingQuote}
+              onClick={() => {
+                void requestQuoteRefresh();
+              }}
+            >
+              시세 새로고침 요청
+            </button>
+          </p>
+        ) : null}
         <div className="mt-2 flex flex-wrap gap-2">
           <button
             type="button"
@@ -612,6 +771,35 @@ export function PortfolioDashboardClient() {
           <p className="mt-1 text-violet-900/90">
             requestId: {tickerResolverRequestId ?? "-"} · 행 {(tickerResolverData.rows ?? []).length}개 · Google Sheets 계산 지연 시 상태가 pending일 수 있습니다.
           </p>
+          {defaultBeforeVerifyAnyCount > 0 ? (
+            <div className="mt-2 space-y-2 rounded border border-amber-200 bg-amber-50/90 p-2 text-amber-950">
+              <p>
+                GOOGLEFINANCE 계산이 아직 pending이어도, 검증 전 기본 ticker(KRX:000660 등)를 먼저 저장한 뒤 시세 새로고침으로 시트를 채울 수 있습니다. 자동 저장은 없으며, 잘못될 수 있으니 시세 표에서 언제든 수정하세요.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-amber-600 bg-amber-600 px-2 py-1 text-white disabled:opacity-50"
+                  disabled={bulkApplying || defaultBeforeVerifyHighCount === 0}
+                  onClick={() => {
+                    void applyDefaultBeforeVerifyBulk("high_only");
+                  }}
+                >
+                  고신뢰 기본 추천 일괄 적용 (KR 숫자 등)
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-amber-500 bg-white px-2 py-1 text-amber-950 disabled:opacity-50"
+                  disabled={bulkApplying}
+                  onClick={() => {
+                    void applyDefaultBeforeVerifyBulk("all_confidences");
+                  }}
+                >
+                  검증 전 기본 추천 적용 (중·저신뢰 포함)
+                </button>
+              </div>
+            </div>
+          ) : null}
           {(tickerResolverData.recommendations ?? []).length > 0 ? (
             <ul className="mt-2 list-inside list-disc text-violet-900">
               {(tickerResolverData.recommendations ?? []).map((rec) => (

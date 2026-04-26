@@ -54,6 +54,7 @@
 - `/api/portfolio/quotes/refresh`
   - 시세 시트 row/formula 동기화 요청 (지연 반영)
   - 응답에 권장 재조회 시간(약 60초) 포함
+  - 응답 메타: `holdingsTotal`, `holdingsWithGoogleTicker`, `holdingsMissingGoogleTicker`, `refreshedCount`, `missingTickerSymbols` (DB에 `google_ticker` 없으면 시트 행을 만들 수 없음)
 - `/api/portfolio/quotes/status`
   - 시트 read-back 상태/지연 상태 점검
   - 종목별 `googleTicker/rawPrice/parsedPrice/rowStatus` 진단 제공
@@ -61,8 +62,10 @@
 - `/api/portfolio/ticker-resolver/refresh|status|apply`
   - `portfolio_quote_candidates` 탭에 `GOOGLEFINANCE` 후보 수식을 쌓고 read-back으로 검증
   - **자동 DB 저장 없음** — 적용은 `apply`에서 사용자가 명시적으로 승인할 때만 `google_ticker`/`quote_symbol` 반영
+  - `status` 응답의 추천 항목에 **검증 전 기본 후보**(`defaultApplyCandidate`, `canApplyDefaultBeforeVerification`)를 포함할 수 있음 — Sheets가 `pending`이어도 사용자가 UI에서 「검증 전 기본 추천 적용」으로 저장 가능 (여전히 버튼 승인 필요, `verified` 아님)
 - `/api/portfolio/ticker-resolver/apply-bulk`
   - 사용자가 승인한 항목만 일괄 저장 (부분 실패 허용, `failedItems` 반환)
+  - `items[].source`: `verified_googlefinance`(기본) | `default_unverified` — 후자는 GOOGLEFINANCE 검증 전 규칙 기반 저장이며, 응답 `warnings`로 안내
 - `/api/portfolio/watchlist/[id]` (PATCH)
   - 관심종목 메타 + `google_ticker`/`quote_symbol` 수동 보정
 - 기존 투자 도구 API

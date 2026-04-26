@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **검증 전 기본 ticker 적용:** `ticker-resolver/status` 추천에 `defaultApplyCandidate`/`canApplyDefaultBeforeVerification`을 추가하고, `/portfolio`에서 「검증 전 기본 추천 적용」「고신뢰 기본 추천 일괄 적용」으로 `apply-bulk`(`source: default_unverified`) 후 `quotes/refresh`를 이어 실행해 `google_ticker` 없이 `missing_row`만 나오는 상황을 완화. `quotes/refresh` 응답에 보유 수·ticker 보유 수 메타 추가.
 - **Google Sheets 탭 자동 복구:** `portfolio_quotes`, `portfolio_quote_candidates` 탭이 없을 때 앱이 자동 생성 후 헤더를 보정하도록 추가하고, A1 range를 `'sheet_name'!A1` escape 방식으로 통일해 `Unable to parse range` 계열 빌드/운영 오류를 완화.
 - **Sheets 오류 분류/액션 가이드:** quotes/ticker refresh API에서 `sheet_tab_missing_or_invalid_range`, `sheet_permission_denied`, `spreadsheet_not_found_or_wrong_id`, `sheets_update_failed`로 원인 코드를 분리해 사용자에게 재시도/권한/ID 점검 안내를 반환.
 - **System status 진단 확장:** `/api/system/status`에 Google Sheets 읽기 가능 여부, `portfolio_quotes`/`portfolio_quote_candidates` 탭 존재, 서비스 계정 편집 권한 추정 항목을 추가.

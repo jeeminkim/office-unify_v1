@@ -68,6 +68,8 @@
   3) `ticker-resolver/status`로 후보 검증
   4) 사용자 승인 시 `apply` 또는 `apply-bulk` 저장
   5) `quotes/refresh` 후 30~90초 뒤 `quotes/status` 재확인
+- **검증 전 기본 추천 (`default_unverified`)**: `portfolio_quote_candidates`가 아직 `pending`이면 Sheets read-back으로 `ok` 후보가 없을 수 있습니다. 이 경우에도 사용자가 「검증 전 기본 추천 적용」을 누르면 규칙 기반 기본 `google_ticker`(예: KR 숫자 → `KRX:000660`)만 DB에 저장할 수 있습니다. **자동 저장 없음** · 잘못될 수 있으므로 `/portfolio` 시세 표에서 수정 가능 · 저장 후 반드시 `quotes/refresh`와 `quotes/status`로 검증하세요.
+- `quotes/refresh`는 **`google_ticker`가 있는 보유 종목만** `portfolio_quotes`에 행을 씁니다. DB에 ticker가 없으면 `missing_row`/미동기가 지속됩니다.
 - `apply-bulk`도 자동 저장이 아니라 **사용자 승인 버튼 클릭**이 있어야만 실행됩니다.
 - FX는 `CURRENCY:USDKRW`를 기본으로 점검하며 상태 API에서 `rawPrice/parsedPrice/status`를 별도 반환합니다.
 

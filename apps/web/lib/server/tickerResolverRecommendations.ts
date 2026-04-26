@@ -6,6 +6,7 @@ import {
   type CandidateSheetParsedRow,
 } from '@/lib/server/googleFinanceTickerCandidateSheet';
 import {
+  buildDefaultGoogleTickerRecommendation,
   ledgerNameMatchesGoogleFinanceName,
   suggestQuoteSymbolForProvider,
 } from '@/lib/server/googleFinanceTickerResolver';
@@ -36,6 +37,16 @@ export type TickerResolverRecommendationDto = {
   recommendedQuoteSymbol?: string;
   confidence: 'high' | 'medium' | 'low';
   reason: string;
+  /** Sheets 검증(ok) 전에 적용 가능한 규칙 기반 기본 후보 — 사용자 승인 시에만 저장 */
+  defaultApplyCandidate?: {
+    googleTicker: string;
+    quoteSymbol?: string;
+    confidence: 'high' | 'medium' | 'low';
+    reason: string;
+    verified: false;
+  };
+  /** ok 후보가 없을 때 기본 후보로 DB 저장을 진행할 수 있음(여전히 사용자 버튼 필요) */
+  canApplyDefaultBeforeVerification: boolean;
   applyState: {
     autoApplicable: boolean;
     manualRequired?: boolean;
@@ -126,12 +137,23 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
 
     if (okRows.length === 0) {
       const pending = groupRows.some((r) => r.status === 'pending');
+      const defaultApplyCandidate =
+        buildDefaultGoogleTickerRecommendation({
+          market: meta.market,
+          symbol: meta.symbol,
+          name: meta.name,
+          existingGoogleTicker: null,
+          existingQuoteSymbol: null,
+        }) ?? undefined;
+      const canApplyDefaultBeforeVerification = Boolean(defaultApplyCandidate);
       recommendations.push({
         ...meta,
-        confidence: 'low',
+        confidence: defaultApplyCandidate?.confidence ?? 'low',
         reason: pending
-          ? '아직 Sheets 계산이 반영되지 않았습니다. 잠시 후 다시 확인하세요.'
-          : '유효한 가격·통화를 반환한 ticker 후보가 없습니다.',
+          ? '아직 Sheets 계산이 반영되지 않았습니다. 잠시 후 다시 확인하거나, 검증 전 기본 ticker를 저장한 뒤 시세 refresh로 확인할 수 있습니다.'
+          : '유효한 가격·통화를 반환한 ticker 후보가 없습니다. 검증 전 기본 추천 적용 또는 수동 입력을 고려하세요.',
+        defaultApplyCandidate,
+        canApplyDefaultBeforeVerification,
         applyState: {
           autoApplicable: false,
           manualRequired: true,
@@ -153,6 +175,7 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
         recommendedQuoteSymbol: quote,
         confidence: pick.confidence,
         reason: `단일 정상 후보: ${pick.candidateTicker}`,
+        canApplyDefaultBeforeVerification: false,
         applyState: {
           autoApplicable: ['high', 'medium'].includes(pick.confidence),
           reason: ['high', 'medium'].includes(pick.confidence)
@@ -171,6 +194,7 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
         ...meta,
         confidence: sorted[0]!.confidence,
         reason: '여러 ticker가 정상 응답했습니다. 표에서 직접 선택한 뒤 적용하세요.',
+        canApplyDefaultBeforeVerification: false,
         applyState: {
           autoApplicable: false,
           manualRequired: true,
@@ -188,6 +212,7 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
       recommendedQuoteSymbol: suggestQuoteSymbolForProvider(meta.market, meta.symbol, pick.candidateTicker),
       confidence: pick.confidence,
       reason: `정상 응답 ticker: ${pick.candidateTicker}`,
+      canApplyDefaultBeforeVerification: false,
       applyState: {
         autoApplicable: ['high', 'medium'].includes(pick.confidence),
         reason: ['high', 'medium'].includes(pick.confidence)

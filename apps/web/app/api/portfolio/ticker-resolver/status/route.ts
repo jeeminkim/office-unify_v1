@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     const { rows, recommendations } = buildTickerResolverDtos(parsed);
     const autoApplicableCount = recommendations.filter((r) => r.applyState.autoApplicable && r.recommendedGoogleTicker).length;
     const manualRequiredCount = recommendations.filter((r) => r.applyState.manualRequired).length;
+    const defaultApplicableCount = recommendations.filter((r) => r.canApplyDefaultBeforeVerification).length;
     return NextResponse.json({
       ok: true,
       requestId,
@@ -36,6 +37,7 @@ export async function GET(req: Request) {
         totalSymbols: recommendations.length,
         autoApplicableCount,
         manualRequiredCount,
+        defaultApplicableCount,
       },
     });
   } catch (e: unknown) {

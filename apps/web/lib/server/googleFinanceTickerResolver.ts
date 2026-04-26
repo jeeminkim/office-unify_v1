@@ -38,6 +38,64 @@ function krNumericCore(symbol: string): string | null {
   return null;
 }
 
+/** GOOGLEFINANCE Sheets 검증 전에 사용자 승인으로만 저장 가능한 기본 후보(verified: false) */
+export type DefaultGoogleTickerApply = {
+  googleTicker: string;
+  quoteSymbol?: string;
+  confidence: 'high' | 'medium' | 'low';
+  reason: string;
+  verified: false;
+};
+
+/**
+ * Sheets read-back이 pending/empty여도 사용자가 먼저 DB에 넣을 수 있는 기본 ticker.
+ * 자동 저장 금지 — UI/API에서 명시적 승인 후에만 반영.
+ */
+export function buildDefaultGoogleTickerRecommendation(input: ResolveTickerInput): DefaultGoogleTickerApply | null {
+  const m = input.market.trim().toUpperCase();
+  const sym = input.symbol.trim().toUpperCase();
+  if (!sym) return null;
+
+  if (m === 'KR') {
+    const core6 = krNumericCore(sym);
+    if (core6) {
+      return {
+        googleTicker: `KRX:${core6}`,
+        quoteSymbol: `${core6}.KS`,
+        confidence: 'high',
+        reason: 'KR 숫자 티커의 기본 KRX 후보',
+        verified: false,
+      };
+    }
+    const mixed = isKrMixedInstrumentCode(sym);
+    return {
+      googleTicker: `KRX:${sym}`,
+      quoteSymbol: undefined,
+      confidence: mixed ? 'low' : 'medium',
+      reason: mixed ? '혼합 코드 ETF/ETN 후보, 검증 권장' : 'KRX 접두 기본 후보(검증 권장)',
+      verified: false,
+    };
+  }
+
+  if (m === 'US') {
+    return {
+      googleTicker: sym,
+      quoteSymbol: sym,
+      confidence: 'medium',
+      reason: 'US ticker 기본 후보',
+      verified: false,
+    };
+  }
+
+  return {
+    googleTicker: sym,
+    quoteSymbol: sym,
+    confidence: 'low',
+    reason: '비표준 시장 기본 후보(검증 권장)',
+    verified: false,
+  };
+}
+
 export function generateGoogleFinanceTickerCandidates(input: ResolveTickerInput): TickerCandidate[] {
   const m = input.market.trim().toUpperCase();
   const sym = input.symbol.trim().toUpperCase();
@@ -180,6 +238,20 @@ export function generateGoogleFinanceTickerCandidates(input: ResolveTickerInput)
   }
 
   return out;
+}
+
+/** apply-bulk에서 source=default_unverified일 때 최소 형식 검증 */
+export function isValidDefaultUnverifiedGoogleTicker(market: string, googleTicker: string): boolean {
+  const m = market.trim().toUpperCase();
+  const t = googleTicker.trim().toUpperCase();
+  if (!t || t.length > 64) return false;
+  if (m === 'KR') {
+    return /^(KRX|KOSPI|KOSDAQ):[A-Z0-9._-]+$/i.test(googleTicker.trim()) || /^\d{6}$/.test(t);
+  }
+  if (m === 'US') {
+    return /^[A-Z0-9.\-:]+$/i.test(t) && t.length <= 32;
+  }
+  return /^[A-Z0-9.\-:]+$/i.test(t) && t.length <= 32;
 }
 
 export function suggestQuoteSymbolForProvider(market: string, symbol: string, googleTicker: string): string | undefined {
