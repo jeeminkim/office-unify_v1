@@ -247,6 +247,34 @@ export async function sheetsValuesUpdate(params: {
   }
 }
 
+/** 여러 범위를 한 요청으로 갱신(G/I/K/M 등 수식 결과 열을 건드리지 않을 때 사용). */
+export async function sheetsValuesBatchUpdate(params: {
+  spreadsheetId: string;
+  valueInputOption?: 'RAW' | 'USER_ENTERED';
+  data: Array<{ rangeA1: string; values: string[][] }>;
+}): Promise<void> {
+  const token = await getSheetsAccessToken();
+  if (!token) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not configured');
+  const url = new URL(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(params.spreadsheetId)}/values:batchUpdate`,
+  );
+  const res = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      valueInputOption: params.valueInputOption ?? 'USER_ENTERED',
+      data: params.data.map((d) => ({ range: d.rangeA1, values: d.values })),
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Sheets values.batchUpdate failed: ${res.status} ${t.slice(0, 400)}`);
+  }
+}
+
 export async function sheetsValuesAppend(params: {
   spreadsheetId: string;
   rangeA1: string;
@@ -307,4 +335,42 @@ export async function sheetsValuesGet(params: {
   }
   const data = (await res.json()) as { values?: unknown[][] };
   return data.values ?? [];
+}
+
+/** 여러 범위를 동일 valueRenderOption으로 한 번에 조회. 반환 순서는 rangesA1와 동일. */
+export async function sheetsValuesBatchGet(params: {
+  spreadsheetId: string;
+  rangesA1: string[];
+  valueRenderOption?: 'FORMATTED_VALUE' | 'UNFORMATTED_VALUE' | 'FORMULA';
+  dateTimeRenderOption?: 'SERIAL_NUMBER' | 'FORMATTED_STRING';
+}): Promise<unknown[][][]> {
+  const token = await getSheetsAccessToken();
+  if (!token) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not configured');
+  if (params.rangesA1.length === 0) return [];
+  const url = new URL(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(params.spreadsheetId)}/values:batchGet`,
+  );
+  for (const r of params.rangesA1) {
+    url.searchParams.append('ranges', r);
+  }
+  if (params.valueRenderOption) {
+    url.searchParams.set('valueRenderOption', params.valueRenderOption);
+  }
+  if (params.dateTimeRenderOption) {
+    url.searchParams.set('dateTimeRenderOption', params.dateTimeRenderOption);
+  }
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Sheets values.batchGet failed: ${res.status} ${t.slice(0, 400)}`);
+  }
+  const data = (await res.json()) as { valueRanges?: Array<{ values?: unknown[][] }> };
+  const ranges = data.valueRanges ?? [];
+  return params.rangesA1.map((_, i) => ranges[i]?.values ?? []);
 }
