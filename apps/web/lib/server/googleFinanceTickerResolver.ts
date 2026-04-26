@@ -23,6 +23,15 @@ function pushUnique(out: TickerCandidate[], c: TickerCandidate, seen: Set<string
   out.push({ ...c, ticker: c.ticker.trim() });
 }
 
+/** 코스닥 상장 가능성이 알려진 종목명(표시·후보 우선순위용). 자동 DB 저장은 하지 않음. */
+const KOSDAQ_PRIORITY_NAME_FRAGMENTS = ['HLB', '고영', '메지온', '알테오젠'] as const;
+
+export function isKosdaqPriorityKrDisplayName(name?: string): boolean {
+  if (!name?.trim()) return false;
+  const n = name.replace(/\s/g, '').toLowerCase();
+  return KOSDAQ_PRIORITY_NAME_FRAGMENTS.some((frag) => n.includes(frag.toLowerCase()));
+}
+
 /** KR 심볼이 숫자+문자 혼합(예: ETF 0123G0)인지 — 자동 high confidence 금지용 */
 export function isKrMixedInstrumentCode(symbol: string): boolean {
   const s = symbol.trim().toUpperCase();
@@ -132,6 +141,7 @@ export function generateGoogleFinanceTickerCandidates(input: ResolveTickerInput)
     const core6 = krNumericCore(sym);
     const pad6 = sym.padStart(6, '0');
     if (core6) {
+      const kosdaqPriority = isKosdaqPriorityKrDisplayName(input.name);
       pushUnique(
         out,
         {
@@ -147,8 +157,10 @@ export function generateGoogleFinanceTickerCandidates(input: ResolveTickerInput)
         {
           ticker: `KOSDAQ:${core6}`,
           provider: 'googlefinance',
-          reason: 'KOSDAQ 보조 후보',
-          confidence: 'medium',
+          reason: kosdaqPriority
+            ? '코스닥 상장 가능성이 알려진 종목 — KRX 미응답·시세 공백 시 KOSDAQ 후보를 우선 확인하세요'
+            : 'KOSDAQ 보조 후보',
+          confidence: kosdaqPriority ? 'high' : 'medium',
         },
         seen,
       );
@@ -163,6 +175,7 @@ export function generateGoogleFinanceTickerCandidates(input: ResolveTickerInput)
         seen,
       );
     } else {
+      const kosdaqPriority = isKosdaqPriorityKrDisplayName(input.name);
       pushUnique(
         out,
         {
@@ -178,8 +191,10 @@ export function generateGoogleFinanceTickerCandidates(input: ResolveTickerInput)
         {
           ticker: `KOSDAQ:${pad6}`,
           provider: 'googlefinance',
-          reason: 'KOSDAQ 보조 후보(비표준 코드)',
-          confidence: mixed ? 'low' : 'medium',
+          reason: kosdaqPriority
+            ? '코스닥 상장 가능성이 알려진 종목 — KRX 미응답·시세 공백 시 KOSDAQ 후보를 우선 확인하세요'
+            : 'KOSDAQ 보조 후보(비표준 코드)',
+          confidence: kosdaqPriority ? 'high' : mixed ? 'low' : 'medium',
         },
         seen,
       );

@@ -4,8 +4,14 @@ import {
   isTickerCandidateSheetConfigured,
   readTickerCandidateSheetRowsForRequest,
 } from '@/lib/server/googleFinanceTickerCandidateSheet';
-import { isGoogleFinanceQuoteConfigured } from '@/lib/server/googleFinanceSheetQuoteService';
-import { buildTickerResolverDtos } from '@/lib/server/tickerResolverRecommendations';
+import {
+  isGoogleFinanceQuoteConfigured,
+  normalizeQuoteKey,
+  readGoogleFinanceQuoteSheetRows,
+} from '@/lib/server/googleFinanceSheetQuoteService';
+import { getServiceSupabase } from '@/lib/server/supabase-service';
+import { listWebPortfolioHoldingsForUser } from '@office-unify/supabase-access';
+import { buildTickerResolverDtos, type TickerResolverQuoteContext } from '@/lib/server/tickerResolverRecommendations';
 
 export async function GET(req: Request) {
   const auth = await requirePersonaChatAuth();
@@ -24,7 +30,30 @@ export async function GET(req: Request) {
 
   try {
     const parsed = await readTickerCandidateSheetRowsForRequest(requestId);
-    const { rows, recommendations } = buildTickerResolverDtos(parsed);
+    const quoteContextByKey = new Map<string, TickerResolverQuoteContext>();
+    const supabase = getServiceSupabase();
+    if (supabase) {
+      const holdings = await listWebPortfolioHoldingsForUser(supabase, auth.userKey).catch(() => []);
+      try {
+        const quoteData = await readGoogleFinanceQuoteSheetRows();
+        const rowByKey = new Map(quoteData.rows.map((r) => [normalizeQuoteKey(r.market, r.symbol), r]));
+        for (const h of holdings) {
+          const key = normalizeQuoteKey(h.market, h.symbol);
+          const row = rowByKey.get(key);
+          quoteContextByKey.set(key, {
+            ledgerGoogleTicker: h.google_ticker,
+            quotesRowStatus: row?.rowStatus,
+          });
+        }
+      } catch {
+        for (const h of holdings) {
+          quoteContextByKey.set(normalizeQuoteKey(h.market, h.symbol), {
+            ledgerGoogleTicker: h.google_ticker,
+          });
+        }
+      }
+    }
+    const { rows, recommendations } = buildTickerResolverDtos(parsed, { quoteContextByKey });
     const autoApplicableCount = recommendations.filter((r) => r.applyState.autoApplicable && r.recommendedGoogleTicker).length;
     const manualRequiredCount = recommendations.filter((r) => r.applyState.manualRequired).length;
     const defaultApplicableCount = recommendations.filter((r) => r.canApplyDefaultBeforeVerification).length;

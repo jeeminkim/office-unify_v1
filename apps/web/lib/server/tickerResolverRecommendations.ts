@@ -5,8 +5,10 @@ import {
   type CandidateReadStatus,
   type CandidateSheetParsedRow,
 } from '@/lib/server/googleFinanceTickerCandidateSheet';
+import { normalizeQuoteKey } from '@/lib/server/googleFinanceSheetQuoteService';
 import {
   buildDefaultGoogleTickerRecommendation,
+  isKosdaqPriorityKrDisplayName,
   ledgerNameMatchesGoogleFinanceName,
   suggestQuoteSymbolForProvider,
 } from '@/lib/server/googleFinanceTickerResolver';
@@ -61,7 +63,55 @@ export type TickerResolverRecommendationDto = {
   }>;
 };
 
+/** portfolio_quotes와 원장 티커를 resolver 추천과 맞출 때 사용 */
+export type TickerResolverQuoteContext = {
+  ledgerGoogleTicker?: string | null;
+  quotesRowStatus?: string;
+};
+
 const rank: Record<'high' | 'medium' | 'low', number> = { high: 3, medium: 2, low: 1 };
+
+function krNumericCore6(symbol: string): string | null {
+  const core = symbol.replace(/\D/g, '').padStart(6, '0').slice(-6);
+  return /^\d{6}$/.test(core) ? core : null;
+}
+
+function quotesSuggestsKrxKosdaqSwitch(ctx?: TickerResolverQuoteContext): boolean {
+  const qs = ctx?.quotesRowStatus;
+  return qs === 'empty_price' || qs === 'formula_pending';
+}
+
+/** 원장 KRX + 시세 공백이면 후보 시트에서 KOSDAQ이 ok일 때 KOSDAQ으로 승격 */
+function tryPromoteKosdaqWhenKrxQuotesEmpty(
+  meta: { targetType: 'holding' | 'watchlist'; market: string; symbol: string; name?: string },
+  okRows: TickerResolverRowDto[],
+  candidates: TickerResolverRecommendationDto['candidates'],
+  quoteCtx?: TickerResolverQuoteContext,
+): Omit<TickerResolverRecommendationDto, 'candidates'> & { candidates: TickerResolverRecommendationDto['candidates'] } | null {
+  if (meta.market.trim().toUpperCase() !== 'KR') return null;
+  const core6 = krNumericCore6(meta.symbol);
+  if (!core6) return null;
+  const gl = quoteCtx?.ledgerGoogleTicker?.trim().toUpperCase() ?? '';
+  if (!gl.startsWith('KRX:')) return null;
+  if (!quotesSuggestsKrxKosdaqSwitch(quoteCtx)) return null;
+  const want = `KOSDAQ:${core6}`;
+  const kosdaqOk = okRows.find((r) => r.candidateTicker.trim().toUpperCase() === want && r.status === 'ok');
+  if (!kosdaqOk) return null;
+  const quote = suggestQuoteSymbolForProvider(meta.market, meta.symbol, kosdaqOk.candidateTicker);
+  return {
+    ...meta,
+    recommendedGoogleTicker: kosdaqOk.candidateTicker,
+    recommendedQuoteSymbol: quote,
+    confidence: kosdaqOk.confidence,
+    reason: `portfolio_quotes에서 KRX(${core6}) 시세가 비어 있고, 후보 시트의 ${want}이(가) 정상입니다. KOSDAQ 티커 적용을 권장합니다.`,
+    canApplyDefaultBeforeVerification: false,
+    applyState: {
+      autoApplicable: ['high', 'medium'].includes(kosdaqOk.confidence),
+      reason: 'KOSDAQ 후보가 검증되었고 원장은 KRX인데 시세 열이 비어 있습니다.',
+    },
+    candidates,
+  };
+}
 
 function effectiveConfidence(
   base: 'high' | 'medium' | 'low',
@@ -77,10 +127,14 @@ function effectiveConfidence(
   return base;
 }
 
-export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
+export function buildTickerResolverDtos(
+  parsed: CandidateSheetParsedRow[],
+  options?: { quoteContextByKey?: Map<string, TickerResolverQuoteContext> },
+): {
   rows: TickerResolverRowDto[];
   recommendations: TickerResolverRecommendationDto[];
 } {
+  const quoteByKey = options?.quoteContextByKey;
   const rows: TickerResolverRowDto[] = parsed.map((p) => {
     const rawPrice = p.rawPrice ?? '';
     const rawCurrency = p.currency ?? '';
@@ -134,6 +188,7 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
       googleName: r.googleName,
       confidence: r.confidence,
     }));
+    const quoteCtx = quoteByKey?.get(normalizeQuoteKey(meta.market, meta.symbol));
 
     if (okRows.length === 0) {
       const pending = groupRows.some((r) => r.status === 'pending');
@@ -146,12 +201,26 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
           existingQuoteSymbol: null,
         }) ?? undefined;
       const canApplyDefaultBeforeVerification = Boolean(defaultApplyCandidate);
+      let reason = pending
+        ? '아직 Sheets 계산이 반영되지 않았습니다. 잠시 후 다시 확인하거나, 검증 전 기본 ticker를 저장한 뒤 시세 refresh로 확인할 수 있습니다.'
+        : '유효한 가격·통화를 반환한 ticker 후보가 없습니다. 검증 전 기본 추천 적용 또는 수동 입력을 고려하세요.';
+      const core6 = krNumericCore6(meta.symbol);
+      const gl = quoteCtx?.ledgerGoogleTicker?.trim().toUpperCase() ?? '';
+      if (
+        meta.market.trim().toUpperCase() === 'KR' &&
+        core6 &&
+        gl.startsWith('KRX:') &&
+        quotesSuggestsKrxKosdaqSwitch(quoteCtx)
+      ) {
+        reason +=
+          ' 원장이 KRX이고 시세가 비어 있으면 후보 시트에서 KOSDAQ:' +
+          core6 +
+          ' 행이 ok인지 확인한 뒤 적용하거나, 시세 패널에서 「KOSDAQ 후보로 변경」을 사용할 수 있습니다.';
+      }
       recommendations.push({
         ...meta,
         confidence: defaultApplyCandidate?.confidence ?? 'low',
-        reason: pending
-          ? '아직 Sheets 계산이 반영되지 않았습니다. 잠시 후 다시 확인하거나, 검증 전 기본 ticker를 저장한 뒤 시세 refresh로 확인할 수 있습니다.'
-          : '유효한 가격·통화를 반환한 ticker 후보가 없습니다. 검증 전 기본 추천 적용 또는 수동 입력을 고려하세요.',
+        reason,
         defaultApplyCandidate,
         canApplyDefaultBeforeVerification,
         applyState: {
@@ -163,6 +232,12 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
         },
         candidates,
       });
+      continue;
+    }
+
+    const promoted = tryPromoteKosdaqWhenKrxQuotesEmpty(meta, okRows, candidates, quoteCtx);
+    if (promoted) {
+      recommendations.push(promoted);
       continue;
     }
 
@@ -189,16 +264,40 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
 
     const distinctTickers = new Set(okRows.map((r) => r.candidateTicker));
     if (distinctTickers.size > 1) {
-      const sorted = [...okRows].sort((a, b) => rank[b.confidence] - rank[a.confidence]);
+      const kosdaqPriority = isKosdaqPriorityKrDisplayName(meta.name);
+      const sorted = [...okRows].sort((a, b) => {
+        const diff = rank[b.confidence] - rank[a.confidence];
+        if (diff !== 0) return diff;
+        if (!kosdaqPriority) return 0;
+        const ak = a.candidateTicker.toUpperCase().startsWith('KOSDAQ:');
+        const bk = b.candidateTicker.toUpperCase().startsWith('KOSDAQ:');
+        if (ak && !bk) return -1;
+        if (!ak && bk) return 1;
+        return 0;
+      });
+      const top = sorted[0]!;
+      const tiedTop = sorted.filter((r) => rank[r.confidence] === rank[top.confidence]);
+      const singleWinner = tiedTop.length === 1;
       recommendations.push({
         ...meta,
-        confidence: sorted[0]!.confidence,
-        reason: '여러 ticker가 정상 응답했습니다. 표에서 직접 선택한 뒤 적용하세요.',
+        ...(kosdaqPriority && singleWinner
+          ? {
+              recommendedGoogleTicker: top.candidateTicker,
+              recommendedQuoteSymbol: suggestQuoteSymbolForProvider(meta.market, meta.symbol, top.candidateTicker),
+            }
+          : {}),
+        confidence: top.confidence,
+        reason: kosdaqPriority && singleWinner
+          ? `여러 ticker가 정상입니다. 코스닥 우선 종목으로 ${top.candidateTicker}를 권장합니다(저장은 사용자 확인 후).`
+          : '여러 ticker가 정상 응답했습니다. 표에서 직접 선택한 뒤 적용하세요.',
         canApplyDefaultBeforeVerification: false,
         applyState: {
           autoApplicable: false,
           manualRequired: true,
-          reason: 'ok 후보가 2개 이상이라 자동 적용할 수 없습니다.',
+          reason:
+            kosdaqPriority && singleWinner
+              ? '다중 ok 후보 중 하나를 권장했습니다. 적용은 버튼으로만 진행됩니다.'
+              : 'ok 후보가 2개 이상이라 자동 적용할 수 없습니다.',
         },
         candidates,
       });

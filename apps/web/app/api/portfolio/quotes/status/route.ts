@@ -6,6 +6,8 @@ import {
   normalizeQuoteKey,
   buildGoogleFinanceTickerCandidates,
   isGoogleFinanceQuoteConfigured,
+  portfolioQuotesFxAlternativePriceFormulas,
+  PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED,
   readGoogleFinanceQuoteSheetRows,
 } from '@/lib/server/googleFinanceSheetQuoteService';
 
@@ -29,7 +31,12 @@ export async function GET() {
         readSucceeded: false,
         writeConfigured: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()),
       },
-      fx: { ticker: 'CURRENCY:USDKRW', status: 'missing' },
+      fx: {
+        ticker: 'CURRENCY:USDKRW',
+        status: 'missing',
+        formulaAlternatives: portfolioQuotesFxAlternativePriceFormulas(),
+        expectedPriceFormula: PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED,
+      },
       rows: holdings.map((holding) => ({
         market: holding.market,
         symbol: holding.symbol.toUpperCase(),
@@ -96,6 +103,11 @@ export async function GET() {
     const emptyRows = rows.length - okRows;
     const fxRawPrice = data.fxRawPrice;
     const fxStatus = data.tabFound ? data.fxStatus : 'missing';
+    const fxFormulaAlternatives = portfolioQuotesFxAlternativePriceFormulas();
+    const fxFormulaCheckHint =
+      fxStatus !== 'ok'
+        ? `FX 행 F열 수식이 ${PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED}인지 확인하세요.`
+        : undefined;
     return NextResponse.json({
       ok: true,
       generatedAt: new Date().toISOString(),
@@ -129,6 +141,9 @@ export async function GET() {
                 : fxStatus === 'parse_failed'
                   ? 'FX 값을 숫자로 파싱하지 못했습니다'
                   : 'FX 행을 찾지 못했습니다',
+        formulaCheckHint: fxFormulaCheckHint,
+        formulaAlternatives: fxStatus === 'ok' ? [] : fxFormulaAlternatives,
+        expectedPriceFormula: PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED,
         candidates: ['CURRENCY:USDKRW', 'USDKRW', '"CURRENCY:USDKRW"'],
       },
       rows,

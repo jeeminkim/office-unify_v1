@@ -114,6 +114,27 @@ function fmt(v?: number): string {
   return krw.format(v);
 }
 
+/** 시세 패널에서 ticker 수정 허용 */
+const QUOTE_ROW_TICKER_EDITABLE = new Set([
+  "ticker_mismatch",
+  "empty_price",
+  "parse_failed",
+  "missing_row",
+  "formula_pending",
+]);
+
+function showKosdaqQuickAction(row: {
+  market: string;
+  symbol: string;
+  googleTicker: string;
+  rowStatus: string;
+}): boolean {
+  if (row.market !== "KR") return false;
+  if (!row.googleTicker?.toUpperCase().startsWith("KRX:")) return false;
+  if (row.rowStatus !== "empty_price" && row.rowStatus !== "formula_pending") return false;
+  return /^\d{6}$/.test(row.symbol.trim());
+}
+
 export function PortfolioDashboardClient() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [realizedSummary, setRealizedSummary] = useState<{ month?: number; year?: number } | null>(null);
@@ -137,10 +158,17 @@ export function PortfolioDashboardClient() {
     warnings?: string[];
     fx?: {
       ticker?: string;
+      priceFormula?: string;
+      currencyFormula?: string;
+      tradetimeFormula?: string;
+      datadelayFormula?: string;
       rawPrice?: string;
       parsedPrice?: number;
       status?: "ok" | "pending" | "empty" | "parse_failed" | "missing";
       message?: string;
+      formulaCheckHint?: string;
+      formulaAlternatives?: string[];
+      expectedPriceFormula?: string;
     };
   } | null>(null);
   const [tickerEditDraft, setTickerEditDraft] = useState<{ key: string; googleTicker: string; quoteSymbol: string } | null>(null);
@@ -161,6 +189,7 @@ export function PortfolioDashboardClient() {
   const [bulkApplying, setBulkApplying] = useState(false);
   const [quoteRefreshRequested, setQuoteRefreshRequested] = useState(false);
   const [tickerAppliedCount, setTickerAppliedCount] = useState(0);
+  const [kosdaqSwitchingKey, setKosdaqSwitchingKey] = useState<string | null>(null);
 
   const loadSummary = async () => {
     const [portfolioRes, realizedRes] = await Promise.all([
@@ -252,10 +281,17 @@ export function PortfolioDashboardClient() {
         warnings?: string[];
         fx?: {
           ticker?: string;
+          priceFormula?: string;
+          currencyFormula?: string;
+          tradetimeFormula?: string;
+          datadelayFormula?: string;
           rawPrice?: string;
           parsedPrice?: number;
           status?: "ok" | "pending" | "empty" | "parse_failed" | "missing";
           message?: string;
+          formulaCheckHint?: string;
+          formulaAlternatives?: string[];
+          expectedPriceFormula?: string;
         };
       };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -653,8 +689,26 @@ export function PortfolioDashboardClient() {
             FX {quoteStatus.fx?.ticker ?? "CURRENCY:USDKRW"} · status {quoteStatus.fx?.status ?? "missing"} · raw {quoteStatus.fx?.rawPrice ?? "-"} · parsed{" "}
             {quoteStatus.fx?.parsedPrice == null ? "NO_DATA" : fmt(quoteStatus.fx.parsedPrice)}
           </p>
+          {quoteStatus.fx?.priceFormula ? (
+            <p className="mt-1 font-mono text-[11px] text-slate-700">
+              F(price) {quoteStatus.fx.priceFormula}
+            </p>
+          ) : null}
           {quoteStatus.fx?.message ? (
             <p className="mt-1 rounded bg-slate-100 px-2 py-1 text-slate-700">{quoteStatus.fx.message}</p>
+          ) : null}
+          {quoteStatus.fx?.status !== "ok" && quoteStatus.fx?.formulaCheckHint ? (
+            <p className="mt-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-950">{quoteStatus.fx.formulaCheckHint}</p>
+          ) : null}
+          {(quoteStatus.fx?.formulaAlternatives ?? []).length > 0 ? (
+            <div className="mt-1 text-slate-600">
+              <span className="font-medium text-slate-700">대체 수식 예시:</span>
+              <ul className="mt-0.5 list-inside list-disc font-mono text-[11px]">
+                {(quoteStatus.fx!.formulaAlternatives ?? []).map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            </div>
           ) : null}
           {(quoteStatus.warnings ?? []).length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
@@ -743,18 +797,62 @@ export function PortfolioDashboardClient() {
                           </button>
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          className="rounded border border-slate-300 bg-white px-2 py-0.5"
-                          onClick={() => setTickerEditDraft({
-                            key: `${row.market}:${row.symbol}`,
-                            googleTicker: row.googleTicker ?? "",
-                            quoteSymbol: row.quoteSymbol ?? "",
-                          })}
-                          disabled={!["ticker_mismatch", "empty_price", "parse_failed", "missing_row"].includes(row.rowStatus)}
-                        >
-                          ticker 수정
-                        </button>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              type="button"
+                              className="rounded border border-slate-300 bg-white px-2 py-0.5"
+                              onClick={() => setTickerEditDraft({
+                                key: `${row.market}:${row.symbol}`,
+                                googleTicker: row.googleTicker ?? "",
+                                quoteSymbol: row.quoteSymbol ?? "",
+                              })}
+                              disabled={!QUOTE_ROW_TICKER_EDITABLE.has(row.rowStatus)}
+                            >
+                              ticker 수정
+                            </button>
+                            {showKosdaqQuickAction(row) ? (
+                              <button
+                                type="button"
+                                className="rounded border border-violet-400 bg-violet-50 px-2 py-0.5 text-violet-900 disabled:opacity-50"
+                                disabled={kosdaqSwitchingKey != null || refreshingQuote}
+                                onClick={() => {
+                                  void (async () => {
+                                    const key = `${row.market}:${row.symbol}`;
+                                    const pad = row.symbol.trim().padStart(6, "0");
+                                    const googleTicker = `KOSDAQ:${pad}`;
+                                    setKosdaqSwitchingKey(key);
+                                    setError(null);
+                                    try {
+                                      const res = await fetch(`/api/portfolio/holdings/${encodeURIComponent(key)}`, {
+                                        method: "PATCH",
+                                        headers: { "Content-Type": "application/json" },
+                                        credentials: "same-origin",
+                                        body: JSON.stringify({
+                                          google_ticker: googleTicker,
+                                          quote_symbol: `${pad}.KQ`,
+                                        }),
+                                      });
+                                      const data = (await res.json()) as { error?: string };
+                                      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+                                      await requestQuoteRefresh();
+                                      await loadQuoteStatus();
+                                      setInfo(
+                                        `KOSDAQ ${googleTicker}(으)로 저장했습니다. 시세 갱신을 요청했으니 잠시 후 「시세 상태 확인」으로 다시 조회하세요.`,
+                                      );
+                                    } catch (e: unknown) {
+                                      setError(e instanceof Error ? e.message : "KOSDAQ 적용 실패");
+                                    } finally {
+                                      setKosdaqSwitchingKey(null);
+                                    }
+                                  })();
+                                }}
+                              >
+                                {kosdaqSwitchingKey === `${row.market}:${row.symbol}` ? "저장 중..." : "KOSDAQ 후보로 변경"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
                       )}
                     </td>
                   </tr>

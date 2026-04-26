@@ -104,6 +104,18 @@ function rowFormula(tickerCell: string, field: 'price' | 'currency' | 'tradetime
   return `=IFERROR(GOOGLEFINANCE(${tickerCell},"${field}"),)`;
 }
 
+/** FX 행 E열 고정 값(status API·안내 문구와 동일하게 유지). */
+export const PORTFOLIO_QUOTES_FX_GOOGLE_TICKER = 'CURRENCY:USDKRW';
+
+/** F열 기대 수식(안내·검증용). */
+export const PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED =
+  '=IFERROR(GOOGLEFINANCE("CURRENCY:USDKRW","price"),)';
+
+/** CURRENCY:USDKRW가 비어 있을 때 시트에서 시도할 수 있는 대체 price 관련 수식 예시. */
+export function portfolioQuotesFxAlternativePriceFormulas(): string[] {
+  return ['=GOOGLEFINANCE("CURRENCY:USDKRW")', '=GOOGLEFINANCE("CURRENCY:USDKRW","price")'];
+}
+
 /** FX 행: E에 티커 문자열을 두고 수식에서는 리터럴을 사용(사용자 스펙과 동일). */
 function fxRowFormula(field: 'price' | 'currency' | 'tradetime' | 'datadelay'): string {
   return `=IFERROR(GOOGLEFINANCE("CURRENCY:USDKRW","${field}"),)`;
@@ -212,7 +224,7 @@ export async function syncGoogleFinanceQuoteSheetRows(holdings: HoldingInput[]):
     };
   });
   built.push({
-    a2e: ['FX', 'USDKRW', 'USDKRW', normalizeQuoteKey('FX', 'USDKRW'), 'CURRENCY:USDKRW'],
+    a2e: ['FX', 'USDKRW', 'USDKRW', normalizeQuoteKey('FX', 'USDKRW'), PORTFOLIO_QUOTES_FX_GOOGLE_TICKER],
     priceF: fxRowFormula('price'),
     currencyH: fxRowFormula('currency'),
     tradetimeJ: fxRowFormula('tradetime'),
@@ -220,17 +232,30 @@ export async function syncGoogleFinanceQuoteSheetRows(holdings: HoldingInput[]):
     no: ['', new Date().toISOString()],
   });
   const lastRow = 1 + built.length;
+  const batchMain: Array<{ rangeA1: string; values: string[][] }> = [
+    { rangeA1: buildA1Range(tab, 'A1:O1'), values: [header] },
+    { rangeA1: buildA1Range(tab, `A2:E${lastRow}`), values: built.map((b) => [...b.a2e]) },
+    { rangeA1: buildA1Range(tab, `F2:F${lastRow}`), values: built.map((b) => [b.priceF]) },
+    { rangeA1: buildA1Range(tab, `H2:H${lastRow}`), values: built.map((b) => [b.currencyH]) },
+    { rangeA1: buildA1Range(tab, `J2:J${lastRow}`), values: built.map((b) => [b.tradetimeJ]) },
+    { rangeA1: buildA1Range(tab, `L2:L${lastRow}`), values: built.map((b) => [b.datadelayL]) },
+    { rangeA1: buildA1Range(tab, `N2:O${lastRow}`), values: built.map((b) => [...b.no]) },
+  ];
+  await sheetsValuesBatchUpdate({
+    spreadsheetId: id,
+    valueInputOption: 'USER_ENTERED',
+    data: batchMain,
+  });
+  // FX 행만 재확인: E/F/H/J/L 고정 스펙을 마지막에 한 번 더 씀(G/I/K/M 미포함).
   await sheetsValuesBatchUpdate({
     spreadsheetId: id,
     valueInputOption: 'USER_ENTERED',
     data: [
-      { rangeA1: buildA1Range(tab, 'A1:O1'), values: [header] },
-      { rangeA1: buildA1Range(tab, `A2:E${lastRow}`), values: built.map((b) => [...b.a2e]) },
-      { rangeA1: buildA1Range(tab, `F2:F${lastRow}`), values: built.map((b) => [b.priceF]) },
-      { rangeA1: buildA1Range(tab, `H2:H${lastRow}`), values: built.map((b) => [b.currencyH]) },
-      { rangeA1: buildA1Range(tab, `J2:J${lastRow}`), values: built.map((b) => [b.tradetimeJ]) },
-      { rangeA1: buildA1Range(tab, `L2:L${lastRow}`), values: built.map((b) => [b.datadelayL]) },
-      { rangeA1: buildA1Range(tab, `N2:O${lastRow}`), values: built.map((b) => [...b.no]) },
+      { rangeA1: buildA1Range(tab, `E${lastRow}:E${lastRow}`), values: [[PORTFOLIO_QUOTES_FX_GOOGLE_TICKER]] },
+      { rangeA1: buildA1Range(tab, `F${lastRow}:F${lastRow}`), values: [[fxRowFormula('price')]] },
+      { rangeA1: buildA1Range(tab, `H${lastRow}:H${lastRow}`), values: [[fxRowFormula('currency')]] },
+      { rangeA1: buildA1Range(tab, `J${lastRow}:J${lastRow}`), values: [[fxRowFormula('tradetime')]] },
+      { rangeA1: buildA1Range(tab, `L${lastRow}:L${lastRow}`), values: [[fxRowFormula('datadelay')]] },
     ],
   });
 }
