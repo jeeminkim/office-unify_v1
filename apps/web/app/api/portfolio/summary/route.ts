@@ -7,6 +7,7 @@ import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { listWebPortfolioHoldingsForUser } from '@office-unify/supabase-access';
 import { loadHoldingQuotes } from '@/lib/server/marketQuoteService';
 import { normalizeQuoteKey } from '@/lib/server/googleFinanceSheetQuoteService';
+import { analyzeThesisHealth } from '@/lib/server/thesisHealthAnalyzer';
 
 type EnhancedPortfolioSummaryResponse = {
   ok: boolean;
@@ -32,6 +33,8 @@ type EnhancedPortfolioSummaryResponse = {
     stale?: boolean;
     /** google_ticker 미설정 시 시트 GOOGLEFINANCE 매핑 전 단계 */
     needsTickerRecommendation?: boolean;
+    thesisHealthStatus?: 'healthy' | 'watch' | 'weakening' | 'broken' | 'unknown';
+    thesisConfidence?: 'low' | 'medium' | 'high';
   }>;
   exposures?: {
     byMarket?: Array<{ key: string; valueKrw: number; weight: number }>;
@@ -116,6 +119,15 @@ export async function GET(req: Request) {
       const valueKrw = currentValueNative != null && fx ? currentValueNative * fx : undefined;
       const pnlKrw = valueKrw != null && avgCostKrw != null ? valueKrw - avgCostKrw : undefined;
       const pnlRate = avgCostKrw && pnlKrw != null ? (pnlKrw / avgCostKrw) * 100 : undefined;
+      const thesis = analyzeThesisHealth({
+        symbol: holding.symbol,
+        market: holding.market,
+        currentPrice,
+        pnlRate,
+        targetPrice: toNumber(holding.target_price) || undefined,
+        holdingMemo: holding.investment_memo,
+        judgmentMemo: holding.judgment_memo,
+      });
       return {
         symbol: holding.symbol,
         displayName: holding.name,
@@ -135,6 +147,8 @@ export async function GET(req: Request) {
         totalCostKrw: avgCostKrw,
         pnlKrw,
         needsTickerRecommendation: !holding.google_ticker?.trim(),
+        thesisHealthStatus: thesis.status,
+        thesisConfidence: thesis.confidence,
       };
     });
     const hasAnyCost = topPositionsRaw.some((row) => row.totalCostKrw != null);
@@ -205,6 +219,13 @@ export async function GET(req: Request) {
         code: 'usdkrw_rate_unavailable',
         severity: 'warn',
         message: 'USD/KRW 환율을 가져오지 못해 US 종목 KRW 평가값 계산이 제한됩니다.',
+      });
+    }
+    if (quoteWarnings.includes('quote_key_match_failed')) {
+      warnings.push({
+        code: 'quote_key_match_failed',
+        severity: 'warn',
+        message: '시트 parsedPrice는 존재하지만 summary 키 매칭에 실패했습니다. normalized_key/market:symbol 매핑을 점검하세요.',
       });
     }
     if (topPositions.some((p) => p.stale)) {

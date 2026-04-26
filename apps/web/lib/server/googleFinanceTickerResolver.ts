@@ -72,6 +72,7 @@ export function generateGoogleFinanceTickerCandidates(input: ResolveTickerInput)
   if (m === 'KR') {
     const mixed = isKrMixedInstrumentCode(sym);
     const core6 = krNumericCore(sym);
+    const pad6 = sym.padStart(6, '0');
     if (core6) {
       pushUnique(
         out,
@@ -83,6 +84,26 @@ export function generateGoogleFinanceTickerCandidates(input: ResolveTickerInput)
         },
         seen,
       );
+      pushUnique(
+        out,
+        {
+          ticker: `KOSDAQ:${core6}`,
+          provider: 'googlefinance',
+          reason: 'KOSDAQ 보조 후보',
+          confidence: 'medium',
+        },
+        seen,
+      );
+      pushUnique(
+        out,
+        {
+          ticker: `KOSPI:${core6}`,
+          provider: 'googlefinance',
+          reason: 'KOSPI 보조 후보',
+          confidence: 'medium',
+        },
+        seen,
+      );
     } else {
       pushUnique(
         out,
@@ -90,6 +111,26 @@ export function generateGoogleFinanceTickerCandidates(input: ResolveTickerInput)
           ticker: `KRX:${sym}`,
           provider: 'googlefinance',
           reason: 'KRX 접두 + 심볼(ETF·혼합코드 등 검증 필요)',
+          confidence: mixed ? 'low' : 'medium',
+        },
+        seen,
+      );
+      pushUnique(
+        out,
+        {
+          ticker: `KOSDAQ:${pad6}`,
+          provider: 'googlefinance',
+          reason: 'KOSDAQ 보조 후보(비표준 코드)',
+          confidence: mixed ? 'low' : 'medium',
+        },
+        seen,
+      );
+      pushUnique(
+        out,
+        {
+          ticker: `KOSPI:${pad6}`,
+          provider: 'googlefinance',
+          reason: 'KOSPI 보조 후보(비표준 코드)',
           confidence: mixed ? 'low' : 'medium',
         },
         seen,

@@ -4,11 +4,14 @@ Next.js(App Router) + TypeScript + Tailwind입니다. **저장소 루트(`../..`
 
 ## 이 폴더에서 하는 일
 
-- **투자 대시보드** (`/`): 시스템 상태, 포트폴리오 요약, 일일 루틴, Trend 기억 요약, 신호 연결.
+- **투자 대시보드** (`/`): 시스템 상태, 포트폴리오 요약, 일일 루틴, Trend 기억 요약, 신호 연결 + **오늘의 3줄 브리핑**, **Action feed**, **Profit→Goal 요약**, **My bias(반복 실수 패턴)**.
 - **포트폴리오 현황 대시보드** (`/portfolio`): 보유 평가/손익/비중/경고 점검 화면. Google Sheets `GOOGLEFINANCE` 기반 **추천 ticker 찾기**(후보 수식 → 지연 read-back → 사용자 승인 시에만 DB 저장) 지원.
+- **Quote recovery panel** (`/portfolio`): 미설정 ticker 감지 → 후보 검증 → 선택/일괄 승인 저장 → 시세 refresh → status 재확인까지 단계형 복구 흐름 제공.
+- **종목 dossier** (`/portfolio/[symbol]`): 매수 이유, 목표/손절, PB/위원회/Journal 근거, thesis health, active alerts를 종목 단위로 점검.
 - **포트폴리오 원장 관리** (`/portfolio-ledger`): 보유 종목 수정/삭제/사후 매수·매도 기록 반영(주문 실행 아님). 보유/관심별 **ticker 추천** 버튼으로 동일 흐름을 종목 단위로 실행 가능.
 - **실현손익 대시보드** (`/realized-pnl`): 기간/종목/최근 매도 이벤트 기준 실현손익 추적.
 - **목표 자금 관리** (`/financial-goals`): 목표 생성, 실현손익 연결, 목표 달성률 추적.
+- **Trade Journal 패턴 분석** (`/api/trade-journal/pattern-analysis` + Trade Journal 화면): 반복 위반/반성 패턴과 현재 위험 매칭을 표시.
 - **Dev Assistant** (`/dev-assistant`): Flow/ Mermaid, SQL, TypeScript 생성 — Gemini는 UI 설정 또는 서버 `GEMINI_API_KEY` 사용.
 - **Persona chat**, **Private Banker**, **투자위원회**, **포트폴리오 원장** 등: Supabase + 서버 API 라우트.
 - **Infographic Generator** (`/infographic`): 원문 -> 구조화 JSON -> 고정 템플릿 SVG 인포그래픽 렌더 + PNG 저장.

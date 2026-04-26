@@ -1,10 +1,10 @@
 import 'server-only';
 import {
-  normalizeQuoteKey,
   isGoogleFinanceQuoteConfigured,
   readGoogleFinanceQuoteSheetRows,
   syncGoogleFinanceQuoteSheetRows,
 } from '@/lib/server/googleFinanceSheetQuoteService';
+import { buildGoogleSheetRowMap, normalizeQuoteKey } from '@/lib/server/quoteReadbackUtils';
 
 type HoldingInput = {
   market: string;
@@ -55,6 +55,14 @@ type YahooQuoteResult = {
   regularMarketPrice?: number;
   currency?: string;
   regularMarketTime?: number;
+};
+
+type SheetQuoteRow = {
+  market: string;
+  symbol: string;
+  price?: number;
+  currency?: string;
+  datadelay?: number;
 };
 
 function holdingKey(market: string, symbol: string): string {
@@ -108,6 +116,29 @@ function computeMissingSymbols(holdings: HoldingInput[], map: Map<string, Holdin
     .map((holding) => `${holding.market}:${holding.symbol.toUpperCase()}`);
 }
 
+export function buildGoogleSheetQuoteMapForHoldings(
+  holdings: HoldingInput[],
+  sheetRows: SheetQuoteRow[],
+): Map<string, HoldingQuote> {
+  const sheetByKey = buildGoogleSheetRowMap(sheetRows);
+  const quoteByHolding = new Map<string, HoldingQuote>();
+  holdings.forEach((holding) => {
+    const key = holdingKey(holding.market, holding.symbol);
+    const row = sheetByKey.get(key);
+    quoteByHolding.set(key, {
+      market: holding.market,
+      symbol: holding.market === 'KR' ? holding.symbol.toUpperCase().padStart(6, '0') : holding.symbol.toUpperCase(),
+      currentPrice: row?.price,
+      currency: row?.currency,
+      stale: !row?.price,
+      provider: row?.price ? 'google_sheets_googlefinance' : 'none',
+      delayed: row?.datadelay != null ? row.datadelay > 0 : true,
+      delayMinutes: row?.datadelay,
+    });
+  });
+  return quoteByHolding;
+}
+
 export async function loadHoldingQuotes(
   holdings: HoldingInput[],
   options?: { requestRefresh?: boolean },
@@ -121,22 +152,15 @@ export async function loadHoldingQuotes(
         await syncGoogleFinanceQuoteSheetRows(holdings);
       }
       const sheet = await readGoogleFinanceQuoteSheetRows();
-      const sheetByKey = new Map(sheet.rows.map((row) => [normalizeQuoteKey(row.market, row.symbol), row]));
-      holdings.forEach((holding) => {
-        const key = holdingKey(holding.market, holding.symbol);
-        const row = sheetByKey.get(key);
-        quoteByHolding.set(key, {
-          market: holding.market,
-          symbol: holding.market === 'KR' ? holding.symbol.toUpperCase().padStart(6, '0') : holding.symbol.toUpperCase(),
-          currentPrice: row?.price,
-          currency: row?.currency,
-          stale: !row?.price,
-          provider: row?.price ? 'google_sheets_googlefinance' : 'none',
-          delayed: row?.datadelay != null ? row.datadelay > 0 : true,
-          delayMinutes: row?.datadelay,
-        });
+      const fromSheet = buildGoogleSheetQuoteMapForHoldings(holdings, sheet.rows);
+      fromSheet.forEach((value, key) => {
+        quoteByHolding.set(key, value);
       });
       const matched = Array.from(quoteByHolding.values()).filter((row) => row.currentPrice != null).length;
+      const sheetParsedCount = sheet.rows.filter((row) => row.price != null).length;
+      if (sheetParsedCount > 0 && matched === 0) {
+        warnings.push('quote_key_match_failed');
+      }
       if (matched > 0) {
         const delayMinutes = Array.from(quoteByHolding.values())
           .map((row) => row.delayMinutes ?? 0)

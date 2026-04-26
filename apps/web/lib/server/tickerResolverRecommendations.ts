@@ -36,6 +36,11 @@ export type TickerResolverRecommendationDto = {
   recommendedQuoteSymbol?: string;
   confidence: 'high' | 'medium' | 'low';
   reason: string;
+  applyState: {
+    autoApplicable: boolean;
+    manualRequired?: boolean;
+    reason: string;
+  };
   candidates: Array<{
     ticker: string;
     status: CandidateReadStatus;
@@ -127,6 +132,13 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
         reason: pending
           ? '아직 Sheets 계산이 반영되지 않았습니다. 잠시 후 다시 확인하세요.'
           : '유효한 가격·통화를 반환한 ticker 후보가 없습니다.',
+        applyState: {
+          autoApplicable: false,
+          manualRequired: true,
+          reason: pending
+            ? '후보 계산 대기 중입니다.'
+            : 'ok 후보가 없어 수동 입력/수동 선택이 필요합니다.',
+        },
         candidates,
       });
       continue;
@@ -141,6 +153,12 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
         recommendedQuoteSymbol: quote,
         confidence: pick.confidence,
         reason: `단일 정상 후보: ${pick.candidateTicker}`,
+        applyState: {
+          autoApplicable: ['high', 'medium'].includes(pick.confidence),
+          reason: ['high', 'medium'].includes(pick.confidence)
+            ? 'ok 후보 1개이며 신뢰도 조건을 만족합니다.'
+            : 'ok 후보 1개지만 confidence가 낮아 수동 확인이 권장됩니다.',
+        },
         candidates,
       });
       continue;
@@ -153,6 +171,11 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
         ...meta,
         confidence: sorted[0]!.confidence,
         reason: '여러 ticker가 정상 응답했습니다. 표에서 직접 선택한 뒤 적용하세요.',
+        applyState: {
+          autoApplicable: false,
+          manualRequired: true,
+          reason: 'ok 후보가 2개 이상이라 자동 적용할 수 없습니다.',
+        },
         candidates,
       });
       continue;
@@ -165,6 +188,12 @@ export function buildTickerResolverDtos(parsed: CandidateSheetParsedRow[]): {
       recommendedQuoteSymbol: suggestQuoteSymbolForProvider(meta.market, meta.symbol, pick.candidateTicker),
       confidence: pick.confidence,
       reason: `정상 응답 ticker: ${pick.candidateTicker}`,
+      applyState: {
+        autoApplicable: ['high', 'medium'].includes(pick.confidence),
+        reason: ['high', 'medium'].includes(pick.confidence)
+          ? '단일 후보로 자동 적용 가능합니다.'
+          : 'confidence가 낮아 수동 적용 권장',
+      },
       candidates,
     });
   }

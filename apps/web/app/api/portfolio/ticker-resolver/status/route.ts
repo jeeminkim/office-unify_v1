@@ -25,11 +25,18 @@ export async function GET(req: Request) {
   try {
     const parsed = await readTickerCandidateSheetRowsForRequest(requestId);
     const { rows, recommendations } = buildTickerResolverDtos(parsed);
+    const autoApplicableCount = recommendations.filter((r) => r.applyState.autoApplicable && r.recommendedGoogleTicker).length;
+    const manualRequiredCount = recommendations.filter((r) => r.applyState.manualRequired).length;
     return NextResponse.json({
       ok: true,
       requestId,
       rows,
       recommendations,
+      summary: {
+        totalSymbols: recommendations.length,
+        autoApplicableCount,
+        manualRequiredCount,
+      },
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';

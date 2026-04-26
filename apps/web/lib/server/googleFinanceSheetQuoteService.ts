@@ -1,6 +1,13 @@
 import 'server-only';
 
 import { sheetsValuesGet, sheetsValuesUpdate } from '@/lib/server/google-sheets-api';
+import {
+  classifyFxReadbackStatus,
+  googleSheetCellAsString,
+  normalizeQuoteKey,
+  parseGoogleFinanceSheetNumber,
+  type FxReadbackStatus,
+} from '@/lib/server/quoteReadbackUtils';
 
 type HoldingInput = {
   market: string;
@@ -37,11 +44,7 @@ function tabName(): string {
   return process.env.PORTFOLIO_QUOTES_SHEET_NAME?.trim() || 'portfolio_quotes';
 }
 
-export function normalizeQuoteKey(market: string, symbol: string): string {
-  const normalizedMarket = market.trim().toUpperCase();
-  const normalizedSymbol = normalizedMarket === 'KR' ? symbol.trim().toUpperCase().padStart(6, '0') : symbol.trim().toUpperCase();
-  return `${normalizedMarket}:${normalizedSymbol}`;
-}
+export { normalizeQuoteKey, parseGoogleFinanceSheetNumber, googleSheetCellAsString, classifyFxReadbackStatus, type FxReadbackStatus };
 
 export function buildGoogleFinanceTickerCandidates(input: HoldingInput): string[] {
   const market = input.market.trim().toUpperCase();
@@ -50,8 +53,11 @@ export function buildGoogleFinanceTickerCandidates(input: HoldingInput): string[
   if (input.googleTicker?.trim()) candidates.add(input.googleTicker.trim().toUpperCase());
   if (input.quoteSymbol?.trim()) candidates.add(input.quoteSymbol.trim().toUpperCase());
   if (market === 'KR') {
+    const pad = symbol.padStart(6, '0');
     candidates.add(`KRX:${symbol}`);
-    candidates.add(`KRX:${symbol.padStart(6, '0')}`);
+    candidates.add(`KRX:${pad}`);
+    candidates.add(`KOSDAQ:${pad}`);
+    candidates.add(`KOSPI:${pad}`);
     candidates.add(symbol);
   } else {
     candidates.add(symbol);
@@ -59,28 +65,6 @@ export function buildGoogleFinanceTickerCandidates(input: HoldingInput): string[
   return Array.from(candidates);
 }
 
-function toGoogleTicker(input: HoldingInput): string {
-  const [primary] = buildGoogleFinanceTickerCandidates(input);
-  return primary ?? input.symbol.trim().toUpperCase();
-}
-
-export function googleSheetCellAsString(v: unknown): string {
-  if (v == null) return '';
-  return String(v).trim();
-}
-
-export function parseGoogleFinanceSheetNumber(v: unknown): number | undefined {
-  if (v == null) return undefined;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
-  const raw = googleSheetCellAsString(v);
-  if (!raw) return undefined;
-  const upper = raw.toUpperCase();
-  if (['#N/A', 'N/A', 'LOADING...', '#ERROR!', '#VALUE!', '#REF!'].includes(upper)) return undefined;
-  const cleaned = raw.replace(/[₩,\s]/g, '').replace(/[^\d.+-]/g, '');
-  if (!cleaned) return undefined;
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
 
 function classifyRowStatus(rawPrice: string, parsedPrice: number | undefined): GoogleFinanceQuoteRow['rowStatus'] {
   if (parsedPrice != null && parsedPrice > 0) return 'ok';
@@ -139,9 +123,10 @@ export async function syncGoogleFinanceQuoteSheetRows(holdings: HoldingInput[]):
     'status',
     'last_synced_at',
   ];
-  const rows = holdings.map((h, idx) => {
+  const configuredRows = holdings.filter((h) => Boolean(h.googleTicker?.trim()));
+  const rows = configuredRows.map((h, idx) => {
     const r = idx + 2;
-    const ticker = toGoogleTicker(h);
+    const ticker = h.googleTicker!.trim().toUpperCase();
     const normalizedKey = normalizeQuoteKey(h.market, h.symbol);
     return [
       h.market.trim().toUpperCase(),
@@ -161,7 +146,7 @@ export async function syncGoogleFinanceQuoteSheetRows(holdings: HoldingInput[]):
       new Date().toISOString(),
     ];
   });
-  const fxRow = holdings.length + 2;
+  const fxRow = configuredRows.length + 2;
   rows.push([
     'FX',
     'USDKRW',
@@ -190,6 +175,8 @@ export async function syncGoogleFinanceQuoteSheetRows(holdings: HoldingInput[]):
 export async function readGoogleFinanceQuoteSheetRows(): Promise<{
   rows: GoogleFinanceQuoteRow[];
   fxRate?: number;
+  fxRawPrice?: string;
+  fxStatus: FxReadbackStatus;
   readBackSucceeded: boolean;
   tabFound: boolean;
   sheetName: string;
@@ -219,6 +206,8 @@ export async function readGoogleFinanceQuoteSheetRows(): Promise<{
     return {
       rows: [],
       fxRate: undefined,
+      fxRawPrice: undefined,
+      fxStatus: 'missing',
       readBackSucceeded: false,
       tabFound: false,
       sheetName: tab,
@@ -228,6 +217,7 @@ export async function readGoogleFinanceQuoteSheetRows(): Promise<{
   }
   const rows: GoogleFinanceQuoteRow[] = [];
   let fxRate: number | undefined;
+  let fxRawPrice: string | undefined;
   values.forEach((row) => {
     const market = googleSheetCellAsString(row[0]).toUpperCase();
     const symbol = googleSheetCellAsString(row[1]).toUpperCase();
@@ -239,6 +229,7 @@ export async function readGoogleFinanceQuoteSheetRows(): Promise<{
     const datadelay = parseGoogleFinanceSheetNumber(row[12]);
     const rowStatus = classifyRowStatus(rawPrice, price);
     if (market === 'FX' && symbol === 'USDKRW') {
+      fxRawPrice = rawPrice;
       fxRate = price;
       return;
     }
@@ -264,6 +255,8 @@ export async function readGoogleFinanceQuoteSheetRows(): Promise<{
   return {
     rows,
     fxRate,
+    fxRawPrice,
+    fxStatus: classifyFxReadbackStatus(fxRawPrice, fxRate),
     readBackSucceeded: rows.some((row) => row.price != null),
     tabFound: true,
     sheetName: tab,

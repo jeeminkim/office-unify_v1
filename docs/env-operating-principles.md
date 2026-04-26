@@ -51,6 +51,7 @@
 - Sheets 계산 직후에는 값이 비어 있을 수 있어 지연(delayed) 상태를 표시한다.
 - refresh 응답 후 즉시 재조회하지 말고 30~90초 후 `/api/portfolio/quotes/status`로 row 상태를 점검한다.
 - **Ticker 추천:** `POST /api/portfolio/ticker-resolver/refresh`는 `portfolio_quote_candidates`(기본 탭명, `PORTFOLIO_TICKER_CANDIDATES_SHEET_NAME`로 변경 가능)에 후보별 수식만 작성한다. 계산 지연 후 `GET .../ticker-resolver/status?requestId=`로 read-back하고, DB 반영은 `POST .../ticker-resolver/apply`로만 한다(자동 확정 없음).
+- 다수 종목 반영이 필요하면 `POST /api/portfolio/ticker-resolver/apply-bulk`를 사용하되, 역시 사용자 승인 클릭 기반이며 자동 실행되지 않는다.
 - status API는 `googleTicker/rawPrice/parsedPrice/rowStatus`를 제공해 ticker mismatch/parse failure를 분리 진단한다.
 - 시세/환율 실패 시 임의 가격을 생성하지 않는다.
 - 시세 실패는 손실과 다르므로 손익률을 -100% 같은 값으로 계산하지 않고 NO_DATA로 처리한다.

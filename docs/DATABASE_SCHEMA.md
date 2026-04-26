@@ -27,6 +27,7 @@
 | `docs/sql/append_web_committee_followups.sql` | 투자위원회 후속작업(추출 draft 저장) |
 | `docs/sql/append_web_realized_pnl_and_goals.sql` | 실현손익 이벤트 + 목표 자금 + 목표 배분 |
 | `docs/sql/append_web_portfolio_quote_overrides.sql` | 보유 종목 quote ticker 수동 override 컬럼 |
+| `docs/sql/append_web_portfolio_watchlist_quote_overrides.sql` | 관심종목 quote ticker 수동 override 컬럼 |
 
 ## Committee Followups (조일현 보고서 후속작업)
 
@@ -98,6 +99,9 @@
   - `quote_symbol`: Yahoo fallback 등 일반 quote provider용 우선 심볼
 - `web_portfolio_watchlist`에도 동일한 `google_ticker`/`quote_symbol` override를 둘 수 있다(마이그레이션: `docs/sql/append_web_portfolio_watchlist_quote_overrides.sql`).
 - **Ticker 추천(자동 저장 없음):** 스프레드시트 탭 `portfolio_quote_candidates`(기본명, `PORTFOLIO_TICKER_CANDIDATES_SHEET_NAME`로 변경 가능)에 후보별 수식을 쌓고, API가 read-back하여 추천 후보를 보여 준다. DB 반영은 사용자가 `POST /api/portfolio/ticker-resolver/apply`로 승인할 때만 수행한다.
+- **일괄 승인 저장:** `POST /api/portfolio/ticker-resolver/apply-bulk`는 사용자 명시 승인 시에만 다수 후보를 저장하며, 일부 실패는 `failedItems`로 반환한다.
+- **portfolio_quotes 동기화 정책:** `google_ticker`가 있는 보유만 확정 quote row를 작성하고, 누락 심볼은 `missingTickerSymbols`로 반환해 recovery flow로 연결한다. row key는 `normalized_key` 기준으로 read-back/summary를 매칭한다.
+- **Gold Insight read model:** 오늘 브리핑/알림/도시어는 기존 테이블(`web_portfolio_holdings`, `trade_journal_*`, `realized_profit_events`, `financial_goals`, `goal_allocations`, `trend_report_runs`, `web_persona_messages`, `web_committee_turns`)을 조합해 계산하며 신규 DB 테이블을 요구하지 않는다(additive).
 
 ## Realized PnL + Financial Goals
 

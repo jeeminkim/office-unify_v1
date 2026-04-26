@@ -51,6 +51,17 @@
 - `POST /api/integrations/google-sheets/sync` — 위 4탭 덮어쓰기 (수식 포함)
 - `POST /api/integrations/google-sheets/queue` — `jo_ledger_v1` → `ledger_change_queue` 한 줄
 
+## Quote recovery flow
+
+- `/portfolio`는 경고만 표시하지 않고 복구 패널에서 다음 단계 버튼을 안내합니다.
+  1) 미설정 ticker 감지
+  2) `ticker-resolver/refresh`로 후보 수식 생성
+  3) `ticker-resolver/status`로 후보 검증
+  4) 사용자 승인 시 `apply` 또는 `apply-bulk` 저장
+  5) `quotes/refresh` 후 30~90초 뒤 `quotes/status` 재확인
+- `apply-bulk`도 자동 저장이 아니라 **사용자 승인 버튼 클릭**이 있어야만 실행됩니다.
+- FX는 `CURRENCY:USDKRW`를 기본으로 점검하며 상태 API에서 `rawPrice/parsedPrice/status`를 별도 반환합니다.
+
 ## 투자위원회
 
 서버는 **`formatCommitteeInputSummaryForPrompt`**에 스프레드시트·GOOGLEFINANCE 안내와 원장 메타(원가 비중 등)를 함께 넣습니다. **실제 시가 비중·손익·리포트 기대수익은 시트 `portfolio_summary` / `holdings_dashboard`를 우선**하며, 숫자는 **지연·수동 입력 품질**에 의존하므로 위원회가 절대적 사실로 단정하지 않습니다.

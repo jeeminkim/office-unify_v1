@@ -26,6 +26,8 @@ type SummaryResponse = {
     pnlRate?: number;
     stale?: boolean;
     needsTickerRecommendation?: boolean;
+    thesisHealthStatus?: "healthy" | "watch" | "weakening" | "broken" | "unknown";
+    thesisConfidence?: "low" | "medium" | "high";
   }>;
   warnings: Array<{ code: string; severity: "info" | "warn" | "danger"; message: string }>;
   dataQuality: {
@@ -69,6 +71,32 @@ type TickerResolverRecommendationDto = {
   recommendedQuoteSymbol?: string;
   confidence: string;
   reason: string;
+  applyState?: {
+    autoApplicable: boolean;
+    manualRequired?: boolean;
+    reason: string;
+  };
+};
+
+type QuoteRecoveryState =
+  | "needs_ticker_candidates"
+  | "candidate_refresh_requested"
+  | "candidate_ready"
+  | "ticker_apply_ready"
+  | "ticker_applied"
+  | "quote_refresh_requested"
+  | "quote_ready"
+  | "partial_failure";
+
+type PortfolioAlert = {
+  id: string;
+  symbol: string;
+  title: string;
+  severity: "info" | "warn" | "danger";
+  category: string;
+  body: string;
+  actionHint?: string;
+  createdAt: string;
 };
 
 const krw = new Intl.NumberFormat("ko-KR");
@@ -99,6 +127,13 @@ export function PortfolioDashboardClient() {
     }>;
     summary?: { totalRows: number; okRows: number; emptyRows: number; parseFailedRows: number; tickerMismatchRows: number };
     warnings?: string[];
+    fx?: {
+      ticker?: string;
+      rawPrice?: string;
+      parsedPrice?: number;
+      status?: "ok" | "pending" | "empty" | "parse_failed" | "missing";
+      message?: string;
+    };
   } | null>(null);
   const [tickerEditDraft, setTickerEditDraft] = useState<{ key: string; googleTicker: string; quoteSymbol: string } | null>(null);
   const [tickerResolverRequestId, setTickerResolverRequestId] = useState<string | null>(null);
@@ -107,7 +142,16 @@ export function PortfolioDashboardClient() {
   const [tickerResolverData, setTickerResolverData] = useState<{
     rows: TickerResolverRowDto[];
     recommendations: TickerResolverRecommendationDto[];
+    summary?: {
+      totalSymbols: number;
+      autoApplicableCount: number;
+      manualRequiredCount: number;
+    };
   } | null>(null);
+  const [alerts, setAlerts] = useState<PortfolioAlert[]>([]);
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const [quoteRefreshRequested, setQuoteRefreshRequested] = useState(false);
+  const [tickerAppliedCount, setTickerAppliedCount] = useState(0);
 
   const loadSummary = async () => {
     const [portfolioRes, realizedRes] = await Promise.all([
@@ -128,10 +172,134 @@ export function PortfolioDashboardClient() {
     }
   };
 
+  const loadAlerts = async () => {
+    const res = await fetch("/api/portfolio/alerts", { credentials: "same-origin" });
+    const data = (await res.json()) as { alerts?: PortfolioAlert[]; error?: string };
+    if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+    setAlerts(data.alerts ?? []);
+  };
+
+  const requestQuoteRefresh = async () => {
+    setRefreshingQuote(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const refresh = await fetch("/api/portfolio/quotes/refresh", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const r = (await refresh.json()) as { message?: string; error?: string };
+      if (!refresh.ok) throw new Error(r.error ?? `HTTP ${refresh.status}`);
+      setQuoteRefreshRequested(true);
+      setInfo(r.message ?? "Google Sheets 계산 반영까지 시간이 걸릴 수 있습니다. 1분 뒤 다시 조회하세요.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "시세 새로고침 요청 실패");
+    } finally {
+      setRefreshingQuote(false);
+    }
+  };
+
+  const loadQuoteStatus = async () => {
+    setCheckingQuoteStatus(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/portfolio/quotes/status", { credentials: "same-origin" });
+      const data = (await res.json()) as {
+        error?: string;
+        rows?: Array<{
+          market: string;
+          symbol: string;
+          name?: string;
+          googleTicker: string;
+          quoteSymbol?: string;
+          rawPrice?: string;
+          parsedPrice?: number;
+          rowStatus: string;
+          message?: string;
+        }>;
+        summary?: { totalRows: number; okRows: number; emptyRows: number; parseFailedRows: number; tickerMismatchRows: number };
+        warnings?: string[];
+        fx?: {
+          ticker?: string;
+          rawPrice?: string;
+          parsedPrice?: number;
+          status?: "ok" | "pending" | "empty" | "parse_failed" | "missing";
+          message?: string;
+        };
+      };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setQuoteStatus(data);
+      await loadSummary();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "시세 상태 확인 실패");
+    } finally {
+      setCheckingQuoteStatus(false);
+    }
+  };
+
+  const requestTickerCandidateRefresh = async () => {
+    setTickerResolverBusy(true);
+    setError(null);
+    setTickerResolverData(null);
+    try {
+      const res = await fetch("/api/portfolio/ticker-resolver/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ targetType: "holding" }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        requestId?: string;
+        candidateCount?: number;
+        message?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if (data.requestId) setTickerResolverRequestId(data.requestId);
+      setInfo(
+        data.message
+          ?? "Google Sheets portfolio_quote_candidates 탭에 후보 수식을 썼습니다. 30~90초 뒤 「추천 결과 확인」을 누르세요.",
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "추천 ticker 요청 실패");
+    } finally {
+      setTickerResolverBusy(false);
+    }
+  };
+
+  const loadTickerStatus = async () => {
+    if (!tickerResolverRequestId) return;
+    setTickerResolverStatusBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/portfolio/ticker-resolver/status?requestId=${encodeURIComponent(tickerResolverRequestId)}`,
+        { credentials: "same-origin" },
+      );
+      const data = (await res.json()) as {
+        rows?: TickerResolverRowDto[];
+        recommendations?: TickerResolverRecommendationDto[];
+        summary?: { totalSymbols: number; autoApplicableCount: number; manualRequiredCount: number };
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setTickerResolverData({
+        rows: data.rows ?? [],
+        recommendations: data.recommendations ?? [],
+        summary: data.summary,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "추천 결과 로드 실패");
+    } finally {
+      setTickerResolverStatusBusy(false);
+    }
+  };
+
   useEffect(() => {
     void (async () => {
       try {
-        await loadSummary();
+        await Promise.all([loadSummary(), loadAlerts()]);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "포트폴리오 요약 로드 실패");
       }
@@ -142,6 +310,34 @@ export function PortfolioDashboardClient() {
     const row = (summary?.topPositions ?? []).slice().sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))[0];
     return row ? `${row.displayName ?? row.symbol} (${(row.weight ?? 0).toFixed(1)}%)` : "NO_DATA";
   }, [summary]);
+
+  const missingTickerSymbols = useMemo(
+    () => (summary?.topPositions ?? []).filter((r) => r.needsTickerRecommendation).map((r) => `${r.market ?? "US"}:${r.symbol}`),
+    [summary],
+  );
+  const autoApplicableItems = useMemo(
+    () =>
+      (tickerResolverData?.recommendations ?? [])
+        .filter((r) => r.applyState?.autoApplicable && r.recommendedGoogleTicker)
+        .map((r) => ({
+          targetType: r.targetType === "watchlist" ? "watchlist" : "holding",
+          market: r.market,
+          symbol: r.symbol,
+          googleTicker: r.recommendedGoogleTicker!,
+          quoteSymbol: r.recommendedQuoteSymbol,
+        })),
+    [tickerResolverData],
+  );
+  const recoveryState: QuoteRecoveryState = useMemo(() => {
+    if (missingTickerSymbols.length > 0 && !tickerResolverRequestId) return "needs_ticker_candidates";
+    if (tickerResolverRequestId && !tickerResolverData) return "candidate_refresh_requested";
+    if (tickerResolverData && autoApplicableItems.length === 0) return "candidate_ready";
+    if (autoApplicableItems.length > 0) return "ticker_apply_ready";
+    if (tickerAppliedCount > 0 && !quoteRefreshRequested) return "ticker_applied";
+    if (quoteRefreshRequested && !quoteStatus) return "quote_refresh_requested";
+    if ((quoteStatus?.summary?.okRows ?? 0) > 0) return "quote_ready";
+    return "partial_failure";
+  }, [missingTickerSymbols.length, tickerResolverRequestId, tickerResolverData, autoApplicableItems.length, tickerAppliedCount, quoteRefreshRequested, quoteStatus]);
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-slate-900">
@@ -160,24 +356,7 @@ export function PortfolioDashboardClient() {
             className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-blue-900 disabled:opacity-50"
             disabled={refreshingQuote}
             onClick={() => {
-              void (async () => {
-                setRefreshingQuote(true);
-                setError(null);
-                setInfo(null);
-                try {
-                  const refresh = await fetch("/api/portfolio/quotes/refresh", {
-                    method: "POST",
-                    credentials: "same-origin",
-                  });
-                  const r = (await refresh.json()) as { message?: string; error?: string };
-                  if (!refresh.ok) throw new Error(r.error ?? `HTTP ${refresh.status}`);
-                  setInfo(r.message ?? "Google Sheets 계산 반영까지 시간이 걸릴 수 있습니다. 1분 뒤 다시 조회하세요.");
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : "시세 새로고침 요청 실패");
-                } finally {
-                  setRefreshingQuote(false);
-                }
-              })();
+              void requestQuoteRefresh();
             }}
           >
             {refreshingQuote ? "요청 중..." : "시세 새로고침 요청"}
@@ -187,36 +366,7 @@ export function PortfolioDashboardClient() {
             className="rounded border border-slate-300 bg-white px-3 py-1.5 disabled:opacity-50"
             disabled={checkingQuoteStatus}
             onClick={() => {
-              void (async () => {
-                setCheckingQuoteStatus(true);
-                setError(null);
-                try {
-                  const res = await fetch("/api/portfolio/quotes/status", { credentials: "same-origin" });
-                  const data = (await res.json()) as {
-                    error?: string;
-                    rows?: Array<{
-                      market: string;
-                      symbol: string;
-                      name?: string;
-                      googleTicker: string;
-                      quoteSymbol?: string;
-                      rawPrice?: string;
-                      parsedPrice?: number;
-                      rowStatus: string;
-                      message?: string;
-                    }>;
-                    summary?: { totalRows: number; okRows: number; emptyRows: number; parseFailedRows: number; tickerMismatchRows: number };
-                    warnings?: string[];
-                  };
-                  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-                  setQuoteStatus(data);
-                  await loadSummary();
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : "시세 상태 확인 실패");
-                } finally {
-                  setCheckingQuoteStatus(false);
-                }
-              })();
+              void loadQuoteStatus();
             }}
           >
             {checkingQuoteStatus ? "확인 중..." : "시세 상태 확인"}
@@ -226,36 +376,7 @@ export function PortfolioDashboardClient() {
             className="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-violet-900 disabled:opacity-50"
             disabled={tickerResolverBusy}
             onClick={() => {
-              void (async () => {
-                setTickerResolverBusy(true);
-                setError(null);
-                setTickerResolverData(null);
-                try {
-                  const res = await fetch("/api/portfolio/ticker-resolver/refresh", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "same-origin",
-                    body: JSON.stringify({ targetType: "holding" }),
-                  });
-                  const data = (await res.json()) as {
-                    ok?: boolean;
-                    requestId?: string;
-                    candidateCount?: number;
-                    message?: string;
-                    error?: string;
-                  };
-                  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-                  if (data.requestId) setTickerResolverRequestId(data.requestId);
-                  setInfo(
-                    data.message
-                      ?? "Google Sheets portfolio_quote_candidates 탭에 후보 수식을 썼습니다. 30~90초 뒤 「추천 결과 확인」을 누르세요.",
-                  );
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : "추천 ticker 요청 실패");
-                } finally {
-                  setTickerResolverBusy(false);
-                }
-              })();
+              void requestTickerCandidateRefresh();
             }}
           >
             {tickerResolverBusy ? "작성 중..." : "추천 ticker 찾기"}
@@ -265,31 +386,7 @@ export function PortfolioDashboardClient() {
             className="rounded border border-violet-200 bg-white px-3 py-1.5 text-violet-900 disabled:opacity-50"
             disabled={tickerResolverStatusBusy || !tickerResolverRequestId}
             onClick={() => {
-              void (async () => {
-                if (!tickerResolverRequestId) return;
-                setTickerResolverStatusBusy(true);
-                setError(null);
-                try {
-                  const res = await fetch(
-                    `/api/portfolio/ticker-resolver/status?requestId=${encodeURIComponent(tickerResolverRequestId)}`,
-                    { credentials: "same-origin" },
-                  );
-                  const data = (await res.json()) as {
-                    rows?: TickerResolverRowDto[];
-                    recommendations?: TickerResolverRecommendationDto[];
-                    error?: string;
-                  };
-                  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-                  setTickerResolverData({
-                    rows: data.rows ?? [],
-                    recommendations: data.recommendations ?? [],
-                  });
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : "추천 결과 로드 실패");
-                } finally {
-                  setTickerResolverStatusBusy(false);
-                }
-              })();
+              void loadTickerStatus();
             }}
           >
             {tickerResolverStatusBusy ? "읽는 중..." : "추천 결과 확인"}
@@ -299,12 +396,99 @@ export function PortfolioDashboardClient() {
 
       {error ? <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
       {info ? <div className="mb-4 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">{info}</div> : null}
+      <section className="mb-4 rounded border border-violet-200 bg-violet-50/40 p-3 text-xs">
+        <p className="font-semibold text-violet-950">시세 연동 복구 패널</p>
+        <p className="mt-1 text-violet-900">
+          상태: <span className="font-semibold">{recoveryState}</span> · 미설정 ticker {missingTickerSymbols.length}개 · 자동 적용 가능 {autoApplicableItems.length}개
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded border border-violet-300 bg-white px-2 py-1 disabled:opacity-50"
+            disabled={tickerResolverBusy || missingTickerSymbols.length === 0}
+            onClick={() => {
+              void requestTickerCandidateRefresh();
+            }}
+          >
+            미설정 종목 ticker 추천 시작
+          </button>
+          <button
+            type="button"
+            className="rounded border border-violet-300 bg-white px-2 py-1 disabled:opacity-50"
+            disabled={!tickerResolverRequestId || tickerResolverStatusBusy}
+            onClick={() => {
+              void loadTickerStatus();
+            }}
+          >
+            추천 결과 확인
+          </button>
+          <button
+            type="button"
+            className="rounded border border-violet-500 bg-violet-600 px-2 py-1 text-white disabled:opacity-50"
+            disabled={bulkApplying || autoApplicableItems.length === 0}
+            onClick={() => {
+              void (async () => {
+                setBulkApplying(true);
+                setError(null);
+                try {
+                  const res = await fetch("/api/portfolio/ticker-resolver/apply-bulk", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "same-origin",
+                    body: JSON.stringify({ items: autoApplicableItems }),
+                  });
+                  const data = (await res.json()) as { error?: string; appliedCount?: number; failedItems?: Array<{ reason: string }> };
+                  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+                  setTickerAppliedCount(data.appliedCount ?? 0);
+                  setInfo(`일괄 적용 완료: ${data.appliedCount ?? 0}건`);
+                } catch (e: unknown) {
+                  setError(e instanceof Error ? e.message : "일괄 적용 실패");
+                } finally {
+                  setBulkApplying(false);
+                }
+              })();
+            }}
+          >
+            적용 가능한 추천 일괄 적용
+          </button>
+          <button
+            type="button"
+            className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-blue-900"
+            onClick={() => {
+              void requestQuoteRefresh();
+            }}
+          >
+            시세 새로고침 요청
+          </button>
+        </div>
+      </section>
+      <section className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-xs">
+        <p className="font-semibold text-amber-900">Action feed</p>
+        {(alerts ?? []).length === 0 ? (
+          <p className="mt-1 text-amber-800">현재 활성 경고가 없습니다.</p>
+        ) : (
+          <ul className="mt-2 space-y-1">
+            {alerts.slice(0, 8).map((a) => (
+              <li key={a.id} className="rounded border border-amber-100 bg-white px-2 py-1">
+                <span className="font-medium">{a.symbol}</span> · {a.title} — {a.body}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       {quoteStatus ? (
         <section className="mb-4 rounded border border-slate-200 bg-white p-3 text-xs">
           <p className="font-semibold text-slate-800">Google Sheets 시세 상태</p>
           <p className="mt-1 text-slate-600">
             total {quoteStatus.summary?.totalRows ?? 0} · ok {quoteStatus.summary?.okRows ?? 0} · empty {quoteStatus.summary?.emptyRows ?? 0} · parse_failed {quoteStatus.summary?.parseFailedRows ?? 0} · ticker_mismatch {quoteStatus.summary?.tickerMismatchRows ?? 0}
           </p>
+          <p className="mt-1 text-slate-600">
+            FX {quoteStatus.fx?.ticker ?? "CURRENCY:USDKRW"} · status {quoteStatus.fx?.status ?? "missing"} · raw {quoteStatus.fx?.rawPrice ?? "-"} · parsed{" "}
+            {quoteStatus.fx?.parsedPrice == null ? "NO_DATA" : fmt(quoteStatus.fx.parsedPrice)}
+          </p>
+          {quoteStatus.fx?.message ? (
+            <p className="mt-1 rounded bg-slate-100 px-2 py-1 text-slate-700">{quoteStatus.fx.message}</p>
+          ) : null}
           {(quoteStatus.warnings ?? []).length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
               {(quoteStatus.warnings ?? []).map((warning) => (
@@ -567,7 +751,11 @@ export function PortfolioDashboardClient() {
             <tbody>
               {(summary?.topPositions ?? []).map((row) => (
                 <tr key={`${row.market}-${row.symbol}`} className="border-b border-slate-100">
-                  <td className="px-2 py-1">{row.displayName ?? "NO_DATA"}</td>
+                  <td className="px-2 py-1">
+                    <Link href={`/portfolio/${encodeURIComponent(`${row.market ?? "US"}:${row.symbol}`)}`} className="underline underline-offset-4">
+                      {row.displayName ?? "NO_DATA"}
+                    </Link>
+                  </td>
                   <td className="px-2 py-1">{row.symbol}</td>
                   <td className="px-2 py-1">{row.market ?? "NO_DATA"}</td>
                   <td className="px-2 py-1 text-right">{row.quantity ?? "NO_DATA"}</td>
@@ -580,6 +768,11 @@ export function PortfolioDashboardClient() {
                     <div className="flex flex-wrap gap-1">
                       {row.needsTickerRecommendation ? (
                         <span className="rounded bg-violet-100 px-2 py-0.5 text-violet-900">ticker 추천 필요</span>
+                      ) : null}
+                      {row.thesisHealthStatus ? (
+                        <span className={`rounded px-2 py-0.5 ${row.thesisHealthStatus === "broken" ? "bg-red-100 text-red-900" : row.thesisHealthStatus === "weakening" ? "bg-amber-100 text-amber-900" : row.thesisHealthStatus === "watch" ? "bg-blue-100 text-blue-900" : "bg-emerald-100 text-emerald-900"}`}>
+                          thesis {row.thesisHealthStatus} ({row.thesisConfidence ?? "low"})
+                        </span>
                       ) : null}
                       {row.market === "US" && summary?.dataQuality.fxAvailable === false ? (
                         <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-900">fx_missing</span>

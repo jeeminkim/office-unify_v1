@@ -25,6 +25,9 @@ export async function POST() {
   }
   try {
     const holdings = await listWebPortfolioHoldingsForUser(supabase, auth.userKey);
+    const missingTickerSymbols = holdings
+      .filter((h) => !h.google_ticker?.trim())
+      .map((h) => `${h.market}:${h.symbol.toUpperCase()}`);
     await syncGoogleFinanceQuoteSheetRows(
       holdings.map((holding) => ({
         market: holding.market,
@@ -37,6 +40,9 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       refreshRequested: true,
+      refreshedCount: Math.max(0, holdings.length - missingTickerSymbols.length),
+      missingTickerSymbols,
+      fxRefreshIncluded: true,
       message: 'Google Sheets 시세 수식을 갱신했습니다. 30~90초 뒤 다시 조회하세요.',
       nextRecommendedPollSeconds: 60,
     });

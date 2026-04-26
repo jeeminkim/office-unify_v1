@@ -60,6 +60,51 @@ type DashboardResponse = {
   warnings: string[];
 };
 
+type TodayBriefResponse = {
+  ok: boolean;
+  generatedAt: string;
+  lines: Array<{
+    title: string;
+    body: string;
+    severity: "info" | "warn" | "danger" | "positive";
+    source: string[];
+  }>;
+  badges: string[];
+  degraded?: boolean;
+  warnings?: string[];
+};
+
+type ProfitGoalSummaryResponse = {
+  ok: boolean;
+  monthRealizedPnl?: number;
+  yearRealizedPnl?: number;
+  allocations: Array<{
+    goalId: string;
+    goalName: string;
+    allocated: number;
+    progressPct?: number;
+  }>;
+  unallocatedAmount?: number;
+  warnings?: string[];
+};
+
+type PatternAnalysisResponse = {
+  ok: boolean;
+  topPatterns: Array<{
+    code: string;
+    title: string;
+    count: number;
+    severity: "info" | "warn" | "danger";
+    description: string;
+    improvementHint?: string;
+  }>;
+  currentRiskMatches: Array<{
+    code: string;
+    title: string;
+    reason: string;
+  }>;
+};
+
 function statusTone(status: StatusSection["status"]): string {
   if (status === "ok") return "bg-emerald-100 text-emerald-900";
   if (status === "warn") return "bg-amber-100 text-amber-900";
@@ -77,21 +122,41 @@ function routineTone(status: "ready" | "needs_data" | "done" | "warn"): string {
 export function DashboardClient() {
   const [statusSections, setStatusSections] = useState<StatusSection[]>([]);
   const [overview, setOverview] = useState<DashboardResponse | null>(null);
+  const [todayBrief, setTodayBrief] = useState<TodayBriefResponse | null>(null);
+  const [profitGoal, setProfitGoal] = useState<ProfitGoalSummaryResponse | null>(null);
+  const [pattern, setPattern] = useState<PatternAnalysisResponse | null>(null);
+  const [portfolioAlerts, setPortfolioAlerts] = useState<Array<{ id: string; symbol: string; title: string; body: string; severity: string }>>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       try {
-        const [statusRes, overviewRes] = await Promise.all([
+        const [statusRes, overviewRes, briefRes, profitGoalRes, patternRes, alertsRes] = await Promise.all([
           fetch("/api/system/status", { credentials: "same-origin" }),
           fetch("/api/dashboard/overview", { credentials: "same-origin" }),
+          fetch("/api/dashboard/today-brief", { credentials: "same-origin" }),
+          fetch("/api/dashboard/profit-goal-summary", { credentials: "same-origin" }),
+          fetch("/api/trade-journal/pattern-analysis", { credentials: "same-origin" }),
+          fetch("/api/portfolio/alerts", { credentials: "same-origin" }),
         ]);
         const statusJson = (await statusRes.json()) as { sections?: StatusSection[]; error?: string };
         const overviewJson = (await overviewRes.json()) as DashboardResponse & { error?: string };
+        const briefJson = (await briefRes.json()) as TodayBriefResponse & { error?: string };
+        const profitGoalJson = (await profitGoalRes.json()) as ProfitGoalSummaryResponse & { error?: string };
+        const patternJson = (await patternRes.json()) as PatternAnalysisResponse & { error?: string };
+        const alertsJson = (await alertsRes.json()) as { alerts?: Array<{ id: string; symbol: string; title: string; body: string; severity: string }>; error?: string };
         if (!statusRes.ok) throw new Error(statusJson.error ?? `HTTP ${statusRes.status}`);
         if (!overviewRes.ok) throw new Error(overviewJson.error ?? `HTTP ${overviewRes.status}`);
+        if (!briefRes.ok) throw new Error(briefJson.error ?? `HTTP ${briefRes.status}`);
+        if (!profitGoalRes.ok) throw new Error(profitGoalJson.error ?? `HTTP ${profitGoalRes.status}`);
+        if (!patternRes.ok) throw new Error(patternJson.error ?? `HTTP ${patternRes.status}`);
+        if (!alertsRes.ok) throw new Error(alertsJson.error ?? `HTTP ${alertsRes.status}`);
         setStatusSections(statusJson.sections ?? []);
         setOverview(overviewJson);
+        setTodayBrief(briefJson);
+        setProfitGoal(profitGoalJson);
+        setPattern(patternJson);
+        setPortfolioAlerts(alertsJson.alerts ?? []);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "대시보드 로드 실패");
       }
@@ -123,6 +188,26 @@ export function DashboardClient() {
       </div>
 
       {error ? <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
+      <section className="mb-5 rounded-xl border border-violet-200 bg-violet-50 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-violet-900">오늘의 3줄 브리핑</h2>
+          <div className="flex flex-wrap gap-1">
+            {(todayBrief?.badges ?? []).map((b) => <span key={b} className="rounded bg-white px-2 py-0.5 text-[10px] text-violet-900">{b}</span>)}
+          </div>
+        </div>
+        {(todayBrief?.lines ?? []).length === 0 ? (
+          <p className="mt-2 text-xs text-violet-900">오늘 브리핑을 만들 데이터가 부족합니다.</p>
+        ) : (
+          <ol className="mt-2 space-y-2 text-xs">
+            {(todayBrief?.lines ?? []).slice(0, 3).map((line, idx) => (
+              <li key={`${line.title}-${idx}`} className="rounded border border-violet-100 bg-white p-2">
+                <p className="font-semibold text-violet-950">{idx + 1}. {line.title}</p>
+                <p className="mt-1 text-violet-900">{line.body}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between">
@@ -203,6 +288,45 @@ export function DashboardClient() {
             </ul>
           )}
         </div>
+      </section>
+      <section className="mb-5 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-slate-800">Profit → Goal Summary</h2>
+          <p className="mt-2 text-xs text-slate-700">이번달 실현손익 {profitGoal?.monthRealizedPnl?.toLocaleString?.() ?? "NO_DATA"} KRW</p>
+          <p className="mt-1 text-xs text-slate-700">미배분 {profitGoal?.unallocatedAmount?.toLocaleString?.() ?? "NO_DATA"} KRW</p>
+          <ul className="mt-2 space-y-1 text-xs text-slate-600">
+            {(profitGoal?.allocations ?? []).slice(0, 4).map((g) => (
+              <li key={g.goalId}>{g.goalName}: {g.allocated.toLocaleString("ko-KR")}원 ({g.progressPct?.toFixed(1) ?? "NO_DATA"}%)</li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-slate-800">My Bias</h2>
+          {(pattern?.topPatterns ?? []).length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500">NO_DATA</p>
+          ) : (
+            <ul className="mt-2 space-y-2 text-xs">
+              {(pattern?.topPatterns ?? []).slice(0, 4).map((p) => (
+                <li key={p.code} className="rounded border border-slate-200 bg-slate-50 p-2">
+                  <p className="font-medium">{p.title} ({p.count}회)</p>
+                  <p className="mt-1 text-slate-600">{p.description}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+      <section className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <h2 className="text-sm font-semibold text-amber-900">Action Feed</h2>
+        {(portfolioAlerts ?? []).length === 0 ? (
+          <p className="mt-2 text-xs text-amber-900">현재 활성 알림이 없습니다.</p>
+        ) : (
+          <ul className="mt-2 space-y-1 text-xs text-amber-900">
+            {(portfolioAlerts ?? []).slice(0, 8).map((a) => (
+              <li key={a.id} className="rounded border border-amber-100 bg-white px-2 py-1">{a.symbol} · {a.title} — {a.body}</li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4">

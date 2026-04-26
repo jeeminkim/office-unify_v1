@@ -88,7 +88,8 @@ export async function GET() {
     const parseFailedRows = rows.filter((row) => row.rowStatus === 'parse_failed').length;
     const tickerMismatchRows = rows.filter((row) => row.rowStatus === 'ticker_mismatch').length;
     const emptyRows = rows.length - okRows;
-    const fxRawPrice = data.fxRate != null ? String(data.fxRate) : undefined;
+    const fxRawPrice = data.fxRawPrice;
+    const fxStatus = data.tabFound ? data.fxStatus : 'missing';
     return NextResponse.json({
       ok: true,
       generatedAt: new Date().toISOString(),
@@ -101,9 +102,20 @@ export async function GET() {
       },
       fx: {
         ticker: 'CURRENCY:USDKRW',
-        price: data.fxRate,
         rawPrice: fxRawPrice,
-        status: data.fxRate != null ? 'ok' : data.tabFound ? 'empty' : 'missing',
+        parsedPrice: data.fxRate,
+        status: fxStatus,
+        message:
+          fxStatus === 'ok'
+            ? 'USD/KRW 환율 정상'
+            : fxStatus === 'pending'
+              ? 'FX GOOGLEFINANCE 계산 대기'
+              : fxStatus === 'empty'
+                ? 'FX 행이 비어 있습니다'
+                : fxStatus === 'parse_failed'
+                  ? 'FX 값을 숫자로 파싱하지 못했습니다'
+                  : 'FX 행을 찾지 못했습니다',
+        candidates: ['CURRENCY:USDKRW', 'USDKRW', '"CURRENCY:USDKRW"'],
       },
       rows,
       summary: {

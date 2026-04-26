@@ -90,6 +90,10 @@ export function TradeJournalClient() {
   const [editingPrinciples, setEditingPrinciples] = useState<Record<string, Partial<InvestmentPrinciple>>>({});
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [pattern, setPattern] = useState<{
+    topPatterns: Array<{ code: string; title: string; count: number; severity: string; description: string; improvementHint?: string }>;
+    currentRiskMatches: Array<{ code: string; title: string; reason: string }>;
+  } | null>(null);
   const [reflection, setReflection] = useState({
     reflectionType: 'manual' as TradeJournalReflectionType,
     thesisOutcome: '',
@@ -125,12 +129,23 @@ export function TradeJournalClient() {
     setEntries(data.items ?? []);
   };
 
+  const loadPattern = async () => {
+    const res = await fetch('/api/trade-journal/pattern-analysis', { credentials: 'same-origin' });
+    const data = (await res.json()) as {
+      topPatterns?: Array<{ code: string; title: string; count: number; severity: string; description: string; improvementHint?: string }>;
+      currentRiskMatches?: Array<{ code: string; title: string; reason: string }>;
+      error?: string;
+    };
+    if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+    setPattern({ topPatterns: data.topPatterns ?? [], currentRiskMatches: data.currentRiskMatches ?? [] });
+  };
+
   useEffect(() => {
     void (async () => {
       setLoading(true);
       setMessage(null);
       try {
-        await Promise.all([loadPrinciples(), loadEntries()]);
+        await Promise.all([loadPrinciples(), loadEntries(), loadPattern()]);
       } catch (error: unknown) {
         setMessage(error instanceof Error ? error.message : '초기 로드 실패');
       } finally {
@@ -338,6 +353,26 @@ export function TradeJournalClient() {
       </div>
       {message ? <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{message}</div> : null}
       {loading ? <p className="text-sm text-slate-500">로딩 중…</p> : null}
+      <section className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+        <h2 className="text-sm font-semibold text-violet-900">Pattern Analysis</h2>
+        {(pattern?.topPatterns ?? []).length === 0 ? (
+          <p className="mt-2 text-xs text-violet-900">NO_DATA</p>
+        ) : (
+          <ul className="mt-2 space-y-1 text-xs text-violet-900">
+            {(pattern?.topPatterns ?? []).slice(0, 5).map((p) => (
+              <li key={p.code} className="rounded border border-violet-100 bg-white p-2">
+                <p className="font-medium">{p.title} ({p.count}회)</p>
+                <p className="mt-1">{p.description}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+        {(pattern?.currentRiskMatches ?? []).length > 0 ? (
+          <ul className="mt-2 list-disc pl-4 text-xs text-violet-900">
+            {(pattern?.currentRiskMatches ?? []).map((r) => <li key={r.code}>{r.title}: {r.reason}</li>)}
+          </ul>
+        ) : null}
+      </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-800">원칙 관리</h2>

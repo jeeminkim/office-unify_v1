@@ -16,21 +16,39 @@ export function FinancialGoalsClient() {
   const [events, setEvents] = useState<RealizedProfitEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState({ goalName: "", goalType: "other", targetAmountKrw: "", priority: "medium", targetDate: "", memo: "" });
+  const [profitGoalSummary, setProfitGoalSummary] = useState<{
+    monthRealizedPnl?: number;
+    unallocatedAmount?: number;
+    allocations?: Array<{ goalId: string; goalName: string; allocated: number; progressPct?: number }>;
+  } | null>(null);
 
   const load = async () => {
-    const [goalsRes, eventsRes, summaryRes] = await Promise.all([
+    const [goalsRes, eventsRes, summaryRes, profitGoalRes] = await Promise.all([
       fetch("/api/financial-goals", { credentials: "same-origin" }),
       fetch("/api/realized-pnl/events", { credentials: "same-origin" }),
       fetch("/api/realized-pnl/summary", { credentials: "same-origin" }),
+      fetch("/api/dashboard/profit-goal-summary", { credentials: "same-origin" }),
     ]);
     const goalsJson = (await goalsRes.json()) as { goals?: FinancialGoal[]; error?: string };
     const eventsJson = (await eventsRes.json()) as { events?: RealizedProfitEvent[]; error?: string };
     const summaryJson = (await summaryRes.json()) as { error?: string; recentEvents?: RealizedProfitEvent[] };
+    const profitGoalJson = (await profitGoalRes.json()) as {
+      error?: string;
+      monthRealizedPnl?: number;
+      unallocatedAmount?: number;
+      allocations?: Array<{ goalId: string; goalName: string; allocated: number; progressPct?: number }>;
+    };
     if (!goalsRes.ok) throw new Error(goalsJson.error ?? `HTTP ${goalsRes.status}`);
     if (!eventsRes.ok) throw new Error(eventsJson.error ?? `HTTP ${eventsRes.status}`);
     if (!summaryRes.ok) throw new Error(summaryJson.error ?? `HTTP ${summaryRes.status}`);
+    if (!profitGoalRes.ok) throw new Error(profitGoalJson.error ?? `HTTP ${profitGoalRes.status}`);
     setGoals(goalsJson.goals ?? []);
     setEvents(eventsJson.events ?? []);
+    setProfitGoalSummary({
+      monthRealizedPnl: profitGoalJson.monthRealizedPnl,
+      unallocatedAmount: profitGoalJson.unallocatedAmount,
+      allocations: profitGoalJson.allocations,
+    });
   };
 
   useEffect(() => {
@@ -121,6 +139,16 @@ export function FinancialGoalsClient() {
         실현손익은 외부 거래 후 사용자가 입력한 체결 기준입니다. 세금/수수료는 사용자가 입력한 값 기준입니다.
       </div>
       {error ? <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
+      <section className="mb-4 rounded border border-violet-200 bg-violet-50 p-4 text-xs">
+        <h2 className="font-semibold text-violet-900">이번 달 실현손익 → 목표자금 연결 요약</h2>
+        <p className="mt-2 text-violet-900">실현손익 {fmt(profitGoalSummary?.monthRealizedPnl)}원</p>
+        <p className="mt-1 text-violet-900">미배분 {fmt(profitGoalSummary?.unallocatedAmount)}원</p>
+        <ul className="mt-2 space-y-1 text-violet-900">
+          {(profitGoalSummary?.allocations ?? []).slice(0, 4).map((row) => (
+            <li key={row.goalId}>{row.goalName} · {fmt(row.allocated)}원 · {row.progressPct?.toFixed(1) ?? "NO_DATA"}%</li>
+          ))}
+        </ul>
+      </section>
 
       <section className="mb-4 rounded border border-slate-200 bg-white p-4 text-xs">
         <h2 className="font-semibold">목표 생성</h2>

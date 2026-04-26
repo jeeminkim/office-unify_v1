@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Quote recovery flow 고도화:** `/portfolio`에 guided recovery 패널을 추가하고, `ticker-resolver` 결과의 `autoApplicable` 분류/`apply-bulk` API/`quotes/refresh` 연계를 통해 미설정 `google_ticker`를 승인 기반으로 반자동 복구할 수 있게 개선.
+- **KR/FX 후보 안정화:** KR ticker 후보에 `KOSDAQ`/`KOSPI` 보조 후보를 추가하고, FX(`CURRENCY:USDKRW`) 상태 진단(`rawPrice/parsedPrice/status`)을 강화.
+- **Quote sync contract 개선:** `quotes/refresh` 응답에 `refreshedCount`, `missingTickerSymbols`, `fxRefreshIncluded`를 추가하고, `google_ticker`가 없는 종목은 후보 복구 플로우로 안내.
+- **Gold Insight 6-pack (additive):** 홈에 오늘의 3줄 브리핑(`/api/dashboard/today-brief`), Profit→Goal 요약(`/api/dashboard/profit-goal-summary`), Action feed(`/api/portfolio/alerts`), My bias(`/api/trade-journal/pattern-analysis`)를 추가하고 `/portfolio/[symbol]` dossier + `thesisHealthAnalyzer` 기반 thesis badge/alerts 연결을 도입.
 - **승인 기반 ticker 추천(GOOGLEFINANCE):** `portfolio_quote_candidates` 시트에 후보별 `GOOGLEFINANCE` 수식을 쓰고 read-back으로 검증한 뒤, 사용자가 적용할 때만 `web_portfolio_holdings`/`web_portfolio_watchlist`에 `google_ticker`/`quote_symbol`을 저장한다. API: `POST/GET /api/portfolio/ticker-resolver/*`, `PATCH /api/portfolio/watchlist/[id]`. SQL: `docs/sql/append_web_portfolio_watchlist_quote_overrides.sql`.
 - **Ticker override for KR mismatch:** `web_portfolio_holdings`에 `google_ticker`/`quote_symbol` 수동 보정 컬럼을 도입하고 quote 우선순위를 override 기반으로 확장.
 - **Inline ticker fix UX:** `/portfolio` 시세 상태 테이블에서 mismatch/empty/parse_failed 종목에 대해 ticker 수정/저장을 직접 지원하고 refresh 재요청 안내를 추가.

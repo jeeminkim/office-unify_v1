@@ -26,11 +26,23 @@
 - `/api/dashboard/overview`
   - 홈 대시보드 집계
   - NO_DATA / fallback 상태를 명시
+- `/api/dashboard/today-brief`
+  - 오늘의 3줄 브리핑(리스크/성과/행동) 생성
+  - 사실 데이터와 제안 문장을 분리하고 confidence/경고를 함께 반환
+  - 데이터 부족 시 NO_DATA 문구로 degrade
+- `/api/dashboard/profit-goal-summary`
+  - 이번달/연간 실현손익과 목표 배분(미배분 포함) 요약
 - `/api/portfolio/summary`
   - 개인 콘솔용 확장 요약
   - quote provider 우선순위: Google Sheets `GOOGLEFINANCE` read-back -> Yahoo fallback -> none
   - Google Finance는 직접 API 호출이 아니라 시트 수식 결과 read-back
   - quote/환율 실패 시 평가손익 계산을 생략(NO_DATA)하고 비중만 매입금액 기준 fallback
+  - 종목별 `thesisHealthStatus`/`thesisConfidence`를 함께 반환해 대시보드 badge로 사용
+- `/api/portfolio/alerts`
+  - 목표가/손절가/손실률/비중/시세누락/thesis 약화·깨짐 룰 기반 action feed
+  - 경고는 제안이며 자동 매매/자동 주문을 수행하지 않음
+- `/api/portfolio/dossier/[symbol]`
+  - 종목 단위 dossier(매수 이유·목표/손절·PB/위원회·저널·trend·thesis health) 조회
 - `/api/portfolio/holdings`
   - 보유/관심 목록 조회
 - `/api/portfolio/holdings/[id]`
@@ -49,6 +61,8 @@
 - `/api/portfolio/ticker-resolver/refresh|status|apply`
   - `portfolio_quote_candidates` 탭에 `GOOGLEFINANCE` 후보 수식을 쌓고 read-back으로 검증
   - **자동 DB 저장 없음** — 적용은 `apply`에서 사용자가 명시적으로 승인할 때만 `google_ticker`/`quote_symbol` 반영
+- `/api/portfolio/ticker-resolver/apply-bulk`
+  - 사용자가 승인한 항목만 일괄 저장 (부분 실패 허용, `failedItems` 반환)
 - `/api/portfolio/watchlist/[id]` (PATCH)
   - 관심종목 메타 + `google_ticker`/`quote_symbol` 수동 보정
 - 기존 투자 도구 API
@@ -57,6 +71,8 @@
   - `/api/trend/generate`
   - `/api/research-center/generate`
   - `/api/trade-journal/*`
+  - `/api/trade-journal/pattern-analysis`
+    - 반복 투자 실수 패턴과 현재 위험 매칭을 요약
 - `/api/realized-pnl/summary`
   - 기간별/종목별 실현손익 집계 + 목표 배분/미배분 집계
 - `/api/realized-pnl/events`
@@ -84,4 +100,10 @@
 - 메모리/시트/테이블 미설정 시 기능 전체 중단 대신 섹션 단위 경고로 degrade
 - PB/위원회/Trend/Research 결과 화면은 outputQuality/model usage badge를 함께 표시
 - 전량 매도 시 보유 제거 후 선택적으로 watchlist 이동 가능
+- `thesis health`는 rule+텍스트 기반 휴리스틱 평가이며 사실(Fact)과 판단(Interpretation)을 분리해 표시한다.
+- `/portfolio`의 quote recovery 패널은 상태 머신(`needs_ticker_candidates` → `quote_ready`) 기반으로 다음 조치 버튼을 안내한다.
+- confidence 의미:
+  - `high`: 다중 출처 신호/기록이 일치
+  - `medium`: 일부 출처만 일치
+  - `low`: 원장 메모 또는 단일 출처 기반 추정
 
