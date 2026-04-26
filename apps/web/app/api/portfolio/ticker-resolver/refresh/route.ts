@@ -7,6 +7,7 @@ import {
   isTickerCandidateSheetConfigured,
   type CandidateSheetWriteRow,
 } from '@/lib/server/googleFinanceTickerCandidateSheet';
+import { normalizeSheetsApiError } from '@/lib/server/google-sheets-api';
 import { isGoogleFinanceQuoteConfigured } from '@/lib/server/googleFinanceSheetQuoteService';
 import { generateGoogleFinanceTickerCandidates } from '@/lib/server/googleFinanceTickerResolver';
 import {
@@ -181,7 +182,32 @@ export async function POST(req: Request) {
       nextRecommendedPollSeconds: 60,
     });
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const normalized = normalizeSheetsApiError(e);
+    const actionHint =
+      normalized.code === 'sheet_tab_missing_or_invalid_range'
+        ? 'portfolio_quote_candidates 탭을 찾지 못했거나 range 생성에 실패했습니다. 자동 생성 후 다시 시도하세요.'
+        : normalized.code === 'sheet_permission_denied'
+          ? '서비스 계정에 해당 스프레드시트 편집 권한을 부여하세요.'
+          : normalized.code === 'spreadsheet_not_found_or_wrong_id'
+            ? 'GOOGLE_SHEETS_SPREADSHEET_ID 값이 문서 ID인지 확인하세요.'
+            : 'ticker 후보 수식 생성에 실패했습니다. Sheets 설정과 권한을 확인하세요.';
+    const isRecoverableSheetsIssue =
+      normalized.code === 'sheet_tab_missing_or_invalid_range'
+      || normalized.code === 'sheet_permission_denied'
+      || normalized.code === 'spreadsheet_not_found_or_wrong_id'
+      || normalized.code === 'sheets_update_failed';
+    return NextResponse.json(
+      {
+        ok: false,
+        refreshRequested: false,
+        warningCode: normalized.code,
+        message: actionHint,
+        warning: actionHint,
+        actionHint,
+        detail: normalized.message,
+        nextRecommendedAction: 'Google Sheets 설정/권한 확인 후 ticker 후보 생성을 다시 시도하세요.',
+      },
+      { status: isRecoverableSheetsIssue ? 200 : 500 },
+    );
   }
 }

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Google Sheets 탭 자동 복구:** `portfolio_quotes`, `portfolio_quote_candidates` 탭이 없을 때 앱이 자동 생성 후 헤더를 보정하도록 추가하고, A1 range를 `'sheet_name'!A1` escape 방식으로 통일해 `Unable to parse range` 계열 빌드/운영 오류를 완화.
+- **Sheets 오류 분류/액션 가이드:** quotes/ticker refresh API에서 `sheet_tab_missing_or_invalid_range`, `sheet_permission_denied`, `spreadsheet_not_found_or_wrong_id`, `sheets_update_failed`로 원인 코드를 분리해 사용자에게 재시도/권한/ID 점검 안내를 반환.
+- **System status 진단 확장:** `/api/system/status`에 Google Sheets 읽기 가능 여부, `portfolio_quotes`/`portfolio_quote_candidates` 탭 존재, 서비스 계정 편집 권한 추정 항목을 추가.
 - **Quote recovery flow 고도화:** `/portfolio`에 guided recovery 패널을 추가하고, `ticker-resolver` 결과의 `autoApplicable` 분류/`apply-bulk` API/`quotes/refresh` 연계를 통해 미설정 `google_ticker`를 승인 기반으로 반자동 복구할 수 있게 개선.
 - **KR/FX 후보 안정화:** KR ticker 후보에 `KOSDAQ`/`KOSPI` 보조 후보를 추가하고, FX(`CURRENCY:USDKRW`) 상태 진단(`rawPrice/parsedPrice/status`)을 강화.
 - **Quote sync contract 개선:** `quotes/refresh` 응답에 `refreshedCount`, `missingTickerSymbols`, `fxRefreshIncluded`를 추가하고, `google_ticker`가 없는 종목은 후보 복구 플로우로 안내.

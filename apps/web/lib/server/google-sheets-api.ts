@@ -10,6 +10,14 @@ type ServiceAccountCredentials = {
   private_key: string;
 };
 
+export type SheetTabMeta = { sheetId?: number; title: string };
+export type NormalizedSheetsErrorCode =
+  | 'sheet_tab_missing_or_invalid_range'
+  | 'sheet_permission_denied'
+  | 'spreadsheet_not_found_or_wrong_id'
+  | 'sheets_update_failed'
+  | 'sheets_read_failed';
+
 function base64url(buf: Buffer): string {
   return buf
     .toString('base64')
@@ -77,6 +85,136 @@ export async function getSheetsAccessToken(): Promise<string | null> {
   const exp = now + (data.expires_in ?? 3500);
   cachedToken = { token: data.access_token, exp };
   return data.access_token;
+}
+
+export function escapeSheetNameForA1(sheetName: string): string {
+  const escaped = sheetName.replace(/'/g, "''");
+  return `'${escaped}'`;
+}
+
+export function buildA1Range(sheetName: string, range: string): string {
+  return `${escapeSheetNameForA1(sheetName)}!${range}`;
+}
+
+function columnLabel(columnNumber: number): string {
+  let n = Math.max(1, Math.floor(columnNumber));
+  let label = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    label = String.fromCharCode(65 + rem) + label;
+    n = Math.floor((n - 1) / 26);
+  }
+  return label;
+}
+
+export function normalizeSheetsApiError(error: unknown): { code: NormalizedSheetsErrorCode; message: string } {
+  const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+  const lower = message.toLowerCase();
+  if (lower.includes('unable to parse range')) {
+    return { code: 'sheet_tab_missing_or_invalid_range', message };
+  }
+  if (lower.includes(' 403 ') || lower.includes('status 403')) {
+    return { code: 'sheet_permission_denied', message };
+  }
+  if (lower.includes(' 404 ') || lower.includes('status 404')) {
+    return { code: 'spreadsheet_not_found_or_wrong_id', message };
+  }
+  if (lower.includes('values.get failed')) {
+    return { code: 'sheets_read_failed', message };
+  }
+  return { code: 'sheets_update_failed', message };
+}
+
+async function sheetsGetSpreadsheet(params: { spreadsheetId: string }): Promise<unknown> {
+  const token = await getSheetsAccessToken();
+  if (!token) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not configured');
+  const url = new URL(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(params.spreadsheetId)}`,
+  );
+  const res = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Sheets spreadsheets.get failed: ${res.status} ${t.slice(0, 400)}`);
+  }
+  return res.json();
+}
+
+export async function getSpreadsheetSheets(spreadsheetId: string): Promise<SheetTabMeta[]> {
+  const data = (await sheetsGetSpreadsheet({ spreadsheetId })) as {
+    sheets?: Array<{ properties?: { sheetId?: number; title?: string } }>;
+  };
+  return (data.sheets ?? [])
+    .map((s) => ({
+      sheetId: s.properties?.sheetId,
+      title: s.properties?.title ?? '',
+    }))
+    .filter((s) => s.title.length > 0);
+}
+
+export async function ensureSheetTab(params: {
+  spreadsheetId: string;
+  title: string;
+  header?: string[];
+}): Promise<{ existed: boolean; created: boolean; sheetId?: number }> {
+  const token = await getSheetsAccessToken();
+  if (!token) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not configured');
+  const existing = await getSpreadsheetSheets(params.spreadsheetId);
+  const found = existing.find((s) => s.title === params.title);
+  if (found) {
+    if (params.header && params.header.length > 0) {
+      const headerCell = await sheetsValuesGet({
+        spreadsheetId: params.spreadsheetId,
+        rangeA1: buildA1Range(params.title, 'A1:A1'),
+      }).catch(() => []);
+      const hasHeader = String(headerCell?.[0]?.[0] ?? '').trim().length > 0;
+      if (!hasHeader) {
+        await sheetsValuesUpdate({
+          spreadsheetId: params.spreadsheetId,
+          rangeA1: buildA1Range(params.title, `A1:${columnLabel(params.header.length)}1`),
+          values: [params.header],
+          valueInputOption: 'USER_ENTERED',
+        });
+      }
+    }
+    return { existed: true, created: false, sheetId: found.sheetId };
+  }
+
+  const addUrl = new URL(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(params.spreadsheetId)}:batchUpdate`,
+  );
+  const addRes = await fetch(addUrl.toString(), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      requests: [{ addSheet: { properties: { title: params.title } } }],
+    }),
+  });
+  if (!addRes.ok) {
+    const t = await addRes.text();
+    throw new Error(`Sheets batchUpdate addSheet failed: ${addRes.status} ${t.slice(0, 400)}`);
+  }
+  const addData = (await addRes.json()) as {
+    replies?: Array<{ addSheet?: { properties?: { sheetId?: number } } }>;
+  };
+  const sheetId = addData.replies?.[0]?.addSheet?.properties?.sheetId;
+  if (params.header && params.header.length > 0) {
+    await sheetsValuesUpdate({
+      spreadsheetId: params.spreadsheetId,
+      rangeA1: buildA1Range(params.title, `A1:${columnLabel(params.header.length)}1`),
+      values: [params.header],
+      valueInputOption: 'USER_ENTERED',
+    });
+  }
+  return { existed: false, created: true, sheetId };
 }
 
 export async function sheetsValuesUpdate(params: {

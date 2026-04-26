@@ -3,6 +3,7 @@ import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { ALLOWED_PERSONA_CHAT_EMAIL } from '@/lib/server/allowed-user';
 import { PORTFOLIO_READ_SECRET_ENV } from '@/lib/server/portfolio-read-guard';
+import { getSheetsAccessToken, getSpreadsheetSheets } from '@/lib/server/google-sheets-api';
 
 type SectionStatus = 'ok' | 'warn' | 'error' | 'not_configured';
 
@@ -70,6 +71,88 @@ async function tableAccessSection(
   };
 }
 
+async function googleSheetsHealthSections(): Promise<StatusSection[]> {
+  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID?.trim() || '';
+  const quotesTab = process.env.PORTFOLIO_QUOTES_SHEET_NAME?.trim() || 'portfolio_quotes';
+  const candidatesTab = process.env.PORTFOLIO_TICKER_CANDIDATES_SHEET_NAME?.trim() || 'portfolio_quote_candidates';
+  const configured = Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim() && spreadsheetId);
+  if (!configured) {
+    return [
+      {
+        key: 'sheets_spreadsheet_configured',
+        title: 'Google Sheets spreadsheet configured',
+        status: 'not_configured',
+        message: 'GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SHEETS_SPREADSHEET_ID is missing',
+      },
+    ];
+  }
+  try {
+    const token = await getSheetsAccessToken();
+    const sheets = await getSpreadsheetSheets(spreadsheetId);
+    const sheetTitles = new Set(sheets.map((s) => s.title));
+    return [
+      {
+        key: 'sheets_spreadsheet_configured',
+        title: 'Google Sheets spreadsheet configured',
+        status: 'ok',
+        message: 'Google Sheets env configured',
+      },
+      {
+        key: 'sheets_spreadsheet_readable',
+        title: 'Google Sheets spreadsheet readable',
+        status: 'ok',
+        message: 'spreadsheets.get readable',
+      },
+      {
+        key: 'sheets_portfolio_quotes_tab',
+        title: 'portfolio_quotes tab exists',
+        status: sheetTitles.has(quotesTab) ? 'ok' : 'warn',
+        message: sheetTitles.has(quotesTab) ? `${quotesTab} exists` : `${quotesTab} missing`,
+        actionHint: sheetTitles.has(quotesTab) ? undefined : '시세 새로고침 시 앱이 탭 자동 생성을 시도합니다.',
+      },
+      {
+        key: 'sheets_portfolio_candidates_tab',
+        title: 'portfolio_quote_candidates tab exists',
+        status: sheetTitles.has(candidatesTab) ? 'ok' : 'warn',
+        message: sheetTitles.has(candidatesTab) ? `${candidatesTab} exists` : `${candidatesTab} missing`,
+        actionHint: sheetTitles.has(candidatesTab) ? undefined : '추천 ticker 찾기 실행 시 앱이 탭 자동 생성을 시도합니다.',
+      },
+      {
+        key: 'sheets_service_account_editor_inferred',
+        title: 'Service account editor permission inferred',
+        status: token ? 'ok' : 'warn',
+        message: token ? 'OAuth token issued and spreadsheet read succeeded' : 'OAuth token unavailable',
+        actionHint: token ? undefined : '서비스 계정 JSON 및 스프레드시트 공유 권한(편집자)을 확인하세요.',
+      },
+    ];
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Unknown error';
+    return [
+      {
+        key: 'sheets_spreadsheet_configured',
+        title: 'Google Sheets spreadsheet configured',
+        status: 'ok',
+        message: 'Google Sheets env configured',
+      },
+      {
+        key: 'sheets_spreadsheet_readable',
+        title: 'Google Sheets spreadsheet readable',
+        status: 'warn',
+        message: 'spreadsheets.get failed',
+        details: [message],
+        actionHint: '서비스 계정 공유 권한, GOOGLE_SHEETS_SPREADSHEET_ID 형식(문서 ID), API 접근 가능 여부를 확인하세요.',
+      },
+      {
+        key: 'sheets_service_account_editor_inferred',
+        title: 'Service account editor permission inferred',
+        status: 'warn',
+        message: 'permission inference failed',
+        details: [message],
+      },
+    ];
+  }
+}
+
 export async function GET() {
   const auth = await requirePersonaChatAuth();
   if (!auth.ok) return auth.response;
@@ -135,6 +218,7 @@ export async function GET() {
     tableAccessSection('trade_journal_entries', 'Trade journal tables', 'docs/sql/append_web_trade_journal.sql 적용 여부를 확인하세요.'),
   ]);
   sections.push(...tableChecks);
+  sections.push(...(await googleSheetsHealthSections()));
 
   sections.push({
     key: 'selfcheck_recent',

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { sheetsValuesGet, sheetsValuesUpdate } from '@/lib/server/google-sheets-api';
+import { buildA1Range, ensureSheetTab, sheetsValuesGet, sheetsValuesUpdate } from '@/lib/server/google-sheets-api';
 import {
   googleSheetCellAsString,
   parseGoogleFinanceSheetNumber,
@@ -79,16 +79,21 @@ export async function appendTickerCandidateSheetRows(rows: CandidateSheetWriteRo
   if (!id) throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID is not set');
   const tab = candidatesTab();
   if (rows.length === 0) return;
+  await ensureSheetTab({
+    spreadsheetId: id,
+    title: tab,
+    header: HEADER,
+  });
 
   const firstCell = await sheetsValuesGet({
     spreadsheetId: id,
-    rangeA1: `${tab}!A1:A1`,
+    rangeA1: buildA1Range(tab, 'A1:A1'),
   });
   const a1 = firstCell[0]?.[0];
   if (googleSheetCellAsString(a1) !== 'request_id') {
     await sheetsValuesUpdate({
       spreadsheetId: id,
-      rangeA1: `${tab}!A1:T1`,
+      rangeA1: buildA1Range(tab, 'A1:T1'),
       values: [HEADER],
       valueInputOption: 'USER_ENTERED',
     });
@@ -96,7 +101,7 @@ export async function appendTickerCandidateSheetRows(rows: CandidateSheetWriteRo
 
   const colA = await sheetsValuesGet({
     spreadsheetId: id,
-    rangeA1: `${tab}!A:A`,
+    rangeA1: buildA1Range(tab, 'A:A'),
   });
   let startRow = (colA?.length ?? 0) + 1;
   if (startRow < 2) startRow = 2;
@@ -132,7 +137,7 @@ export async function appendTickerCandidateSheetRows(rows: CandidateSheetWriteRo
 
   await sheetsValuesUpdate({
     spreadsheetId: id,
-    rangeA1: `${tab}!A${startRow}:T${startRow + valueRows.length - 1}`,
+    rangeA1: buildA1Range(tab, `A${startRow}:T${startRow + valueRows.length - 1}`),
     values: valueRows,
     valueInputOption: 'USER_ENTERED',
   });
@@ -162,14 +167,14 @@ export async function readTickerCandidateSheetRowsForRequest(requestId: string):
   try {
     values = await sheetsValuesGet({
       spreadsheetId: id,
-      rangeA1: `${tab}!A2:T3000`,
+      rangeA1: buildA1Range(tab, 'A2:T3000'),
       valueRenderOption: 'UNFORMATTED_VALUE',
       dateTimeRenderOption: 'FORMATTED_STRING',
     });
   } catch {
     values = await sheetsValuesGet({
       spreadsheetId: id,
-      rangeA1: `${tab}!A2:T3000`,
+      rangeA1: buildA1Range(tab, 'A2:T3000'),
       valueRenderOption: 'FORMATTED_VALUE',
       dateTimeRenderOption: 'FORMATTED_STRING',
     });

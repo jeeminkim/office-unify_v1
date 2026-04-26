@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { sheetsValuesGet, sheetsValuesUpdate } from '@/lib/server/google-sheets-api';
+import { buildA1Range, ensureSheetTab, sheetsValuesGet, sheetsValuesUpdate } from '@/lib/server/google-sheets-api';
 import {
   classifyFxReadbackStatus,
   googleSheetCellAsString,
@@ -123,6 +123,11 @@ export async function syncGoogleFinanceQuoteSheetRows(holdings: HoldingInput[]):
     'status',
     'last_synced_at',
   ];
+  await ensureSheetTab({
+    spreadsheetId: id,
+    title: tab,
+    header,
+  });
   const configuredRows = holdings.filter((h) => Boolean(h.googleTicker?.trim()));
   const rows = configuredRows.map((h, idx) => {
     const r = idx + 2;
@@ -166,7 +171,7 @@ export async function syncGoogleFinanceQuoteSheetRows(holdings: HoldingInput[]):
   ]);
   await sheetsValuesUpdate({
     spreadsheetId: id,
-    rangeA1: `${tab}!A1`,
+    rangeA1: buildA1Range(tab, 'A1'),
     values: [header, ...rows],
     valueInputOption: 'USER_ENTERED',
   });
@@ -190,14 +195,14 @@ export async function readGoogleFinanceQuoteSheetRows(): Promise<{
   try {
     values = await sheetsValuesGet({
       spreadsheetId: id,
-      rangeA1: `${tab}!A2:O500`,
+      rangeA1: buildA1Range(tab, 'A2:O500'),
       valueRenderOption: 'UNFORMATTED_VALUE',
       dateTimeRenderOption: 'FORMATTED_STRING',
     });
   } catch {
     values = await sheetsValuesGet({
       spreadsheetId: id,
-      rangeA1: `${tab}!A2:O500`,
+      rangeA1: buildA1Range(tab, 'A2:O500'),
       valueRenderOption: 'FORMATTED_VALUE',
       dateTimeRenderOption: 'FORMATTED_STRING',
     });

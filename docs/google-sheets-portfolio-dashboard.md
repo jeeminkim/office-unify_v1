@@ -41,9 +41,18 @@
 ## 환경 변수 (Vercel)
 
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — 서비스 계정 JSON **전체**
-- `GOOGLE_SHEETS_SPREADSHEET_ID` — 스프레드시트 ID
+- `GOOGLE_SHEETS_SPREADSHEET_ID` — 스프레드시트 **문서 ID만** 입력 (전체 URL 금지)
 
 스프레드시트 **공유**에 해당 서비스 계정 이메일(`client_email`)을 **편집자**로 추가합니다.
+
+### 탭 자동 생성 / 장애 대응
+
+- `portfolio_quotes`, `portfolio_quote_candidates` 탭이 없으면 앱이 요청 시 자동 생성합니다.
+- A1 range는 `'sheet_name'!A1` 형태로 escape하여 특수문자/공백 탭 이름에서도 안전하게 처리합니다.
+- 그래도 실패하면 다음 순서로 점검하세요.
+  - 서비스 계정 편집 권한(403)
+  - `GOOGLE_SHEETS_SPREADSHEET_ID`가 문서 ID인지(404)
+  - 탭/범위 생성 오류(`Unable to parse range`)
 
 ## API (로그인 세션 필요)
 

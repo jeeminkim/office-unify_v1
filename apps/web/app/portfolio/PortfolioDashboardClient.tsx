@@ -253,9 +253,17 @@ export function PortfolioDashboardClient() {
         requestId?: string;
         candidateCount?: number;
         message?: string;
+        actionHint?: string;
+        warningCode?: string;
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if (data.ok === false) {
+        setInfo(
+          [data.message, data.actionHint].filter(Boolean).join(" "),
+        );
+        return;
+      }
       if (data.requestId) setTickerResolverRequestId(data.requestId);
       setInfo(
         data.message
