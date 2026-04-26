@@ -158,17 +158,17 @@ export function PortfolioDashboardClient() {
     warnings?: string[];
     fx?: {
       ticker?: string;
-      priceFormula?: string;
-      currencyFormula?: string;
-      tradetimeFormula?: string;
-      datadelayFormula?: string;
+      priceFormulaText?: string;
+      currencyFormulaText?: string;
+      tradetimeFormulaText?: string;
+      datadelayFormulaText?: string;
       rawPrice?: string;
       parsedPrice?: number;
       status?: "ok" | "pending" | "empty" | "parse_failed" | "missing";
       message?: string;
       formulaCheckHint?: string;
       formulaAlternatives?: string[];
-      expectedPriceFormula?: string;
+      expectedPriceResultFormula?: string;
     };
   } | null>(null);
   const [tickerEditDraft, setTickerEditDraft] = useState<{ key: string; googleTicker: string; quoteSymbol: string } | null>(null);
@@ -281,17 +281,17 @@ export function PortfolioDashboardClient() {
         warnings?: string[];
         fx?: {
           ticker?: string;
-          priceFormula?: string;
-          currencyFormula?: string;
-          tradetimeFormula?: string;
-          datadelayFormula?: string;
+          priceFormulaText?: string;
+          currencyFormulaText?: string;
+          tradetimeFormulaText?: string;
+          datadelayFormulaText?: string;
           rawPrice?: string;
           parsedPrice?: number;
           status?: "ok" | "pending" | "empty" | "parse_failed" | "missing";
           message?: string;
           formulaCheckHint?: string;
           formulaAlternatives?: string[];
-          expectedPriceFormula?: string;
+          expectedPriceResultFormula?: string;
         };
       };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -689,9 +689,9 @@ export function PortfolioDashboardClient() {
             FX {quoteStatus.fx?.ticker ?? "CURRENCY:USDKRW"} · status {quoteStatus.fx?.status ?? "missing"} · raw {quoteStatus.fx?.rawPrice ?? "-"} · parsed{" "}
             {quoteStatus.fx?.parsedPrice == null ? "NO_DATA" : fmt(quoteStatus.fx.parsedPrice)}
           </p>
-          {quoteStatus.fx?.priceFormula ? (
+          {quoteStatus.fx?.priceFormulaText ? (
             <p className="mt-1 font-mono text-[11px] text-slate-700">
-              F(price) {quoteStatus.fx.priceFormula}
+              F(참고) {quoteStatus.fx.priceFormulaText}
             </p>
           ) : null}
           {quoteStatus.fx?.message ? (

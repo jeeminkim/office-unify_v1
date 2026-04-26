@@ -8,9 +8,26 @@
 
 ## GOOGLEFINANCE (준실시간)
 
-- 동기화 시 **시세·환율·손익**은 서버가 숫자를 채우지 않고, **`GOOGLEFINANCE` 수식**을 `USER_ENTERED`로 주입합니다.
+- 동기화 시 **시세·환율**은 서버가 숫자를 채우지 않고, **`GOOGLEFINANCE` 수식**을 `USER_ENTERED`로 주입합니다.
 - **지연**: 최대 약 **20분** 지연·누락·`#N/A`가 날 수 있습니다. **초단타·실시간 트레이딩 엔진이 아닙니다.**
-- **환율(원화 환산)**: `GOOGLEFINANCE("CURRENCY:USDKRW","price")` US 보유/관심 행에 사용합니다. KR 행은 `fx_rate_to_krw = 1`로 둡니다.
+
+### `portfolio_quotes` 컬럼 계약 (formula 텍스트 vs 결과 수식)
+
+서버 read-back은 **가격·통화·시간·지연**을 **G·I·K·M**에서만 읽습니다. F·H·J·L은 사람이 보는 **설명/수식 문자열(텍스트)** 만 둡니다(선행 `'` 로 텍스트 셀 처리).
+
+| 열 | 헤더 | 내용 |
+|----|------|------|
+| A–E | market … google_ticker | 메타 |
+| F | price_formula_text | 예: `'=IFERROR(GOOGLEFINANCE(E2,"price"),)` (텍스트) |
+| G | price_result_formula | 실제 `=IFERROR(GOOGLEFINANCE(E2,"price"),)` — 계산 결과가 G에 표시 |
+| H / I | currency_* | 동일 패턴 |
+| J / K | tradetime_* | 동일 패턴 |
+| L / M | datadelay_* | 동일 패턴 |
+| N–O | status, last_synced_at | |
+
+**FX 행**: E=`CURRENCY:USDKRW`, F는 `=GOOGLEFINANCE("CURRENCY:USDKRW")` 를 텍스트로 표시, **G**에 `=GOOGLEFINANCE("CURRENCY:USDKRW")` (attribute 없음) 로 환율 숫자. I는 `KRW` 고정 또는 비움. J/K/L/M은 스펙에 맞춘 안내 텍스트·공백. `POST /api/portfolio/quotes/refresh` 가 전체 행을 새 계약으로 덮어씁니다.
+
+- **환율(원화 환산)**: 앱은 FX 행 **G열** 숫자를 USD/KRW로 읽습니다. KR 행은 `fx_rate_to_krw = 1`로 둡니다.
 
 ## 리포트 목표가 (`research_price_targets`)
 

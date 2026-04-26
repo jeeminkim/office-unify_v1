@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **portfolio_quotes 시트 계약 재정의:** F/H/J/L은 수식 **설명 텍스트**만, 실제 `GOOGLEFINANCE` 계산 수식은 G/I/K/M에만 둡니다. 서버 read-back·`quotes/status` API는 결과 열만 파싱하고 `*FormulaText` 필드로 참고 텍스트를 노출합니다. FX는 G에 `=GOOGLEFINANCE("CURRENCY:USDKRW")`(attribute 없음)를 쓰고, `quotes/refresh` 한 번으로 기존 행을 새 레이아웃으로 덮어씁니다.
 - **검증 전 기본 ticker 적용:** `ticker-resolver/status` 추천에 `defaultApplyCandidate`/`canApplyDefaultBeforeVerification`을 추가하고, `/portfolio`에서 「검증 전 기본 추천 적용」「고신뢰 기본 추천 일괄 적용」으로 `apply-bulk`(`source: default_unverified`) 후 `quotes/refresh`를 이어 실행해 `google_ticker` 없이 `missing_row`만 나오는 상황을 완화. `quotes/refresh` 응답에 보유 수·ticker 보유 수 메타 추가.
 - **Google Sheets 탭 자동 복구:** `portfolio_quotes`, `portfolio_quote_candidates` 탭이 없을 때 앱이 자동 생성 후 헤더를 보정하도록 추가하고, A1 range를 `'sheet_name'!A1` escape 방식으로 통일해 `Unable to parse range` 계열 빌드/운영 오류를 완화.
 - **Sheets 오류 분류/액션 가이드:** quotes/ticker refresh API에서 `sheet_tab_missing_or_invalid_range`, `sheet_permission_denied`, `spreadsheet_not_found_or_wrong_id`, `sheets_update_failed`로 원인 코드를 분리해 사용자에게 재시도/권한/ID 점검 안내를 반환.

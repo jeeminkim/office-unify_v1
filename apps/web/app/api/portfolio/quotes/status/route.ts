@@ -7,7 +7,7 @@ import {
   buildGoogleFinanceTickerCandidates,
   isGoogleFinanceQuoteConfigured,
   portfolioQuotesFxAlternativePriceFormulas,
-  PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED,
+  PORTFOLIO_QUOTES_FX_PRICE_RESULT_FORMULA_EXPECTED,
   readGoogleFinanceQuoteSheetRows,
 } from '@/lib/server/googleFinanceSheetQuoteService';
 
@@ -35,7 +35,7 @@ export async function GET() {
         ticker: 'CURRENCY:USDKRW',
         status: 'missing',
         formulaAlternatives: portfolioQuotesFxAlternativePriceFormulas(),
-        expectedPriceFormula: PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED,
+        expectedPriceResultFormula: PORTFOLIO_QUOTES_FX_PRICE_RESULT_FORMULA_EXPECTED,
       },
       rows: holdings.map((holding) => ({
         market: holding.market,
@@ -81,10 +81,10 @@ export async function GET() {
         name: holding.name,
         googleTicker,
         quoteSymbol: holding.quote_symbol ?? undefined,
-        priceFormula: row?.priceFormula,
-        currencyFormula: row?.currencyFormula,
-        tradetimeFormula: row?.tradetimeFormula,
-        datadelayFormula: row?.datadelayFormula,
+        priceFormulaText: row?.priceFormulaText,
+        currencyFormulaText: row?.currencyFormulaText,
+        tradetimeFormulaText: row?.tradetimeFormulaText,
+        datadelayFormulaText: row?.datadelayFormulaText,
         rawPrice: row?.rawPrice,
         parsedPrice: row?.price,
         rawCurrency: row?.rawCurrency,
@@ -106,7 +106,7 @@ export async function GET() {
     const fxFormulaAlternatives = portfolioQuotesFxAlternativePriceFormulas();
     const fxFormulaCheckHint =
       fxStatus !== 'ok'
-        ? `FX 행 F열 수식이 ${PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED}인지 확인하세요.`
+        ? `FX 행 G열에 ${PORTFOLIO_QUOTES_FX_PRICE_RESULT_FORMULA_EXPECTED} 수식 결과가 있어야 합니다.`
         : undefined;
     return NextResponse.json({
       ok: true,
@@ -120,10 +120,10 @@ export async function GET() {
       },
       fx: {
         ticker: 'CURRENCY:USDKRW',
-        priceFormula: data.fxRowDetail?.priceFormula,
-        currencyFormula: data.fxRowDetail?.currencyFormula,
-        tradetimeFormula: data.fxRowDetail?.tradetimeFormula,
-        datadelayFormula: data.fxRowDetail?.datadelayFormula,
+        priceFormulaText: data.fxRowDetail?.priceFormulaText,
+        currencyFormulaText: data.fxRowDetail?.currencyFormulaText,
+        tradetimeFormulaText: data.fxRowDetail?.tradetimeFormulaText,
+        datadelayFormulaText: data.fxRowDetail?.datadelayFormulaText,
         rawPrice: fxRawPrice,
         parsedPrice: data.fxRate,
         currency: data.fxRowDetail?.currency,
@@ -143,7 +143,7 @@ export async function GET() {
                   : 'FX 행을 찾지 못했습니다',
         formulaCheckHint: fxFormulaCheckHint,
         formulaAlternatives: fxStatus === 'ok' ? [] : fxFormulaAlternatives,
-        expectedPriceFormula: PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED,
+        expectedPriceResultFormula: PORTFOLIO_QUOTES_FX_PRICE_RESULT_FORMULA_EXPECTED,
         candidates: ['CURRENCY:USDKRW', 'USDKRW', '"CURRENCY:USDKRW"'],
       },
       rows,

@@ -1,12 +1,6 @@
 import 'server-only';
 
-import {
-  buildA1Range,
-  ensureSheetTab,
-  sheetsValuesBatchGet,
-  sheetsValuesBatchUpdate,
-  sheetsValuesGet,
-} from '@/lib/server/google-sheets-api';
+import { buildA1Range, ensureSheetTab, sheetsValuesGet, sheetsValuesUpdate } from '@/lib/server/google-sheets-api';
 import {
   classifyFxReadbackStatus,
   googleSheetCellAsString,
@@ -28,11 +22,12 @@ export type GoogleFinanceQuoteRow = {
   symbol: string;
   normalizedKey: string;
   googleTicker: string;
-  /** F열 수식 문자열(FORMULA read-back) */
-  priceFormula?: string;
-  currencyFormula?: string;
-  tradetimeFormula?: string;
-  datadelayFormula?: string;
+  /** F열: 사람이 읽는 수식 설명(텍스트) */
+  priceFormulaText?: string;
+  currencyFormulaText?: string;
+  tradetimeFormulaText?: string;
+  datadelayFormulaText?: string;
+  /** G/I/K/M에서 읽은 표시값 */
   rawPrice?: string;
   price?: number;
   currency?: string;
@@ -46,12 +41,12 @@ export type GoogleFinanceQuoteRow = {
   updatedAt?: string;
 };
 
-/** portfolio_quotes FX 행 read-back(수식 F/H/J/L, 값 G/I/K/M). */
+/** portfolio_quotes FX 행 read-back(G=가격, F=설명 텍스트). */
 export type GoogleFinanceFxRowReadback = {
-  priceFormula?: string;
-  currencyFormula?: string;
-  tradetimeFormula?: string;
-  datadelayFormula?: string;
+  priceFormulaText?: string;
+  currencyFormulaText?: string;
+  tradetimeFormulaText?: string;
+  datadelayFormulaText?: string;
   rawPrice?: string;
   price?: number;
   currency?: string;
@@ -89,7 +84,6 @@ export function buildGoogleFinanceTickerCandidates(input: HoldingInput): string[
   return Array.from(candidates);
 }
 
-
 function classifyRowStatus(rawPrice: string, parsedPrice: number | undefined): GoogleFinanceQuoteRow['rowStatus'] {
   if (parsedPrice != null && parsedPrice > 0) return 'ok';
   if (!rawPrice) return 'formula_pending';
@@ -100,25 +94,25 @@ function classifyRowStatus(rawPrice: string, parsedPrice: number | undefined): G
   return 'empty_price';
 }
 
-function rowFormula(tickerCell: string, field: 'price' | 'currency' | 'tradetime' | 'datadelay'): string {
+/** Sheets USER_ENTERED: 선행 ' 는 셀을 텍스트로 두고 화면에는 수식 문자열만 보이게 함. */
+function asFormulaHintText(formula: string): string {
+  const t = formula.trim();
+  if (t.startsWith("'")) return t;
+  return `'${t}`;
+}
+
+function rowResultFormulaEr(tickerCell: string, field: 'price' | 'currency' | 'tradetime' | 'datadelay'): string {
   return `=IFERROR(GOOGLEFINANCE(${tickerCell},"${field}"),)`;
 }
 
-/** FX 행 E열 고정 값(status API·안내 문구와 동일하게 유지). */
+/** FX 행 E열 고정 값 */
 export const PORTFOLIO_QUOTES_FX_GOOGLE_TICKER = 'CURRENCY:USDKRW';
 
-/** F열 기대 수식(안내·검증용). */
-export const PORTFOLIO_QUOTES_FX_PRICE_FORMULA_EXPECTED =
-  '=IFERROR(GOOGLEFINANCE("CURRENCY:USDKRW","price"),)';
+/** G열 기대 계산 수식(안내·검증용) — attribute 없음 */
+export const PORTFOLIO_QUOTES_FX_PRICE_RESULT_FORMULA_EXPECTED = '=GOOGLEFINANCE("CURRENCY:USDKRW")';
 
-/** CURRENCY:USDKRW가 비어 있을 때 시트에서 시도할 수 있는 대체 price 관련 수식 예시. */
 export function portfolioQuotesFxAlternativePriceFormulas(): string[] {
-  return ['=GOOGLEFINANCE("CURRENCY:USDKRW")', '=GOOGLEFINANCE("CURRENCY:USDKRW","price")'];
-}
-
-/** FX 행: E에 티커 문자열을 두고 수식에서는 리터럴을 사용(사용자 스펙과 동일). */
-function fxRowFormula(field: 'price' | 'currency' | 'tradetime' | 'datadelay'): string {
-  return `=IFERROR(GOOGLEFINANCE("CURRENCY:USDKRW","${field}"),)`;
+  return ['=IFERROR(GOOGLEFINANCE("CURRENCY:USDKRW"),)', '=GOOGLEFINANCE("CURRENCY:USDKRW","price")'];
 }
 
 function messageForStatus(status: GoogleFinanceQuoteRow['rowStatus']): string | undefined {
@@ -128,32 +122,6 @@ function messageForStatus(status: GoogleFinanceQuoteRow['rowStatus']): string | 
   if (status === 'ticker_mismatch') return 'Google ticker 형식 확인이 필요합니다';
   if (status === 'missing_row') return 'portfolio_quotes 시트에서 종목 행을 찾지 못했습니다';
   return undefined;
-}
-
-async function readQuoteFormulaColumns(
-  spreadsheetId: string,
-  tab: string,
-): Promise<[unknown[][], unknown[][], unknown[][], unknown[][]]> {
-  try {
-    const batch = await sheetsValuesBatchGet({
-      spreadsheetId,
-      rangesA1: [
-        buildA1Range(tab, 'F2:F500'),
-        buildA1Range(tab, 'H2:H500'),
-        buildA1Range(tab, 'J2:J500'),
-        buildA1Range(tab, 'L2:L500'),
-      ],
-      valueRenderOption: 'FORMULA',
-    });
-    return [
-      batch[0] ?? [],
-      batch[1] ?? [],
-      batch[2] ?? [],
-      batch[3] ?? [],
-    ];
-  } catch {
-    return [[], [], [], []];
-  }
 }
 
 function toGoogleTickerLegacy(market: string, symbol: string): string {
@@ -179,14 +147,14 @@ export async function syncGoogleFinanceQuoteSheetRows(holdings: HoldingInput[]):
     'name',
     'normalized_key',
     'google_ticker',
-    'price_formula',
-    'price',
-    'currency_formula',
-    'currency',
-    'tradetime_formula',
-    'tradetime',
-    'datadelay_formula',
-    'datadelay',
+    'price_formula_text',
+    'price_result_formula',
+    'currency_formula_text',
+    'currency_result_formula',
+    'tradetime_formula_text',
+    'tradetime_result_formula',
+    'datadelay_formula_text',
+    'datadelay_result_formula',
     'status',
     'last_synced_at',
   ];
@@ -196,67 +164,58 @@ export async function syncGoogleFinanceQuoteSheetRows(holdings: HoldingInput[]):
     header,
   });
   const configuredRows = holdings.filter((h) => Boolean(h.googleTicker?.trim()));
-  type BuiltRow = {
-    a2e: [string, string, string, string, string];
-    priceF: string;
-    currencyH: string;
-    tradetimeJ: string;
-    datadelayL: string;
-    no: [string, string];
-  };
-  const built: BuiltRow[] = configuredRows.map((h, idx) => {
+  const syncedAt = new Date().toISOString();
+  const body: string[][] = configuredRows.map((h, idx) => {
     const r = idx + 2;
     const ticker = h.googleTicker!.trim().toUpperCase();
     const normalizedKey = normalizeQuoteKey(h.market, h.symbol);
-    return {
-      a2e: [
-        h.market.trim().toUpperCase(),
-        h.market === 'KR' ? h.symbol.toUpperCase().padStart(6, '0') : h.symbol.toUpperCase(),
-        h.displayName ?? h.symbol.toUpperCase(),
-        normalizedKey,
-        ticker,
-      ],
-      priceF: rowFormula(`E${r}`, 'price'),
-      currencyH: rowFormula(`E${r}`, 'currency'),
-      tradetimeJ: rowFormula(`E${r}`, 'tradetime'),
-      datadelayL: rowFormula(`E${r}`, 'datadelay'),
-      no: ['', new Date().toISOString()],
-    };
+    const eCell = `E${r}`;
+    const gPrice = rowResultFormulaEr(eCell, 'price');
+    const gCur = rowResultFormulaEr(eCell, 'currency');
+    const gTime = rowResultFormulaEr(eCell, 'tradetime');
+    const gDelay = rowResultFormulaEr(eCell, 'datadelay');
+    return [
+      h.market.trim().toUpperCase(),
+      h.market === 'KR' ? h.symbol.toUpperCase().padStart(6, '0') : h.symbol.toUpperCase(),
+      h.displayName ?? h.symbol.toUpperCase(),
+      normalizedKey,
+      ticker,
+      asFormulaHintText(gPrice),
+      gPrice,
+      asFormulaHintText(gCur),
+      gCur,
+      asFormulaHintText(gTime),
+      gTime,
+      asFormulaHintText(gDelay),
+      gDelay,
+      '',
+      syncedAt,
+    ];
   });
-  built.push({
-    a2e: ['FX', 'USDKRW', 'USDKRW', normalizeQuoteKey('FX', 'USDKRW'), PORTFOLIO_QUOTES_FX_GOOGLE_TICKER],
-    priceF: fxRowFormula('price'),
-    currencyH: fxRowFormula('currency'),
-    tradetimeJ: fxRowFormula('tradetime'),
-    datadelayL: fxRowFormula('datadelay'),
-    no: ['', new Date().toISOString()],
-  });
-  const lastRow = 1 + built.length;
-  const batchMain: Array<{ rangeA1: string; values: string[][] }> = [
-    { rangeA1: buildA1Range(tab, 'A1:O1'), values: [header] },
-    { rangeA1: buildA1Range(tab, `A2:E${lastRow}`), values: built.map((b) => [...b.a2e]) },
-    { rangeA1: buildA1Range(tab, `F2:F${lastRow}`), values: built.map((b) => [b.priceF]) },
-    { rangeA1: buildA1Range(tab, `H2:H${lastRow}`), values: built.map((b) => [b.currencyH]) },
-    { rangeA1: buildA1Range(tab, `J2:J${lastRow}`), values: built.map((b) => [b.tradetimeJ]) },
-    { rangeA1: buildA1Range(tab, `L2:L${lastRow}`), values: built.map((b) => [b.datadelayL]) },
-    { rangeA1: buildA1Range(tab, `N2:O${lastRow}`), values: built.map((b) => [...b.no]) },
-  ];
-  await sheetsValuesBatchUpdate({
+  const fxG = '=GOOGLEFINANCE("CURRENCY:USDKRW")';
+  body.push([
+    'FX',
+    'USDKRW',
+    'USDKRW',
+    normalizeQuoteKey('FX', 'USDKRW'),
+    PORTFOLIO_QUOTES_FX_GOOGLE_TICKER,
+    asFormulaHintText(fxG),
+    fxG,
+    `'FX currency`,
+    'KRW',
+    `'FX tradetime unsupported`,
+    '',
+    `'FX datadelay unsupported`,
+    '',
+    '',
+    syncedAt,
+  ]);
+  const lastRow = 1 + body.length;
+  await sheetsValuesUpdate({
     spreadsheetId: id,
+    rangeA1: buildA1Range(tab, `A1:O${lastRow}`),
+    values: [header, ...body],
     valueInputOption: 'USER_ENTERED',
-    data: batchMain,
-  });
-  // FX 행만 재확인: E/F/H/J/L 고정 스펙을 마지막에 한 번 더 씀(G/I/K/M 미포함).
-  await sheetsValuesBatchUpdate({
-    spreadsheetId: id,
-    valueInputOption: 'USER_ENTERED',
-    data: [
-      { rangeA1: buildA1Range(tab, `E${lastRow}:E${lastRow}`), values: [[PORTFOLIO_QUOTES_FX_GOOGLE_TICKER]] },
-      { rangeA1: buildA1Range(tab, `F${lastRow}:F${lastRow}`), values: [[fxRowFormula('price')]] },
-      { rangeA1: buildA1Range(tab, `H${lastRow}:H${lastRow}`), values: [[fxRowFormula('currency')]] },
-      { rangeA1: buildA1Range(tab, `J${lastRow}:J${lastRow}`), values: [[fxRowFormula('tradetime')]] },
-      { rangeA1: buildA1Range(tab, `L${lastRow}:L${lastRow}`), values: [[fxRowFormula('datadelay')]] },
-    ],
   });
 }
 
@@ -291,7 +250,6 @@ export async function readGoogleFinanceQuoteSheetRows(): Promise<{
       dateTimeRenderOption: 'FORMATTED_STRING',
     });
   }
-  const [fFormulas, hFormulas, jFormulas, lFormulas] = await readQuoteFormulaColumns(id, tab);
   if (values.length === 0) {
     return {
       rows: [],
@@ -309,32 +267,31 @@ export async function readGoogleFinanceQuoteSheetRows(): Promise<{
   let fxRate: number | undefined;
   let fxRawPrice: string | undefined;
   let fxRowDetail: GoogleFinanceFxRowReadback | undefined;
-  values.forEach((row, rowIdx) => {
+  values.forEach((row) => {
     const market = googleSheetCellAsString(row[0]).toUpperCase();
     const symbol = googleSheetCellAsString(row[1]).toUpperCase();
     if (!market || !symbol) return;
     const googleTicker = googleSheetCellAsString(row[4]) || toGoogleTickerLegacy(market, symbol);
-    const priceFormula = googleSheetCellAsString(fFormulas[rowIdx]?.[0]) || undefined;
-    const currencyFormula = googleSheetCellAsString(hFormulas[rowIdx]?.[0]) || undefined;
-    const tradetimeFormula = googleSheetCellAsString(jFormulas[rowIdx]?.[0]) || undefined;
-    const datadelayFormula = googleSheetCellAsString(lFormulas[rowIdx]?.[0]) || undefined;
-    const rawPriceG = googleSheetCellAsString(row[6]);
-    const rawPriceLegacyF = googleSheetCellAsString(row[5]);
-    const rawPrice = rawPriceG || rawPriceLegacyF;
-    const price = parseGoogleFinanceSheetNumber(rawPriceG || rawPriceLegacyF);
+    const priceFormulaText = googleSheetCellAsString(row[5]) || undefined;
+    const currencyFormulaText = googleSheetCellAsString(row[7]) || undefined;
+    const tradetimeFormulaText = googleSheetCellAsString(row[9]) || undefined;
+    const datadelayFormulaText = googleSheetCellAsString(row[11]) || undefined;
+    const rawPrice = googleSheetCellAsString(row[6]);
+    const price = parseGoogleFinanceSheetNumber(row[6]);
     const datadelay = parseGoogleFinanceSheetNumber(row[12]);
     const rowStatus = classifyRowStatus(rawPrice, price);
     if (market === 'FX' && symbol === 'USDKRW') {
       fxRawPrice = rawPrice;
       fxRate = price;
+      const curRaw = googleSheetCellAsString(row[8]);
       fxRowDetail = {
-        priceFormula,
-        currencyFormula,
-        tradetimeFormula,
-        datadelayFormula,
+        priceFormulaText,
+        currencyFormulaText,
+        tradetimeFormulaText,
+        datadelayFormulaText,
         rawPrice,
         price,
-        currency: googleSheetCellAsString(row[8]) || undefined,
+        currency: curRaw || 'KRW',
         tradetime: googleSheetCellAsString(row[10]) || undefined,
         datadelay: parseGoogleFinanceSheetNumber(row[12]),
         rawDelay: googleSheetCellAsString(row[12]) || undefined,
@@ -346,10 +303,10 @@ export async function readGoogleFinanceQuoteSheetRows(): Promise<{
       symbol,
       normalizedKey: googleSheetCellAsString(row[3]) || normalizeQuoteKey(market, symbol),
       googleTicker,
-      priceFormula,
-      currencyFormula,
-      tradetimeFormula,
-      datadelayFormula,
+      priceFormulaText,
+      currencyFormulaText,
+      tradetimeFormulaText,
+      datadelayFormulaText,
       rawPrice,
       price,
       currency: googleSheetCellAsString(row[8]) || undefined,
@@ -376,4 +333,3 @@ export async function readGoogleFinanceQuoteSheetRows(): Promise<{
     writeConfigured: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()),
   };
 }
-
