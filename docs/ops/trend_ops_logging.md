@@ -2,6 +2,14 @@
 
 ## Warning Code 목록
 
+- `trend_gemini_finalizer_failed`
+- `trend_gemini_finalizer_retry_failed`
+- `trend_final_report_fallback_used`
+- `trend_raw_error_report_blocked`
+- `trend_sheets_requests_append_failed`
+- `trend_sheets_requests_range_invalid`
+- `trend_sheets_requests_tab_created`
+- `trend_sheets_requests_append_fallback_used`
 - `trend_time_window_section_missing`
 - `trend_source_quality_low`
 - `trend_source_quality_parse_failed`
@@ -33,12 +41,29 @@
 
 ## Fingerprint 규칙
 
+- `trend:${userKey}:${topicKey}:finalizer:gemini_failed`
+- `trend:${userKey}:${topicKey}:finalizer:fallback_used`
+- `trend:${userKey}:${topicKey}:sheets:trend_requests_range_invalid`
 - `trend:${userKey}:${topicKey}:${stage}:${warningCode}`
 - `trend:${userKey}:${topicKey}:ticker:${companyName}:${status}`
 - `trend:${userKey}:${topicKey}:signal_upsert`
 - `trend:${userKey}:${topicKey}:memory_compare`
 
 동일 fingerprint는 신규 insert 대신 `occurrence_count` 증가 + `last_seen_at` 갱신.
+
+`detail`에는 가능한 한 아래만 저장한다(API 키·토큰·원문 입력 전체·credential 제외).
+
+```json
+{
+  "feature": "trend",
+  "stage": "format",
+  "provider": "gemini",
+  "topicKey": "...",
+  "status": "failed",
+  "fallbackUsed": true,
+  "error": { "name": "...", "message": "..." }
+}
+```
 
 ## 운영 조회 SQL
 
@@ -71,6 +96,31 @@ select
   detail
 from public.web_ops_events
 where domain = 'trend'
+order by last_seen_at desc
+limit 50;
+```
+
+Gemini finalizer·Sheets 요청 로그 이슈
+
+```sql
+select
+  code,
+  severity,
+  occurrence_count,
+  first_seen_at,
+  last_seen_at,
+  message,
+  detail
+from public.web_ops_events
+where domain = 'trend'
+  and code in (
+    'trend_gemini_finalizer_failed',
+    'trend_gemini_finalizer_retry_failed',
+    'trend_final_report_fallback_used',
+    'trend_raw_error_report_blocked',
+    'trend_sheets_requests_append_failed',
+    'trend_sheets_requests_range_invalid'
+  )
 order by last_seen_at desc
 limit 50;
 ```

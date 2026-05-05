@@ -66,6 +66,10 @@ function narrativeFor(hint: SectorRadarActionHint): string {
   }
 }
 
+function noDataNarrative(sampleCount: number, quoteOkCount: number): string {
+  return `시세 데이터가 아직 비어 있어 점수를 계산하지 못했습니다. 표본 ${sampleCount}개 중 시세 ${quoteOkCount}개입니다. 시세 새로고침 후 다시 확인해 주세요.`;
+}
+
 function momentumPointsFromChangePct(changePct: number | undefined): number | undefined {
   if (changePct == null || !Number.isFinite(changePct)) return undefined;
   if (changePct > 3) return 28;
@@ -149,7 +153,10 @@ export function computeStandardSectorSnapshot(
       name: categoryName,
       zone: 'no_data',
       actionHint: 'no_data',
-      narrativeHint: narrativeFor('no_data'),
+      narrativeHint: noDataNarrative(0, 0),
+      sampleCount: 0,
+      quoteOkCount: 0,
+      quoteMissingCount: 0,
       anchors: [],
       components: {},
       warnings: quiet ? [] : ['watchlist_anchor_hint'],
@@ -157,6 +164,9 @@ export function computeStandardSectorSnapshot(
   }
 
   const okPrice = rows.filter((r) => r.dataStatus === 'ok' && r.price != null && r.price > 0);
+  const sampleCount = rows.length;
+  const quoteOkCount = okPrice.length;
+  const quoteMissingCount = Math.max(0, sampleCount - quoteOkCount);
   if (okPrice.length === 0) {
     if (!quiet) warnings.push('price_unavailable');
     return {
@@ -164,7 +174,10 @@ export function computeStandardSectorSnapshot(
       name: categoryName,
       zone: 'no_data',
       actionHint: 'no_data',
-      narrativeHint: narrativeFor('no_data'),
+      narrativeHint: noDataNarrative(sampleCount, quoteOkCount),
+      sampleCount,
+      quoteOkCount,
+      quoteMissingCount,
       anchors: buildSummaryAnchors(rows),
       components: {},
       warnings,
@@ -230,6 +243,9 @@ export function computeStandardSectorSnapshot(
     zone,
     actionHint,
     narrativeHint: narrativeFor(actionHint),
+    sampleCount,
+    quoteOkCount,
+    quoteMissingCount,
     anchors: buildSummaryAnchors(rows),
     components: {
       momentum: m,
@@ -265,7 +281,10 @@ function scoreCryptoSectorFromAnchors(categoryKey: string, categoryName: string,
       name: categoryName,
       zone: 'no_data',
       actionHint: 'no_data',
-      narrativeHint: narrativeFor('no_data'),
+      narrativeHint: noDataNarrative(0, 0),
+      sampleCount: 0,
+      quoteOkCount: 0,
+      quoteMissingCount: 0,
       anchors: [],
       components: {},
       warnings: ['watchlist_anchor_hint'],
@@ -292,7 +311,10 @@ function scoreCryptoSectorFromAnchors(categoryKey: string, categoryName: string,
       name: categoryName,
       zone: 'no_data',
       actionHint: 'no_data',
-      narrativeHint: narrativeFor('no_data'),
+      narrativeHint: noDataNarrative(rows.length, 0),
+      sampleCount: rows.length,
+      quoteOkCount: 0,
+      quoteMissingCount: rows.length,
       anchors: buildSummaryAnchors(rows),
       components: {},
       warnings,
@@ -316,6 +338,9 @@ function scoreCryptoSectorFromAnchors(categoryKey: string, categoryName: string,
     zone,
     actionHint,
     narrativeHint: narrativeFor(actionHint),
+    sampleCount: rows.length,
+    quoteOkCount: rows.filter((r) => r.dataStatus === 'ok' && r.price != null && r.price > 0).length,
+    quoteMissingCount: rows.filter((r) => !(r.dataStatus === 'ok' && r.price != null && r.price > 0)).length,
     anchors: buildSummaryAnchors(rows),
     components: {
       cryptoBtc: btc,

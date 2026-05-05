@@ -1,4 +1,12 @@
 export const TREND_WARNING_CODES = {
+  GEMINI_FINALIZER_FAILED: 'trend_gemini_finalizer_failed',
+  GEMINI_FINALIZER_RETRY_FAILED: 'trend_gemini_finalizer_retry_failed',
+  FINAL_REPORT_FALLBACK_USED: 'trend_final_report_fallback_used',
+  RAW_ERROR_REPORT_BLOCKED: 'trend_raw_error_report_blocked',
+  SHEETS_TREND_REQUESTS_APPEND_FAILED: 'trend_sheets_requests_append_failed',
+  SHEETS_TREND_REQUESTS_RANGE_INVALID: 'trend_sheets_requests_range_invalid',
+  SHEETS_TREND_REQUESTS_TAB_CREATED: 'trend_sheets_requests_tab_created',
+  SHEETS_TREND_REQUESTS_APPEND_FALLBACK_USED: 'trend_sheets_requests_append_fallback_used',
   TIME_WINDOW_SECTION_MISSING: 'trend_time_window_section_missing',
   SOURCE_QUALITY_LOW: 'trend_source_quality_low',
   SOURCE_QUALITY_PARSE_FAILED: 'trend_source_quality_parse_failed',

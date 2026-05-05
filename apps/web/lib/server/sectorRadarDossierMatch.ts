@@ -154,7 +154,7 @@ export function matchRelatedSectorsForHolding(
     candidates.push({
       key: snap.key,
       name: snap.name,
-      score: snap.score,
+      score: snap.adjustedScore ?? snap.score,
       zone: snap.zone,
       actionHint: snap.actionHint,
       narrativeHint: snap.narrativeHint,

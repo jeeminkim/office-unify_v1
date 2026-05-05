@@ -11,6 +11,7 @@ import type {
   TrendReportMode,
   TrendSectorFocus,
 } from "@office-unify/shared-types";
+import { trendSanitizeReportMarkdownForUi } from "@office-unify/ai-office-engine";
 import { TrendOpsSummaryPanel } from "./TrendOpsSummaryPanel";
 
 const jsonHeaders: HeadersInit = {
@@ -174,6 +175,11 @@ export function TrendAnalysisClient() {
     }, 650);
     return () => clearInterval(t);
   }, [loading]);
+
+  const reportDisplay = useMemo(() => {
+    if (!result) return { markdown: "", blocked: false };
+    return trendSanitizeReportMarkdownForUi(result.reportMarkdown);
+  }, [result]);
 
   const sectorPayload = useMemo((): TrendSectorFocus[] => {
     if (sectorSet.has("all")) return ["all"];
@@ -492,6 +498,15 @@ export function TrendAnalysisClient() {
             </button>
           </div>
 
+          {result.qualityMeta?.finalizer?.degraded ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              <p className="font-medium">최종 정리: Gemini 실패 → 임시 요약 fallback</p>
+              <p className="mt-1">
+                Gemini 최종 정리 단계에서 일시 오류가 발생했습니다. 원문 오류는 운영 로그에 기록했습니다.
+              </p>
+            </div>
+          ) : null}
+
           <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs text-slate-700">
             <p className="font-medium text-slate-800">최신성·도구 요약</p>
             <div className="mt-2 flex flex-wrap gap-1">
@@ -531,6 +546,28 @@ export function TrendAnalysisClient() {
                 <li className="text-amber-800">일부 단계에서 폴백이 있었습니다. 경고를 확인하세요.</li>
               ) : null}
             </ul>
+            {result.qualityMeta?.finalizer ? (
+              <p className="mt-2 text-[11px] text-slate-600">
+                최종 정리(Gemini):{" "}
+                {result.qualityMeta.finalizer.userMessage ??
+                  (result.qualityMeta.finalizer.ok ? "정상" : "degraded")}
+                {" · "}
+                재시도 {result.qualityMeta.finalizer.retryCount}회
+                {result.qualityMeta.finalizer.fallbackUsed ? " · fallback 사용" : ""}
+              </p>
+            ) : null}
+            {result.qualityMeta?.sheets ? (
+              <p className="mt-1 text-[11px] text-slate-600">
+                Sheets 요청 로그:{" "}
+                {result.qualityMeta.sheets.requestLogAppendOk
+                  ? "append OK"
+                  : `누락/실패${
+                      result.qualityMeta.sheets.requestLogAppendWarning
+                        ? ` (${result.qualityMeta.sheets.requestLogAppendWarning.slice(0, 120)})`
+                        : ""
+                    }`}
+              </p>
+            ) : null}
             <p className="mt-1 text-[11px] text-slate-500">
               흐름:{" "}
               {result.meta.providerUsed === "openai_tools_then_gemini"
@@ -676,16 +713,23 @@ export function TrendAnalysisClient() {
               {result.sections.map((s) => (
                 <div key={s.id} className="border-b border-slate-200 pb-3 last:border-0">
                   <h4 className="text-xs font-semibold text-slate-600">{s.title}</h4>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{s.body}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">
+                    {trendSanitizeReportMarkdownForUi(s.body).markdown}
+                  </p>
                 </div>
               ))}
             </div>
           </details>
 
+          {reportDisplay.blocked ? (
+            <div className="rounded border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-950">
+              본문에 API/Gemini 원문 오류 패턴이 감지되어 화면에는 안전한 요약만 표시합니다. 전체 원문은 운영 로그를 참고하세요.
+            </div>
+          ) : null}
           <details className="rounded-lg border border-slate-200 bg-white p-4">
             <summary className="cursor-pointer text-sm font-semibold text-slate-800">원문 마크다운</summary>
             <pre className="mt-3 max-h-[480px] overflow-auto whitespace-pre-wrap text-xs text-slate-700">
-              {result.reportMarkdown}
+              {reportDisplay.markdown}
             </pre>
           </details>
 

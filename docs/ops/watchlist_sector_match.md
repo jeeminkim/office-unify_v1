@@ -11,6 +11,9 @@
   3. keyword rule
   4. ticker type fallback(ETF 등)
   5. no match
+- 매칭 결과에는 `relatedAnchors`(최대 5개)가 함께 포함될 수 있음
+  - 섹터별 Sector Radar anchor universe 기반
+  - preview용이며 watchlist 자동 편입은 하지 않음
 
 ## 수동 섹터 보호 정책
 

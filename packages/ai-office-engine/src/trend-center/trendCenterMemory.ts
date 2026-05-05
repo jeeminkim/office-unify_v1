@@ -364,6 +364,8 @@ export async function runTrendSqlMemoryLayer(params: {
   };
   includeMemoryContext: boolean;
   saveToSqlMemory: boolean;
+  /** Gemini 최종 정리 실패 등으로 minimal structuredMemory를 쓸 때 v2 signal upsert·compare를 생략 */
+  skipSignalUpsertV2?: boolean;
 }): Promise<{
   memoryDelta: TrendMemoryDelta;
   meta: Pick<
@@ -656,7 +658,7 @@ export async function runTrendSqlMemoryLayer(params: {
 
     let signalUpsert: TrendSignalUpsertResult | undefined;
     let memoryCompare: TrendMemoryCompareResult | undefined;
-    if (params.qualityMeta?.structuredMemory) {
+    if (params.qualityMeta?.structuredMemory && !params.skipSignalUpsertV2) {
       signalUpsert = await upsertTrendMemorySignalsV2(params.supabase, {
         userKey: params.userKey,
         topicKey: params.qualityMeta.structuredMemory.topicKey,
@@ -672,6 +674,8 @@ export async function runTrendSqlMemoryLayer(params: {
         upsert: signalUpsert,
       });
       if (memoryCompare.warnings.length > 0) extraWarnings.push(...memoryCompare.warnings);
+    } else if (params.qualityMeta?.structuredMemory && params.skipSignalUpsertV2) {
+      extraWarnings.push('finalizer_degraded: trend_memory_signals_v2 upsert skipped for this run');
     }
     logMem('TREND_MEMORY_WRITE_DONE', { items: written, signalUpsertOk: signalUpsert?.ok ?? null });
     return {

@@ -1,4 +1,5 @@
 import type { WebPortfolioWatchlistRow } from '@office-unify/supabase-access';
+import type { SectorRadarAnchorAsset } from '@/lib/server/sectorRadarRegistry';
 
 export type WatchlistSectorMatchStatus =
   | 'matched_known_map'
@@ -29,6 +30,7 @@ export interface WatchlistSectorMatchResult {
   reason: string;
   source: 'known_map' | 'keyword_rule' | 'ticker_type_rule' | 'existing' | 'none';
   needsReview: boolean;
+  relatedAnchors?: SectorRadarAnchorAsset[];
 }
 
 type KnownEntry = { sector: string; keywords: string[]; confidence: number; reason: string };

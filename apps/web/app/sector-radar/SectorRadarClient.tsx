@@ -6,10 +6,15 @@ import type {
   SectorRadarSummaryResponse,
   SectorRadarSummarySector,
   SectorRadarStatusResponse,
+  SectorRadarTemperature,
   SectorRadarZone,
   SectorWatchlistCandidateItem,
   SectorWatchlistCandidateResponse,
 } from "@/lib/sectorRadarContract";
+import {
+  formatConfidenceSummaryLine,
+  SECTOR_RADAR_COMPONENT_CAPS,
+} from "@/lib/sectorRadarScoreExplanation";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
 import {
   getVisibleSectorRadarWarningDetailsForSector,
@@ -34,6 +39,41 @@ function zoneLabel(zone: SectorRadarZone): string {
     default:
       return "NO_DATA";
   }
+}
+
+/** 사용자-facing 해석 온도(점수 설명 레이어). 없으면 레거시 zone 라벨을 씁니다. */
+function temperatureLabel(temp: SectorRadarTemperature | undefined, zone: SectorRadarZone): string {
+  if (!temp) return zoneLabel(zone);
+  switch (temp) {
+    case "NO_DATA":
+      return "NO_DATA";
+    case "관망":
+      return "관망";
+    case "중립":
+      return "중립";
+    case "관심":
+      return "관심";
+    case "과열":
+      return "과열";
+    case "위험":
+      return "위험";
+    default:
+      return zoneLabel(zone);
+  }
+}
+
+function displaySectorPoints(s: SectorRadarSummarySector): { text: string; hasNumeric: boolean } {
+  const temp = s.scoreExplanation?.temperature;
+  if (temp === "NO_DATA") {
+    return { text: "NO_DATA", hasNumeric: false };
+  }
+  const adj = s.adjustedScore ?? s.scoreExplanation?.adjustedScore;
+  const raw = s.score ?? s.rawScore;
+  const n = adj ?? raw;
+  if (n == null || !Number.isFinite(n)) {
+    return { text: "NO_DATA", hasNumeric: false };
+  }
+  return { text: `${Math.round(n)}점`, hasNumeric: true };
 }
 
 function zoneCardClass(zone: SectorRadarZone): string {
@@ -78,6 +118,7 @@ export function SectorRadarClient() {
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
   const [showSectorRadarRawWarnings, setShowSectorRadarRawWarnings] = useState(false);
+  const [scoreExplainOpen, setScoreExplainOpen] = useState<Record<string, boolean>>({});
 
   const bySectorKey = useMemo(() => {
     const m = new Map<string, SectorWatchlistCandidateItem[]>();
@@ -258,18 +299,50 @@ export function SectorRadarClient() {
         </div>
       ) : null}
 
+      {summary?.qualityMeta?.sectorRadar ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-[11px] text-slate-700">
+          전체 {summary.qualityMeta.sectorRadar.totalSectors}개 섹터 · 신뢰도 높음 {summary.qualityMeta.sectorRadar.highConfidence} · 보통{" "}
+          {summary.qualityMeta.sectorRadar.mediumConfidence} · 낮음 {summary.qualityMeta.sectorRadar.lowConfidence} · 매우 낮음{" "}
+          {summary.qualityMeta.sectorRadar.veryLowConfidence} · NO_DATA {summary.qualityMeta.sectorRadar.noDataCount} · 시세 누락 섹터{" "}
+          {summary.qualityMeta.sectorRadar.quoteMissingSectors} · 과열/위험 {summary.qualityMeta.sectorRadar.overheatedSectors}
+        </div>
+      ) : null}
+
       <div className="grid gap-3 md:grid-cols-2">
         {(summary?.sectors ?? []).map((s: SectorRadarSummarySector) => {
           const related = (bySectorKey.get(s.key) ?? []).slice(0, 3);
+          const exp = s.scoreExplanation;
+          const pts = displaySectorPoints(s);
+          const temp = exp?.temperature;
+          const confLine =
+            exp != null
+              ? formatConfidenceSummaryLine(exp.confidence, exp.quality.sampleCount, exp.quality.quoteOkCount)
+              : null;
+          const explainOn = scoreExplainOpen[s.key] === true;
+          const caps = SECTOR_RADAR_COMPONENT_CAPS;
+          const wlRel =
+            related.length > 0
+              ? "내 관심종목과 연결된 섹터이므로 관찰 우선순위를 높게 둘 수 있습니다."
+              : "이 섹터와 연결된 관심종목은 아직 없습니다. 점수는 시장 표본 기준입니다.";
           return (
             <div key={s.key} className={`rounded-lg border p-4 text-sm ${zoneCardClass(s.zone)}`}>
               <div className="flex items-baseline justify-between gap-2">
                 <p className="font-semibold text-slate-900">{s.name}</p>
                 <p className="text-xs font-medium text-slate-600">
-                  {s.score != null ? `${Math.round(s.score)}점` : "NO_DATA"} · {zoneLabel(s.zone)}
+                  {pts.text} · {temperatureLabel(temp, s.zone)}
                 </p>
               </div>
+              {confLine ? <p className="mt-1 text-[11px] text-slate-600">{confLine}</p> : null}
               <p className="mt-2 text-xs text-slate-700">{s.narrativeHint}</p>
+              {exp?.confidence === "low" || exp?.confidence === "very_low" ? (
+                <p className="mt-1 text-[11px] font-medium text-amber-900">
+                  주의: 표본·시세 커버리지가 부족해 보수적으로 해석하세요.
+                </p>
+              ) : null}
+              <p className="mt-1 text-[11px] text-slate-600">
+                표본 {s.sampleCount ?? s.anchors.length}개 · 시세 성공 {s.quoteOkCount ?? s.anchors.filter((a) => a.dataStatus === "ok").length}개 · 시세 없음{" "}
+                {s.quoteMissingCount ?? s.anchors.filter((a) => a.dataStatus !== "ok").length}개
+              </p>
               {s.key === "crypto" && (s.components.cryptoBtc != null || s.components.cryptoAlt != null || s.components.cryptoInfra != null) ? (
                 <p className="mt-2 text-[11px] text-slate-600">
                   BTC군 {s.components.cryptoBtc?.toFixed(0) ?? "—"} · 알트/ETH {s.components.cryptoAlt?.toFixed(0) ?? "—"} · 인프라{" "}
@@ -277,10 +350,65 @@ export function SectorRadarClient() {
                 </p>
               ) : s.components.momentum != null ? (
                 <p className="mt-2 text-[11px] text-slate-600">
-                  모멘텀 {s.components.momentum.toFixed(1)} · 거래량 {s.components.volume?.toFixed(1) ?? "—"} · 52주위치{" "}
-                  {s.components.drawdown?.toFixed(1) ?? "—"} · 추세 {s.components.trend?.toFixed(1) ?? "—"} · 품질{" "}
-                  {s.components.risk?.toFixed(1) ?? "—"}
+                  한 줄 요약 · 모멘텀 {s.components.momentum.toFixed(1)} · 거래량 {s.components.volume?.toFixed(1) ?? "—"} · 52주위치{" "}
+                  {s.components.drawdown?.toFixed(1) ?? "—"} · 추세 {s.components.trend?.toFixed(1) ?? "—"} · 품질 {s.components.risk?.toFixed(1) ?? "—"}
                 </p>
+              ) : null}
+              <button
+                type="button"
+                className="mt-2 text-[11px] font-medium text-violet-800 underline underline-offset-2"
+                onClick={() => setScoreExplainOpen((prev) => ({ ...prev, [s.key]: !explainOn }))}
+              >
+                {explainOn ? "점수 설명 닫기" : "점수 설명"}
+              </button>
+              {explainOn && exp ? (
+                <div className="mt-2 space-y-2 rounded border border-slate-200/80 bg-white/70 p-2 text-[11px] text-slate-800">
+                  <p className="font-medium text-slate-900">점수 구성</p>
+                  {s.key !== "crypto" && s.components.momentum != null ? (
+                    <ul className="list-inside list-disc space-y-0.5">
+                      <li>
+                        모멘텀: {s.components.momentum.toFixed(1)} / {caps.momentum}
+                      </li>
+                      <li>
+                        거래량: {(s.components.volume ?? 0).toFixed(1)} / {caps.volume}
+                      </li>
+                      <li>
+                        52주 위치: {(s.components.drawdown ?? 0).toFixed(1)} / {caps.week52}
+                      </li>
+                      <li>
+                        추세: {(s.components.trend ?? 0).toFixed(1)} / {caps.trend}
+                      </li>
+                      <li>
+                        품질: {(s.components.risk ?? 0).toFixed(1)} / {caps.quality}
+                      </li>
+                    </ul>
+                  ) : (
+                    <p className="text-slate-600">코인 섹터는 서브그룹 가중 평균 스냅샷입니다.</p>
+                  )}
+                  <p>
+                    원점수(raw) {exp.rawScore != null ? `${Math.round(exp.rawScore)}점` : "—"} · 보정 점수(표시){" "}
+                    {exp.adjustedScore != null ? `${Math.round(exp.adjustedScore)}점` : "—"}
+                  </p>
+                  <p className="text-slate-700">{exp.interpretation}</p>
+                  <p className="font-medium text-slate-900">{exp.conservativeActionHint}</p>
+                  <p className="text-slate-600">{wlRel}</p>
+                  {exp.riskNotes.length > 0 ? (
+                    <div className="border-t border-amber-200/80 pt-2 text-amber-950">
+                      <p className="font-medium">리스크</p>
+                      <ul className="mt-1 list-inside list-disc">
+                        {exp.riskNotes.map((line, i) => (
+                          <li key={`${s.key}-risk-${i}`}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {temp === "NO_DATA" || (exp.quality.quoteMissingCount > 0 && exp.quality.quoteOkCount === 0) ? (
+                    <p className="text-amber-950">표본은 있으나 시세 데이터가 부족합니다. 데이터 새로고침 후 다시 확인하세요.</p>
+                  ) : null}
+                  {(temp === "과열" || temp === "위험") && exp.riskNotes.length === 0 ? (
+                    <p className="text-amber-950">주의: 52주 위치가 높아 추격매수 리스크가 있습니다.</p>
+                  ) : null}
+                </div>
               ) : null}
               {s.anchors.length > 0 ? (
                 <ul className="mt-2 space-y-1 text-[11px] text-slate-700">
@@ -293,7 +421,9 @@ export function SectorRadarClient() {
                 </ul>
               ) : null}
               <div className="mt-3 border-t border-slate-200/80 pt-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">관련 관심종목</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  관련 관심종목 {related.length > 0 ? `(${related.length}개)` : ""}
+                </p>
                 {related.length === 0 ? (
                   <p className="mt-1 text-[11px] text-slate-500">이 섹터와 연결된 관심종목이 없습니다.</p>
                 ) : (
@@ -325,13 +455,13 @@ export function SectorRadarClient() {
               ) : null}
               <div className="mt-2 flex flex-wrap gap-1 text-[10px]">
                 <Link
-                  href={`/decision-journal?type=hold&sectorZone=${encodeURIComponent(s.zone)}&sectorScore=${s.score != null ? String(Math.round(s.score)) : ""}&sectorKey=${encodeURIComponent(s.key)}&sectorName=${encodeURIComponent(s.name)}`}
+                  href={`/decision-journal?type=hold&sectorZone=${encodeURIComponent(s.zone)}&sectorScore=${pts.hasNumeric ? String(Math.round(s.adjustedScore ?? s.score ?? 0)) : ""}&sectorKey=${encodeURIComponent(s.key)}&sectorName=${encodeURIComponent(s.name)}`}
                   className="rounded border border-emerald-200 bg-white px-2 py-0.5 text-emerald-900 underline-offset-2 hover:underline"
                 >
                   관망 이유 기록
                 </Link>
                 <Link
-                  href={`/decision-journal?type=wait&sectorZone=${encodeURIComponent(s.zone)}&sectorScore=${s.score != null ? String(Math.round(s.score)) : ""}&sectorKey=${encodeURIComponent(s.key)}`}
+                  href={`/decision-journal?type=wait&sectorZone=${encodeURIComponent(s.zone)}&sectorScore=${pts.hasNumeric ? String(Math.round(s.adjustedScore ?? s.score ?? 0)) : ""}&sectorKey=${encodeURIComponent(s.key)}`}
                   className="rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-800 underline-offset-2 hover:underline"
                 >
                   조정 대기 기록

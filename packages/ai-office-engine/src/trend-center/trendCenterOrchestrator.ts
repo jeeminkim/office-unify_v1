@@ -12,7 +12,7 @@ import { generateGeminiResearchReport } from '../research-center/researchGeminiC
 import { DEFAULT_GEMINI_WEB_PERSONA_MODEL } from '../webPersonaLlmModels';
 import { buildTrendCuratorUserContent, trendCuratorSystemPrompt } from './trendCenterPrompts';
 import {
-  buildSafeFallbackReport,
+  buildOpenAiResearchFallbackMarkdown,
   formatTrendMemoryDeltaHeadline,
   formatTrendReport,
 } from './trendCenterFormatter';
@@ -36,6 +36,7 @@ import {
 } from './trendQualityPostprocess';
 import { logTrendOpsEvent } from './trendOpsLogger';
 import { TREND_WARNING_CODES } from './trendWarningCodes';
+import { buildDegradedStructuredMemory } from './trendStructuredMemoryFallback';
 
 function logTrend(event: string, detail?: Record<string, unknown>): void {
   if (detail) {
@@ -43,6 +44,15 @@ function logTrend(event: string, detail?: Record<string, unknown>): void {
   } else {
     console.log(`[TREND] ${event}`);
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function trendErrParts(e: unknown): { name: string; message: string } {
+  if (e instanceof Error) return { name: e.name, message: e.message.slice(0, 1200) };
+  return { name: 'Error', message: String(e).slice(0, 1200) };
 }
 
 function buildTitle(body: TrendAnalysisGenerateRequestBody): string {
@@ -210,6 +220,14 @@ export async function runTrendAnalysisGeneration(params: {
     openAiResearchBrief: openAiBrief,
   });
 
+  const topicKeyEarly = `trend-${body.geo.toLowerCase()}-${body.focus}`;
+  const geminiTimeoutMs = Math.min(
+    300_000,
+    Math.max(5_000, Number(process.env.TREND_GEMINI_FINALIZER_TIMEOUT_MS ?? 120_000) || 120_000),
+  );
+  const retryDelayMs = Math.min(10_000, Math.max(100, Number(process.env.TREND_GEMINI_FINALIZER_RETRY_DELAY_MS ?? 800) || 800));
+
+  let geminiRetryCount = 0;
   let raw: string;
   try {
     raw = await generateGeminiResearchReport({
@@ -217,135 +235,263 @@ export async function runTrendAnalysisGeneration(params: {
       model: DEFAULT_GEMINI_WEB_PERSONA_MODEL,
       systemInstruction,
       userContent,
+      timeoutMs: geminiTimeoutMs,
     });
     logTrend('TREND_DRAFT_READY', { chars: raw.length });
-  } catch (e: unknown) {
-    logTrend('TREND_NO_DATA', { error: e instanceof Error ? e.message : String(e) });
-    const fb = buildSafeFallbackReport({
-      mode: body.mode,
-      reason: `생성기 오류: ${e instanceof Error ? e.message : 'unknown'}`,
-    });
-    const conf = resolveTrendConfidence({
-      pack,
-      guardWarnings: ['Gemini 호출 실패'],
-      needsFreshness: routing.needsFreshness,
-      webSearchUsed: openAiResult?.webSearchUsed ?? false,
-    });
-    const citations = mergeCitations(openAiResult?.citations, pack.sourceRefs);
-    const toolUsage: TrendToolUsage = {
-      webSearchUsed: openAiResult?.webSearchUsed ?? false,
-      dataAnalysisUsed: openAiResult?.dataAnalysisUsed ?? false,
-      fileCountAnalyzed: body.attachedFileIds?.length ?? 0,
-      sourceCount: citations.length,
-    };
-    const freshnessMeta: TrendFreshnessMetaOut = {
-      horizon: body.horizon,
-      geo: body.geo,
-      note: pack.freshnessMeta.note,
-      openAiResearchApplied: Boolean(openAiResult?.text),
-      internalContextOnly: !openAiResult?.webSearchUsed,
-    };
-    const baseWarnings = mergeTrendWarnings(
-      ['Gemini 호출 실패. 환경 변수·쿼터를 확인하세요.', ...warningsExtra],
-      pack.noDataReason ? [pack.noDataReason] : [],
-    );
-    const memoryLayer = await runTrendSqlMemoryLayer({
-      supabase,
-      userKey,
-      body,
-      formatted: fb,
-      title: buildTitle(body),
-      summary: fb.summary,
-      reportMarkdown: fb.reportMarkdown,
-      confidence: conf,
-      warnings: baseWarnings,
-      citations,
-      toolUsage,
-      freshnessMeta,
-      includeMemoryContext: body.includeMemoryContext !== false,
-      saveToSqlMemory: body.saveToSqlMemory !== false,
-    });
-    let warningsFb = mergeTrendWarnings(baseWarnings, memoryLayer.extraWarnings);
-    warningsFb = mergeTrendWarnings(
-      warningsFb,
-      applyTrendMemoryGuards({
-        meta: {
-          memoryEnabled: memoryLayer.meta.memoryEnabled,
-          memoryReadSucceeded: memoryLayer.meta.memoryReadSucceeded,
-          memoryWriteSucceeded: memoryLayer.meta.memoryWriteSucceeded,
-          memoryItemsRead: memoryLayer.meta.memoryItemsRead,
-        },
-        memoryDelta: memoryLayer.memoryDelta,
-      }),
-    );
-    let summaryFb = fb.summary;
+  } catch (e1: unknown) {
+    logTrend('TREND_GEMINI_FAIL_1', { error: trendErrParts(e1).message });
     await trackOps({
       supabase,
       userKey,
-      severity: 'error',
-      code: TREND_WARNING_CODES.GEMINI_FORMAT_DEGRADED,
+      topicKey: topicKeyEarly,
+      severity: 'warning',
+      code: TREND_WARNING_CODES.GEMINI_FINALIZER_FAILED,
       stage: 'format',
-      message: 'Gemini formatting degraded, fallback report used',
+      message: 'Gemini finalizer first attempt failed',
       detail: {
-        error: { message: e instanceof Error ? e.message.slice(0, 200) : 'unknown' },
+        provider: 'gemini',
+        topicKey: topicKeyEarly,
+        status: 'failed',
+        fallbackUsed: false,
+        error: trendErrParts(e1),
       },
-      fingerprintParts: ['trend', String(userKey), body.focus, 'format', TREND_WARNING_CODES.GEMINI_FORMAT_DEGRADED],
+      fingerprintParts: ['trend', String(userKey), topicKeyEarly, 'finalizer', 'gemini_failed'],
     });
-    if (body.mode === 'monthly') {
-      const memHead = formatTrendMemoryDeltaHeadline(memoryLayer.memoryDelta);
-      if (memHead) summaryFb = `${memHead}\n\n${summaryFb}`;
-    }
-    logTrend('TREND_REQ_DONE', { ok: false });
-    return {
-      ok: true,
-      title: buildTitle(body),
-      generatedAt: new Date().toISOString(),
-      mode: body.mode,
-      reportMarkdown: fb.reportMarkdown,
-      summary: summaryFb,
-      sections: fb.sections,
-      beneficiaries: fb.beneficiaries,
-      hypotheses: fb.hypotheses,
-      risks: fb.risks,
-      nextTrackers: fb.nextTrackers,
-      sources: fb.sources,
-      confidence: conf,
-      warnings: warningsFb,
-      meta: buildMetaBase({
-        packSourceCount: pack.facts.length + pack.sourceRefs.length,
-        noDataReason: pack.noDataReason,
-        researchLayer: openAiResult ? 'openai_responses' : 'none',
-        openAiModel: openAiResult?.model,
-        providerUsed: openAiResult ? 'openai_tools_then_gemini' : 'gemini_fallback_after_openai',
+    await sleep(retryDelayMs);
+    geminiRetryCount = 1;
+    try {
+      raw = await generateGeminiResearchReport({
+        apiKey: geminiApiKey,
+        model: DEFAULT_GEMINI_WEB_PERSONA_MODEL,
+        systemInstruction,
+        userContent,
+        timeoutMs: geminiTimeoutMs,
+      });
+      logTrend('TREND_DRAFT_READY', { chars: raw.length, retry: true });
+    } catch (e2: unknown) {
+      logTrend('TREND_GEMINI_FAIL_2', { error: trendErrParts(e2).message });
+      await trackOps({
+        supabase,
+        userKey,
+        topicKey: topicKeyEarly,
+        severity: 'warning',
+        code: TREND_WARNING_CODES.GEMINI_FINALIZER_RETRY_FAILED,
+        stage: 'format',
+        message: 'Gemini finalizer retry failed',
+        detail: {
+          provider: 'gemini',
+          topicKey: topicKeyEarly,
+          status: 'failed',
+          fallbackUsed: true,
+          error: trendErrParts(e2),
+        },
+        fingerprintParts: ['trend', String(userKey), topicKeyEarly, 'finalizer', 'gemini_retry_failed'],
+      });
+      await trackOps({
+        supabase,
+        userKey,
+        topicKey: topicKeyEarly,
+        severity: 'warning',
+        code: TREND_WARNING_CODES.FINAL_REPORT_FALLBACK_USED,
+        stage: 'format',
+        message: 'Final trend report uses OpenAI research fallback template',
+        detail: {
+          provider: 'fallback',
+          topicKey: topicKeyEarly,
+          status: 'degraded',
+          fallbackUsed: true,
+          error: trendErrParts(e2),
+        },
+        fingerprintParts: ['trend', String(userKey), topicKeyEarly, 'finalizer', 'fallback_used'],
+      });
+      await trackOps({
+        supabase,
+        userKey,
+        topicKey: topicKeyEarly,
+        severity: 'info',
+        code: TREND_WARNING_CODES.RAW_ERROR_REPORT_BLOCKED,
+        stage: 'format',
+        message: 'Raw Gemini/API error kept out of user-facing markdown',
+        detail: {
+          provider: 'gemini',
+          topicKey: topicKeyEarly,
+          status: 'sanitized',
+          fallbackUsed: true,
+        },
+        fingerprintParts: ['trend', String(userKey), topicKeyEarly, 'format', 'raw_error_blocked'],
+      });
+      await trackOps({
+        supabase,
+        userKey,
+        topicKey: topicKeyEarly,
+        severity: 'error',
+        code: TREND_WARNING_CODES.GEMINI_FORMAT_DEGRADED,
+        stage: 'format',
+        message: 'Gemini finalizer degraded; fallback markdown used',
+        detail: {
+          provider: 'gemini',
+          topicKey: topicKeyEarly,
+          status: 'failed',
+          fallbackUsed: true,
+          error: trendErrParts(e2),
+        },
+        fingerprintParts: ['trend', String(userKey), topicKeyEarly, 'format', TREND_WARNING_CODES.GEMINI_FORMAT_DEGRADED],
+      });
+
+      const fbMd = buildOpenAiResearchFallbackMarkdown({
+        mode: body.mode,
+        body,
+        openAiBrief,
+      });
+      const fbFormatted = formatTrendReport(fbMd, body.mode);
+      const structuredMemory = buildDegradedStructuredMemory({
+        body,
+        openAiBriefSnippet: openAiBrief?.slice(0, 1200),
+        extraWarnings: warningsExtra,
+      });
+
+      const conf = resolveTrendConfidence({
+        pack,
+        guardWarnings: ['Gemini 최종 정리 실패(재시도 후). 임시 요약입니다.'],
+        needsFreshness: routing.needsFreshness,
+        webSearchUsed: openAiResult?.webSearchUsed ?? false,
+      });
+      const citations = mergeCitations(openAiResult?.citations, pack.sourceRefs);
+      const toolUsage: TrendToolUsage = {
         webSearchUsed: openAiResult?.webSearchUsed ?? false,
         dataAnalysisUsed: openAiResult?.dataAnalysisUsed ?? false,
-        fallbackUsed: true,
-        memoryPartial: memoryLayer.meta,
-      }),
-      citations,
-      toolUsage,
-      freshnessMeta,
-      memoryDelta: memoryLayer.memoryDelta,
-      qualityMeta: {
-        timeWindow: { ok: false, warnings: [], hasFresh30dSection: false, hasHistoricalReferenceSection: false, hasLongTermThesisSection: false },
-        sourceQuality: { counts: { A: 0, B: 0, C: 0, D: 0, UNKNOWN: 0 }, warnings: [] },
-        tickerValidation: { counts: {}, items: [], warnings: [] },
-        memory: {
-          enabled: memoryLayer.meta.memoryEnabled,
-          saved: memoryLayer.meta.memoryWriteSucceeded,
-          reportRunSaved: Boolean(memoryLayer.reportRunId),
-          skippedReason: memoryLayer.meta.memoryStatusNote,
-          compare: memoryLayer.memoryCompare,
+        fileCountAnalyzed: body.attachedFileIds?.length ?? 0,
+        sourceCount: citations.length,
+      };
+      const freshnessMeta: TrendFreshnessMetaOut = {
+        horizon: body.horizon,
+        geo: body.geo,
+        note: pack.freshnessMeta.note,
+        openAiResearchApplied: Boolean(openAiResult?.text),
+        internalContextOnly: !openAiResult?.webSearchUsed,
+      };
+      const baseWarnings = mergeTrendWarnings(
+        [
+          'Gemini 최종 정리 단계에서 오류가 발생했습니다. OpenAI 리서치 브리프 기반 임시 요약을 표시합니다.',
+          ...warningsExtra,
+        ],
+        pack.noDataReason ? [pack.noDataReason] : [],
+      );
+
+      const emptyTime = {
+        ok: false,
+        warnings: ['gemini_finalizer_degraded'],
+        hasFresh30dSection: false,
+        hasHistoricalReferenceSection: false,
+        hasLongTermThesisSection: false,
+      };
+
+      const memoryLayer = await runTrendSqlMemoryLayer({
+        supabase,
+        userKey,
+        body,
+        formatted: fbFormatted,
+        title: buildTitle(body),
+        summary: fbFormatted.summary,
+        reportMarkdown: fbFormatted.reportMarkdown,
+        confidence: conf,
+        warnings: baseWarnings,
+        citations,
+        toolUsage,
+        freshnessMeta,
+        qualityMeta: {
+          timeWindow: emptyTime,
+          sourceQuality: [],
+          tickerValidation: [],
+          scores: [],
+          structuredMemory,
         },
-        opsLogging: {
-          attempted: opsLogState.attempted,
-          savedCount: opsLogState.savedCount,
-          failedCount: opsLogState.failedCount,
-          warnings: opsLogState.warnings,
-        },
+        includeMemoryContext: body.includeMemoryContext !== false,
+        saveToSqlMemory: body.saveToSqlMemory !== false,
+        skipSignalUpsertV2: true,
+      });
+      let warningsFb = mergeTrendWarnings(baseWarnings, memoryLayer.extraWarnings);
+      warningsFb = mergeTrendWarnings(
+        warningsFb,
+        applyTrendMemoryGuards({
+          meta: {
+            memoryEnabled: memoryLayer.meta.memoryEnabled,
+            memoryReadSucceeded: memoryLayer.meta.memoryReadSucceeded,
+            memoryWriteSucceeded: memoryLayer.meta.memoryWriteSucceeded,
+            memoryItemsRead: memoryLayer.meta.memoryItemsRead,
+          },
+          memoryDelta: memoryLayer.memoryDelta,
+        }),
+      );
+      let summaryFb = fbFormatted.summary;
+      if (body.mode === 'monthly') {
+        const memHead = formatTrendMemoryDeltaHeadline(memoryLayer.memoryDelta);
+        if (memHead) summaryFb = `${memHead}\n\n${summaryFb}`;
+      }
+      logTrend('TREND_REQ_DONE', { ok: false, finalizerFallback: true });
+      return {
+        ok: true,
+        title: buildTitle(body),
+        generatedAt: new Date().toISOString(),
+        mode: body.mode,
+        reportMarkdown: fbFormatted.reportMarkdown,
+        summary: summaryFb,
+        sections: fbFormatted.sections,
+        beneficiaries: fbFormatted.beneficiaries,
+        hypotheses: fbFormatted.hypotheses,
+        risks: fbFormatted.risks,
+        nextTrackers: fbFormatted.nextTrackers,
+        sources: fbFormatted.sources,
+        confidence: conf,
         warnings: warningsFb,
-      },
-    };
+        meta: buildMetaBase({
+          packSourceCount: pack.facts.length + pack.sourceRefs.length,
+          noDataReason: pack.noDataReason,
+          researchLayer: openAiResult ? 'openai_responses' : 'none',
+          openAiModel: openAiResult?.model,
+          providerUsed: openAiResult ? 'openai_tools_then_gemini' : 'gemini_fallback_after_openai',
+          webSearchUsed: openAiResult?.webSearchUsed ?? false,
+          dataAnalysisUsed: openAiResult?.dataAnalysisUsed ?? false,
+          fallbackUsed: true,
+          memoryPartial: memoryLayer.meta,
+        }),
+        citations,
+        toolUsage,
+        freshnessMeta,
+        memoryDelta: memoryLayer.memoryDelta,
+        structuredMemory,
+        qualityMeta: {
+          timeWindow: emptyTime,
+          sourceQuality: {
+            counts: { A: 0, B: 0, C: 0, D: 0, UNKNOWN: 0 },
+            warnings: ['finalizer_degraded'],
+          },
+          tickerValidation: { counts: {}, items: [], warnings: [] },
+          memory: {
+            enabled: memoryLayer.meta.memoryEnabled,
+            saved: memoryLayer.meta.memoryWriteSucceeded,
+            reportRunSaved: Boolean(memoryLayer.reportRunId),
+            skippedReason: memoryLayer.meta.memoryStatusNote,
+            compare: memoryLayer.memoryCompare,
+          },
+          opsLogging: {
+            attempted: opsLogState.attempted,
+            savedCount: opsLogState.savedCount,
+            failedCount: opsLogState.failedCount,
+            warnings: opsLogState.warnings,
+          },
+          warnings: warningsFb,
+          finalizer: {
+            provider: 'fallback',
+            ok: false,
+            degraded: true,
+            retryCount: geminiRetryCount,
+            fallbackUsed: true,
+            userMessage: 'Gemini 최종 정리 실패 → 임시 요약 fallback',
+          },
+        },
+      };
+    }
   }
 
   let formatted = formatTrendReport(raw, body.mode);
@@ -698,6 +844,13 @@ export async function runTrendAnalysisGeneration(params: {
         warnings: opsLogState.warnings,
       },
       warnings: qualityWarnings,
+      finalizer: {
+        provider: 'gemini',
+        ok: true,
+        degraded: false,
+        retryCount: geminiRetryCount,
+        fallbackUsed: false,
+      },
     },
     structuredMemory,
   };

@@ -39,6 +39,11 @@ export interface TrendOpsEventDetail {
     message?: string;
     stack?: string;
   };
+  /** Gemini finalizer / Sheets append 등 서브 상태 */
+  provider?: 'gemini' | 'openai' | 'fallback';
+  status?: string;
+  fallbackUsed?: boolean;
+  rangeUsed?: string;
 }
 
 const SENSITIVE_KEY_FRAGMENTS = [

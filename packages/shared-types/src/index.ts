@@ -151,6 +151,7 @@ export { parseOfficeUserKey } from './domainIds';
 export type {
   AccountSummaryDto,
   CreateHoldingRequest,
+  SectorRadarAnchorAsset,
   WatchlistSectorMatchApiResponse,
   WatchlistSectorMatchResult,
   WatchlistSectorMatchStatus,

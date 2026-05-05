@@ -147,13 +147,30 @@ export async function POST(req: Request) {
         );
       }
       try {
-        await appendTrendCenterSheets({ body, result, reportRef });
+        const topicKey = result.structuredMemory?.topicKey ?? `trend-${body.geo.toLowerCase()}-${body.focus}`;
+        const sheets = await appendTrendCenterSheets({
+          body,
+          result,
+          reportRef,
+          supabase,
+          userKey,
+          topicKey,
+        });
+        const appendOk = sheets.requestLogAppendOk && (sheets.trendReportsLogOk !== false);
         return NextResponse.json({
           ...result,
           meta: {
             ...result.meta,
             appendToSheetsAttempted: true,
-            appendToSheetsSucceeded: true,
+            appendToSheetsSucceeded: appendOk,
+          },
+          qualityMeta: {
+            ...result.qualityMeta,
+            sheets: {
+              requestLogAppendOk: sheets.requestLogAppendOk,
+              requestLogAppendSkipped: !sheets.requestLogAppendOk,
+              requestLogAppendWarning: sheets.requestLogAppendWarning,
+            },
           },
         });
       } catch (e: unknown) {
@@ -166,6 +183,14 @@ export async function POST(req: Request) {
               ...result.meta,
               appendToSheetsAttempted: true,
               appendToSheetsSucceeded: false,
+            },
+            qualityMeta: {
+              ...result.qualityMeta,
+              sheets: {
+                requestLogAppendOk: false,
+                requestLogAppendSkipped: true,
+                requestLogAppendWarning: message.slice(0, 300),
+              },
             },
             warnings: [...result.warnings, `시트 저장 실패: ${message}`],
           },

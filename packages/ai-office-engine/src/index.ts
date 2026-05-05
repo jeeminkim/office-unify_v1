@@ -42,6 +42,8 @@ export {
   logTrendOpsEvent,
 } from './trend-center/trendOpsLogger';
 export { TREND_WARNING_CODES } from './trend-center/trendWarningCodes';
+export { trendMarkdownLooksLikeRawApiError, trendSanitizeReportMarkdownForUi } from './trend-center/trendRawErrorUi';
+export { buildOpenAiResearchFallbackMarkdown } from './trend-center/trendCenterFormatter';
 export {
   normalizeTrendSignalKey,
   upsertTrendMemorySignalsV2,

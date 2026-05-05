@@ -139,6 +139,11 @@ function sectorZoneShort(zone: SectorRadarSummarySector["zone"]): string {
   return "NO_DATA";
 }
 
+function sectorRadarDisplayScore(s: SectorRadarSummarySector): number | undefined {
+  const v = s.adjustedScore ?? s.score;
+  return v != null && Number.isFinite(v) ? v : undefined;
+}
+
 export function DashboardClient() {
   const [statusSections, setStatusSections] = useState<StatusSection[]>([]);
   const [overview, setOverview] = useState<DashboardResponse | null>(null);
@@ -371,7 +376,7 @@ export function DashboardClient() {
               <ul className="mt-2 space-y-1 text-xs text-slate-800">
                 {sectorRadar.fearCandidatesTop3.map((s) => (
                   <li key={s.key} className="rounded border border-blue-100 bg-white px-2 py-1">
-                    {s.name} · {s.score != null ? `${Math.round(s.score)}점` : "—"} · {sectorZoneShort(s.zone)} —{" "}
+                    {s.name} · {sectorRadarDisplayScore(s) != null ? `${Math.round(sectorRadarDisplayScore(s)!)}점` : "—"} · {sectorZoneShort(s.zone)} —{" "}
                     {s.narrativeHint.length > 56 ? `${s.narrativeHint.slice(0, 56)}…` : s.narrativeHint}
                   </li>
                 ))}
@@ -392,7 +397,7 @@ export function DashboardClient() {
               <ul className="mt-2 space-y-1 text-xs text-slate-800">
                 {sectorRadar.greedCandidatesTop3.map((s) => (
                   <li key={`g-${s.key}`} className="rounded border border-orange-100 bg-white px-2 py-1">
-                    {s.name} · {s.score != null ? `${Math.round(s.score)}점` : "—"} · {sectorZoneShort(s.zone)} —{" "}
+                    {s.name} · {sectorRadarDisplayScore(s) != null ? `${Math.round(sectorRadarDisplayScore(s)!)}점` : "—"} · {sectorZoneShort(s.zone)} —{" "}
                     {s.narrativeHint.length > 56 ? `${s.narrativeHint.slice(0, 56)}…` : s.narrativeHint}
                   </li>
                 ))}
@@ -414,7 +419,7 @@ export function DashboardClient() {
               return (
                 <>
                   <p className="mt-1 text-[11px] text-slate-600">
-                    코인/디지털자산 {c.score != null ? `${Math.round(c.score)}점` : "NO_DATA"} ({sectorZoneShort(c.zone)}) —{" "}
+                    코인/디지털자산 {sectorRadarDisplayScore(c) != null ? `${Math.round(sectorRadarDisplayScore(c)!)}점` : "NO_DATA"} ({sectorZoneShort(c.zone)}) —{" "}
                     {c.narrativeHint.length > 72 ? `${c.narrativeHint.slice(0, 72)}…` : c.narrativeHint}
                   </p>
                   <p className="mt-2 text-[10px] text-violet-900/80">BTC·알트·인프라 가중 서브스코어 기반. 자동매매 없음.</p>

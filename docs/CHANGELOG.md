@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Trend Gemini finalizer fallback:** Gemini 최종 정리 호출에 타임아웃·1회 재시도 후 실패 시 OpenAI 리서치 브리프 기반 임시 마크다운으로 대체. `qualityMeta.finalizer`(provider/retry/degraded/fallback), 최소 `structuredMemory`, finalizer degraded 시 `trend_memory_signals_v2` upsert 생략. `web_ops_events`에 `trend_gemini_*`·`trend_final_report_fallback_used`·`trend_raw_error_report_blocked`·`trend_gemini_format_degraded` 등 기록.
+- **Trend UI:** 원문 마크다운·섹션 본문에 API/Gemini 오류 패턴이 있으면 치환 표시, degraded 시 상단 안내.
+- **Sheets `trend_requests`:** 탭·헤더 자동 생성, 따옴표 보호 A1 range·열 폭 동적 조정·append 후보 순차 시도, 실패 시 경고만.
+- **문서:** `docs/ops/trend_ops_logging.md` 운영 SQL 예시 보강.
+- **테스트:** `trendFinalizerFallback.test.ts`, `trendSheetsAppend.test.ts`.
+
+- **Sector Radar 점수 신뢰도·설명 레이어:** 기존 `score`(raw 산식) 보존 + `adjustedScore`(표본·시세 패널티 반영) 및 `scoreExplanation`(temperature/confidence/breakdown/해석/리스크/관심종목 연결 문구) 추가. `GET /api/sector-radar/summary`에 `qualityMeta.sectorRadar` 집계. 운영 로그는 domain `sector_radar` + `sector_radar_score_*` 코드(`fingerprint`: `sector_radar:${userKey}:${sectorKey}:${code}`). 홈 Fear/Greed/Crypto 표시·관심종목 큐 `sectorScore`는 보정 점수 우선. 문서: `docs/ops/sector_radar_score_quality.md`. 테스트: `sectorRadarScoreExplanation.test.ts`.
+- **Sector Radar anchor universe 5개 확장:** 신규/보강 섹터(소비/유통, 항공/여행, 금융/핀테크, 사이버보안, 전기차/자율주행, ETF/인컴, 조선/LNG/소재 포함)의 표본 ETF/대표 종목을 최대 5개로 확장.
+- **watchlist sector-match relatedAnchors:** preview/apply 결과에 섹터별 관련 표본(`relatedAnchors`) 추가(자동 편입 없음).
+- **Sector Radar 카드 가시성 개선:** 카드에 `표본 n개 / 시세 성공 n개 / 시세 없음 n개` 표시 및 NO_DATA 안내 문구 구체화.
+- **ops logging 보강:** 점수 품질 관련 `sector_radar_score_*` 코드 적재(요약 요청 시 섹터별 경고 위주). 레거시 anchor 전용 코드는 점진적으로 대체 가능.
+- **테스트 추가:** `sectorRadarRegistry.test.ts` 및 watchlist matcher 관련 케이스 보강.
+
 - **관심종목 Sector 자동 매칭:** `POST /api/portfolio/watchlist/sector-match` 추가(`preview|apply`). known map + keyword rule + ticker fallback으로 후보를 산출하고, confidence 미달은 `needs_review`로 반환.
 - **수동 섹터 보호:** `sector_is_manual` 또는 기존 수동 sector로 추정되는 항목은 자동 apply에서 덮어쓰지 않음.
 - **원장 UI 보강:** `/portfolio-ledger` 관심종목 테이블에 `섹터 자동 매칭 미리보기/적용` 버튼, 자동매칭 점수 배지, 결과 요약 표시 추가.

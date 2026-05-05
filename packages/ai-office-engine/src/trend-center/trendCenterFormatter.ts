@@ -1,4 +1,5 @@
 import type {
+  TrendAnalysisGenerateRequestBody,
   TrendBeneficiariesBlock,
   TrendMemoryDelta,
   TrendReportMode,
@@ -172,6 +173,64 @@ export function formatTrendMemoryDeltaHeadline(delta: TrendMemoryDelta): string 
     delta.dormant.length;
   if (n === 0) return null;
   return `장기 메모리 변화 — 신규 ${delta.new.length} · 강화 ${delta.reinforced.length} · 약화 ${delta.weakened.length} · 휴면 ${delta.dormant.length}`;
+}
+
+/**
+ * Gemini 최종 정리 실패 시 OpenAI 리서치 브리프 + 안내형 섹션으로 임시 마크다운 생성.
+ * `formatTrendReport`로 후처리하면 beneficiaries 등이 채워질 수 있습니다.
+ */
+export function buildOpenAiResearchFallbackMarkdown(params: {
+  mode: TrendReportMode;
+  body: TrendAnalysisGenerateRequestBody;
+  openAiBrief?: string;
+}): string {
+  const brief =
+    params.openAiBrief?.trim() ||
+    '(OpenAI 리서치 레이어가 비어 있거나 사용하지 않았습니다.)';
+  if (params.mode === 'weekly') {
+    return [
+      '## 0. 한눈에 보는 결론',
+      '최종 보고서 정리 단계에서 오류가 발생해, 수집된 리서치 결과 기반의 임시 요약을 제공합니다.',
+      '',
+      '## 1. 확인된 자료',
+      `- OpenAI 리서치 또는 내부 컨텍스트 기반 요약:\n${brief}`,
+      '',
+      '## 2. 잠정 해석',
+      '- 자료가 충분하지 않으면 단정하지 않습니다.',
+      '',
+      '## 3. 직접 수혜주',
+      '-',
+      '',
+      '## 4. 간접 수혜주',
+      '-',
+      '',
+      '## 5. 인프라 수혜주',
+      '-',
+      '',
+      '## 6. 리스크와 반론',
+      '- 최종 정리 실패로 인해 해석 신뢰도가 낮습니다.',
+      '',
+      '## 7. 다음 추적 포인트',
+      '- 동일 주제를 재실행하여 최신 자료와 최종 보고서를 재확인하세요.',
+      '',
+      '## 8. 출처',
+      '- 확보된 citation은 리서치 브리프 및 내부 팩을 참고하세요.',
+    ].join('\n');
+  }
+
+  return [
+    '## 1. 이번 달 핵심 결론',
+    '최종 보고서 정리 단계에서 오류가 발생해 임시 요약만 제공합니다.',
+    '',
+    '## 2. 확인된 자료',
+    brief,
+    '',
+    '## 3. 잠정 해석',
+    '자료가 충분하지 않으면 단정하지 않습니다.',
+    '',
+    '## 7. 출처',
+    '리서치 브리프 기반. 상세 오류는 운영 로그에만 기록됩니다.',
+  ].join('\n');
 }
 
 export function buildSafeFallbackReport(params: {

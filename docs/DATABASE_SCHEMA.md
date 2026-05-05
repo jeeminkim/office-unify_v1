@@ -216,6 +216,7 @@ limit 50;
 - `web_portfolio_watchlist`에도 동일한 `google_ticker`/`quote_symbol` override를 둘 수 있다(마이그레이션: `docs/sql/append_web_portfolio_watchlist_quote_overrides.sql`).
 - 관심종목 자동 섹터 매칭 메타 컬럼(선택 적용): `sector_keywords`, `sector_match_status`, `sector_match_confidence`, `sector_match_source`, `sector_match_reason`, `sector_matched_at`, `sector_is_manual`.
 - `sector_is_manual=true`는 자동 매칭 apply에서 보호되어 덮어쓰지 않는다.
+- `/api/portfolio/watchlist/sector-match` preview 응답은 DB 반영 없이 `relatedAnchors`(섹터별 관찰용 ETF/대표 종목 표본)도 함께 내려준다.
 - **Ticker 추천(자동 저장 없음):** 스프레드시트 탭 `portfolio_quote_candidates`(기본명, `PORTFOLIO_TICKER_CANDIDATES_SHEET_NAME`로 변경 가능)에 후보별 수식을 쌓고, API가 read-back하여 추천 후보를 보여 준다. DB 반영은 사용자가 `POST /api/portfolio/ticker-resolver/apply`로 승인할 때만 수행한다.
 - **일괄 승인 저장:** `POST /api/portfolio/ticker-resolver/apply-bulk`는 사용자 명시 승인 시에만 다수 후보를 저장하며, 일부 실패는 `failedItems`로 반환한다.
 - **portfolio_quotes 동기화 정책:** `google_ticker`가 있는 보유만 확정 quote row를 작성하고, 누락 심볼은 `missingTickerSymbols`로 반환해 recovery flow로 연결한다. row key는 `normalized_key` 기준으로 read-back/summary를 매칭한다.

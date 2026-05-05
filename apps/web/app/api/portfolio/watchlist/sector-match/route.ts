@@ -4,6 +4,7 @@ import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { logOpsEvent } from '@/lib/server/opsEventLogger';
 import { mapWatchlistRowToSectorMatchInput, matchWatchlistSector } from '@/lib/server/watchlistSectorMatcher';
+import { listRelatedAnchorsBySectorName } from '@/lib/server/sectorRadarRegistry';
 
 const WATCHLIST_SECTOR_WARNING_CODES = {
   SECTOR_MATCH_PREVIEW_SUCCESS: 'watchlist_sector_match_preview_success',
@@ -14,6 +15,11 @@ const WATCHLIST_SECTOR_WARNING_CODES = {
   SECTOR_MATCH_MANUAL_PROTECTED: 'watchlist_sector_match_manual_protected',
   SECTOR_MATCH_DB_UPDATE_FAILED: 'watchlist_sector_match_db_update_failed',
   SECTOR_MATCH_FAILED: 'watchlist_sector_match_failed',
+} as const;
+
+const SECTOR_RADAR_WARNING_CODES = {
+  RELATED_ANCHORS_ATTACHED: 'sector_radar_related_anchors_attached',
+  RELATED_ANCHORS_EMPTY: 'sector_radar_related_anchors_empty',
 } as const;
 
 type Mode = 'preview' | 'apply';
@@ -124,7 +130,9 @@ export async function POST(req: Request) {
         observation_points: null,
         priority: null,
       });
-      const res = matchWatchlistSector(onlyUnmatched ? { ...input, existingSector: null } : input);
+      const matchedResult = matchWatchlistSector(onlyUnmatched ? { ...input, existingSector: null } : input);
+      const relatedAnchors = matchedResult.matchedSector ? listRelatedAnchorsBySectorName(matchedResult.matchedSector, 5) : [];
+      const res: WatchlistSectorMatchResult = { ...matchedResult, relatedAnchors };
       items.push(res);
       if (res.matchedSector) matched += 1;
       if (res.status === 'no_match') noMatch += 1;
@@ -214,6 +222,30 @@ export async function POST(req: Request) {
           { feature: 'watchlist_sector_match', mode, symbol: `${row.market}:${row.symbol}`, name: row.name, confidence: res.confidence },
           `watchlist_sector:${auth.userKey}:${row.market}:${row.symbol}:${WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_LOW_CONFIDENCE}`,
         );
+      }
+      if (res.matchedSector) {
+        const hasAnchors = (res.relatedAnchors?.length ?? 0) > 0;
+        await logOpsEvent({
+          userKey: auth.userKey,
+          eventType: hasAnchors ? 'info' : 'warning',
+          severity: hasAnchors ? 'info' : 'warn',
+          domain: hasAnchors ? 'sector_radar' : 'portfolio_watchlist',
+          route: '/api/portfolio/watchlist/sector-match',
+          component: 'watchlist-sector-match',
+          code: hasAnchors ? SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_ATTACHED : SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_EMPTY,
+          message: hasAnchors ? 'related anchors attached for matched sector' : 'related anchors empty for matched sector',
+          detail: {
+            feature: 'watchlist_sector_match',
+            mode,
+            symbol: `${row.market}:${row.symbol}`,
+            name: row.name,
+            matchedSector: res.matchedSector,
+            anchorCount: res.relatedAnchors?.length ?? 0,
+          },
+          fingerprint: hasAnchors
+            ? `portfolio_watchlist:${auth.userKey}:${row.market}:${row.symbol}:related_anchors:${SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_ATTACHED}`
+            : `portfolio_watchlist:${auth.userKey}:${row.market}:${row.symbol}:related_anchors:${SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_EMPTY}`,
+        }).catch(() => undefined);
       }
     }
     const code = mode === 'preview'

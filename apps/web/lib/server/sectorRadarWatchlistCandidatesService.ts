@@ -187,7 +187,7 @@ export async function buildSectorWatchlistCandidateResponse(
     candidates.push({
       sectorKey,
       sectorName,
-      sectorScore: sector?.score,
+      sectorScore: sector?.adjustedScore ?? sector?.score,
       sectorZone,
       symbol: w.symbol.trim().toUpperCase(),
       market: w.market,

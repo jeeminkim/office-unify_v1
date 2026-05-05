@@ -1801,6 +1801,11 @@ export function PortfolioLedgerClient() {
                     <li key={`${x.name}-${x.rawTicker ?? ""}-${x.status}`}>
                       {x.name} ({x.rawTicker ?? "-"}) → {x.matchedSector ?? "미매칭"} · {x.confidence}점 ·{" "}
                       {x.needsReview ? "검토 필요" : "적용 가능"}
+                      {(x.relatedAnchors?.length ?? 0) > 0
+                        ? ` · 관련 표본 ${x.relatedAnchors!.slice(0, 3).map((a) => a.name).join(", ")}${
+                            (x.relatedAnchors?.length ?? 0) > 3 ? ` 외 ${(x.relatedAnchors?.length ?? 0) - 3}개` : ""
+                          }`
+                        : ""}
                     </li>
                   ))}
                 </ul>

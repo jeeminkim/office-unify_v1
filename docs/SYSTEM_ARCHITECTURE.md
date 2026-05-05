@@ -23,6 +23,8 @@
 - `/sector-radar` : 섹터 Fear & Greed Radar(섹터 온도계)
   - **KR ETF + US 티커(코인/디지털자산 등)** anchor seed + 관심종목(`web_portfolio_watchlist`, KR·US) sector/메모 키워드 **custom anchor** 병합
   - `sector_radar_quotes` 시트(2차: `market`·`normalized_key`·`volume_avg` 등 A–U)에 `GOOGLEFINANCE` 수식 주입 후 read-back → 섹터별 점수/구간(zone)/판단 보조 문구
+  - **점수 계약:** 기존 필드 `score`는 raw 산식 값으로 유지. 표본 수·시세 커버리지 패널티를 반영한 **`adjustedScore`**·해석 메타 **`scoreExplanation`**(temperature/confidence/breakdown/요약·행동 힌트·리스크·관심종목 연결 문구)은 선택 필드로 추가. UI 기본 표시는 보정 점수·사용자 라벨 온도(관망~위험/NO_DATA).
+  - API **`qualityMeta.sectorRadar`** 로 신뢰도 분포·NO_DATA·시세 누락 섹터 수·과열/위험 카운트 요약
   - **자동 매매·주문 실행 없음** — 점수·문구는 참고용
   - 섹터 카드·요약의 경고는 `displayWarnings` 또는 `getVisibleSectorRadarWarnings*`로 **한국어만** 노출(내부 snake_case는 개발용 raw 토글에서만)
 - `/decision-journal` : 비거래 의사결정 일지 — **실제 주문이 아니라** 사지 않음·팔지 않음·관망·대기 등의 판단을 기록. Trade Journal(실행 거래)과 구분.
@@ -101,6 +103,7 @@
   - 관심종목 섹터 자동 매칭(known map + keyword rule + ticker fallback)
   - `mode=preview|apply`, 수동 섹터 보호(`sector_is_manual`) 우선
   - apply 시 confidence 기준 미달 항목은 `needs_review`로 남기고 미적용
+  - preview 응답에 섹터별 `relatedAnchors`(최대 5개) 포함
   - 운영 로그(`web_ops_events`, domain `portfolio_watchlist`) 적재
 - 기존 투자 도구 API
   - `/api/private-banker/message`
@@ -120,6 +123,7 @@
   - 목표 배분 생성(실현손익/수동현금/조정)
 - `/api/sector-radar/summary`
   - 섹터별 온도·anchor 상태·components·warnings, 홈용 `fearCandidatesTop3` / `greedCandidatesTop3`
+  - 선택 필드: `rawScore`/`adjustedScore`/`scoreExplanation`/`qualityMeta` — 기존 소비자 호환을 위해 additive
   - Sheets 미설정·탭 비어 있음 시 `degraded` + NO_DATA 유지
 - `/api/sector-radar/refresh`
   - `sector_radar_quotes` 탭 생성/덮어쓰기 및 GOOGLEFINANCE 수식 동기화(`USER_ENTERED`)
@@ -139,6 +143,9 @@
 - Trend 전용 ops logging wrapper가 `web_ops_events`로 warning/error/info를 적재하고, fingerprint로 `occurrence_count`를 누적한다.
 - `/api/trend/ops-summary`는 최근 Trend 운영 로그(domain=trend)를 집계해 code/fingerprint/ticker/source-quality/memory/degraded 상태를 요약 반환한다.
 - `/trend`의 `TrendOpsSummaryPanel`은 운영 점검 정보를 접기 영역으로 노출해 본문 읽기 흐름을 방해하지 않게 유지한다.
+- **Gemini finalizer 실패 시:** 환경변수 `TREND_GEMINI_FINALIZER_TIMEOUT_MS`(기본 120s)·`TREND_GEMINI_FINALIZER_RETRY_DELAY_MS`(기본 800ms)로 1차 호출 후 짧은 지연 뒤 1회 재시도한다. 재시도까지 실패하면 OpenAI 리서치 브리프 기반 임시 마크다운(`buildOpenAiResearchFallbackMarkdown` → `formatTrendReport`)으로 리포트를 채우고, `qualityMeta.finalizer`에 `degraded`/`fallbackUsed`/`retryCount`를 기록한다. 구조화 메모리는 최소 객체(`buildDegradedStructuredMemory`)로 채우되 이번 실행만 `trend_memory_signals_v2` upsert를 건너뛰어(signal 반복 강화 계산에 쓰이지 않게) 한다.
+- **Raw 오류 UI 차단:** 서버가 Gemini 원문 오류를 사용자 마크다운에 넣지 않도록 하고, 클라이언트 `trendSanitizeReportMarkdownForUi`가 HTTP 500/JSON 오류 패턴이 섞인 본문을 감지하면 안내형 마크다운으로 치환한다. `/trend` 상단에는 임시 요약 안내, 원문 마크다운·섹션 카드에는 치환본만 노출한다.
+- **`appendToSheets`:** `trend_requests`/`trend_reports_log` 탭이 없으면 생성하고 헤더를 맞춘 뒤, A1 범위는 시트 이름을 작은따옴표 이스케이프(`'trend_requests'!A:L` 등)하여 append한다. 열 수는 실제 row 길이에 맞추고, 범위 파싱 실패 시 후보 범위를 순차 시도한다. 실패해도 리포트 응답은 유지하고 `qualityMeta.sheets`·경고·`web_ops_events`로만 남긴다.
 
 ## Private Banker — Decision Journal 연동(후속 예정)
 
@@ -168,6 +175,7 @@
 - PB/위원회/Trend/Research 결과 화면은 outputQuality/model usage badge를 함께 표시
 - **Sector Radar**는 대표 ETF 몇 개의 시장 데이터를 요약한 휴리스틱 점수이며, **전 섹터 펀더멘털을 대체하지 않는다.** ETF seed 오류·시트 지연 시 섹터 단위 NO_DATA로 degrade
 - 관심종목의 섹터 매칭 우선순위: 수동 sector → 자동 매칭 sector → known/keyword fallback → 기존 키워드 매칭 → no match
+- Sector Radar 카드는 표본/시세 상태(`sampleCount`, `quoteOkCount`, `quoteMissingCount`)를 함께 노출해 `NO_DATA` 원인을 추적한다.
 - 전량 매도 시 보유 제거 후 선택적으로 watchlist 이동 가능
 - `thesis health`는 rule+텍스트 기반 휴리스틱 평가이며 사실(Fact)과 판단(Interpretation)을 분리해 표시한다.
 - `/portfolio`의 quote recovery 패널은 상태 머신(`needs_ticker_candidates` → `quote_ready`) 기반으로 다음 조치 버튼을 안내한다.

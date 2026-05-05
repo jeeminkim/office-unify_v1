@@ -32,13 +32,79 @@ export type SectorRadarSummaryAnchor = {
   dataStatus: SectorRadarAnchorDataStatus;
 };
 
+/** 사용자-facing 온도 라벨(판단 보조·관찰용). 기존 `zone`(fear/greed…)과 별개로 표시용 해석에 씁니다. */
+export type SectorRadarTemperature =
+  | "NO_DATA"
+  | "관망"
+  | "중립"
+  | "관심"
+  | "과열"
+  | "위험";
+
+/** 표본·시세 커버리지 기반 데이터 신뢰도 (점수 해석용) */
+export type SectorRadarConfidence = "high" | "medium" | "low" | "very_low";
+
+export type SectorRadarScoreBreakdown = {
+  momentum: number;
+  volume: number;
+  week52Position: number;
+  trend: number;
+  quality: number;
+};
+
+export type SectorRadarScoreQuality = {
+  sampleCount: number;
+  quoteOkCount: number;
+  quoteMissingCount: number;
+  quoteCoverageRatio: number;
+  dataReliability: SectorRadarConfidence;
+  confidencePenalty: number;
+  warnings: string[];
+};
+
+export type SectorRadarScoreExplanation = {
+  rawScore: number | null;
+  adjustedScore: number | null;
+  temperature: SectorRadarTemperature;
+  confidence: SectorRadarConfidence;
+  breakdown: SectorRadarScoreBreakdown | null;
+  quality: SectorRadarScoreQuality;
+  summary: string;
+  interpretation: string;
+  conservativeActionHint: string;
+  mainDrivers: string[];
+  riskNotes: string[];
+};
+
+export type SectorRadarQualityMeta = {
+  sectorRadar: {
+    totalSectors: number;
+    highConfidence: number;
+    mediumConfidence: number;
+    lowConfidence: number;
+    veryLowConfidence: number;
+    noDataCount: number;
+    quoteMissingSectors: number;
+    overheatedSectors: number;
+    warnings: string[];
+  };
+};
+
 export type SectorRadarSummarySector = {
   key: string;
   name: string;
+  /** 기존 산식 그대로의 점수(하위 호환). 보수 보정 전 값입니다. */
   score?: number;
+  /** `score`와 동일 의미(명시적 필드). */
+  rawScore?: number;
+  /** 표본 수·시세 성공률 등 신뢰도 패널티 반영 보수 점수. */
+  adjustedScore?: number;
   zone: SectorRadarZone;
   actionHint: SectorRadarActionHint;
   narrativeHint: string;
+  sampleCount?: number;
+  quoteOkCount?: number;
+  quoteMissingCount?: number;
   anchors: SectorRadarSummaryAnchor[];
   components: {
     momentum?: number;
@@ -57,6 +123,8 @@ export type SectorRadarSummarySector = {
   displayWarnings?: string[];
   /** tooltip·상세용 긴 문구(displayWarnings와 동일 순서). */
   displayWarningDetails?: string[];
+  /** 점수 해석·신뢰도·보수적 안내(선택). */
+  scoreExplanation?: SectorRadarScoreExplanation;
 };
 
 export type SectorRadarSummaryResponse = {
@@ -69,6 +137,8 @@ export type SectorRadarSummaryResponse = {
   displayWarningDetails?: string[];
   fearCandidatesTop3: SectorRadarSummarySector[];
   greedCandidatesTop3: SectorRadarSummarySector[];
+  /** 섹터 점수 품질 요약(선택). */
+  qualityMeta?: SectorRadarQualityMeta;
 };
 
 export type SectorRadarStatusRow = {

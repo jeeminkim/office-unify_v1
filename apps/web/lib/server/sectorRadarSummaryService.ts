@@ -3,7 +3,16 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { OfficeUserKey } from '@office-unify/shared-types';
 import { listWebPortfolioWatchlistForUser, type WebPortfolioWatchlistRow } from '@office-unify/supabase-access';
-import { SECTOR_RADAR_CATEGORY_SEEDS, buildMergedSectorRadarAnchors } from '@/lib/server/sectorRadarRegistry';
+import {
+  SECTOR_RADAR_CATEGORY_SEEDS,
+  buildMergedSectorRadarAnchors,
+  countLinkedWatchlistBySector,
+} from '@/lib/server/sectorRadarRegistry';
+import {
+  buildSectorRadarQualityMeta,
+  enrichSectorRadarSector,
+  logSectorRadarQualityOps,
+} from '@/lib/server/sectorRadarScoreEnrichment';
 import { scoreSectorFromAnchors } from '@/lib/server/sectorRadarScoring';
 import {
   isSectorRadarSheetsConfigured,
@@ -12,7 +21,6 @@ import {
 } from '@/lib/server/sectorRadarSheetService';
 import { attachSectorRadarDisplayFields } from '@/lib/sectorRadarWarningMessages';
 import type { SectorRadarSummaryResponse, SectorRadarSummarySector } from '@/lib/sectorRadarContract';
-
 function pickTop3(
   sectors: SectorRadarSummarySector[],
   zones: Array<SectorRadarSummarySector['zone']>,
@@ -65,12 +73,21 @@ export async function buildSectorRadarSummaryForUser(
     }
   }
 
-  const sectors: SectorRadarSummarySector[] = SECTOR_RADAR_CATEGORY_SEEDS.map((cat) => {
+  const scored: SectorRadarSummarySector[] = SECTOR_RADAR_CATEGORY_SEEDS.map((cat) => {
     const catMerged = merged.filter((a) => a.categoryKey === cat.key);
     const catSheet = sheetRows.filter((s) => s.categoryKey === cat.key);
     const metrics = mergeSheetRowsWithAnchors(catMerged, catSheet);
     return scoreSectorFromAnchors(cat.key, cat.name, metrics);
   });
+
+  const linkedBySector = countLinkedWatchlistBySector(watchlist);
+  const sectors = scored.map((s) => enrichSectorRadarSector(s, linkedBySector[s.key] ?? 0));
+
+  for (const s of sectors) {
+    void logSectorRadarQualityOps(userKey, s);
+  }
+
+  const qualityMeta = buildSectorRadarQualityMeta(sectors);
 
   return attachSectorRadarDisplayFields({
     ok: true,
@@ -80,5 +97,6 @@ export async function buildSectorRadarSummaryForUser(
     warnings: Array.from(new Set(warnings.filter(Boolean))),
     fearCandidatesTop3: pickTop3(sectors, ['extreme_fear', 'fear']),
     greedCandidatesTop3: pickGreedTop3(sectors),
+    qualityMeta,
   });
 }

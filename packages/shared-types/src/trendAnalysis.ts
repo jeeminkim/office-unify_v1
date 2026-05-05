@@ -404,6 +404,19 @@ export type TrendAnalysisGenerateResponseBody = {
       warnings: string[];
     };
     warnings: string[];
+    finalizer?: {
+      provider: 'gemini' | 'openai' | 'fallback';
+      ok: boolean;
+      degraded: boolean;
+      retryCount: number;
+      fallbackUsed: boolean;
+      userMessage?: string;
+    };
+    sheets?: {
+      requestLogAppendOk?: boolean;
+      requestLogAppendSkipped?: boolean;
+      requestLogAppendWarning?: string;
+    };
   };
   structuredMemory?: TrendStructuredMemory;
 };

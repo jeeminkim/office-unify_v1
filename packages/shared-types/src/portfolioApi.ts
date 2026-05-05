@@ -127,6 +127,18 @@ export type WatchlistSectorMatchStatus =
   | 'needs_review'
   | 'no_match';
 
+export type SectorRadarAnchorAsset = {
+  name: string;
+  market: 'KR' | 'US';
+  assetType: 'ETF' | 'STOCK';
+  symbol: string;
+  googleTicker?: string;
+  quoteSymbol?: string;
+  role: 'core_etf' | 'theme_etf' | 'representative_stock' | 'fallback_proxy';
+  confidence: number;
+  reason: string;
+};
+
 export type WatchlistSectorMatchResult = {
   name: string;
   rawTicker?: string;
@@ -137,6 +149,7 @@ export type WatchlistSectorMatchResult = {
   reason: string;
   source: 'known_map' | 'keyword_rule' | 'ticker_type_rule' | 'existing' | 'none';
   needsReview: boolean;
+  relatedAnchors?: SectorRadarAnchorAsset[];
 };
 
 export type WatchlistSectorMatchApiResponse = {

@@ -96,7 +96,8 @@ export function buildA1Range(sheetName: string, range: string): string {
   return `${escapeSheetNameForA1(sheetName)}!${range}`;
 }
 
-function columnLabel(columnNumber: number): string {
+/** 1-based 열 번호 → A, B, …, AA */
+export function sheetColumnLetter(columnNumber: number): string {
   let n = Math.max(1, Math.floor(columnNumber));
   let label = '';
   while (n > 0) {
@@ -176,7 +177,7 @@ export async function ensureSheetTab(params: {
       if (!hasHeader) {
         await sheetsValuesUpdate({
           spreadsheetId: params.spreadsheetId,
-          rangeA1: buildA1Range(params.title, `A1:${columnLabel(params.header.length)}1`),
+          rangeA1: buildA1Range(params.title, `A1:${sheetColumnLetter(params.header.length)}1`),
           values: [params.header],
           valueInputOption: 'USER_ENTERED',
         });
@@ -209,7 +210,7 @@ export async function ensureSheetTab(params: {
   if (params.header && params.header.length > 0) {
     await sheetsValuesUpdate({
       spreadsheetId: params.spreadsheetId,
-      rangeA1: buildA1Range(params.title, `A1:${columnLabel(params.header.length)}1`),
+      rangeA1: buildA1Range(params.title, `A1:${sheetColumnLetter(params.header.length)}1`),
       values: [params.header],
       valueInputOption: 'USER_ENTERED',
     });
