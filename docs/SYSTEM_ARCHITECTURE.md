@@ -97,6 +97,11 @@
   - SQL 없이 관심종목 추가(중복 차단, symbol normalize, ticker 기본값 자동)
 - `/api/portfolio/watchlist/[id]` (PATCH)
   - 관심종목 메타 + `google_ticker`/`quote_symbol` 수동 보정
+- `/api/portfolio/watchlist/sector-match` (POST)
+  - 관심종목 섹터 자동 매칭(known map + keyword rule + ticker fallback)
+  - `mode=preview|apply`, 수동 섹터 보호(`sector_is_manual`) 우선
+  - apply 시 confidence 기준 미달 항목은 `needs_review`로 남기고 미적용
+  - 운영 로그(`web_ops_events`, domain `portfolio_watchlist`) 적재
 - 기존 투자 도구 API
   - `/api/private-banker/message`
   - `/api/committee-discussion/*`
@@ -122,6 +127,18 @@
   - 시트 read-back 진단(anchor별 rowStatus, 선택 필드 `market`·`parsedVolumeAvg` 등)
 - `/api/sector-radar/watchlist-candidates`
   - `web_portfolio_watchlist` + Sector Radar 요약을 결합해 **관찰 우선순위 큐**(`readinessScore`/`readinessLabel`/`confidence`/`reasons`)를 반환. **매수 추천·자동 주문 없음**
+
+### Trend 리포트 생성 플로우 (보강)
+
+- OpenAI Responses(web search/code interpreter, 선택)로 최신 신호 수집 후 Gemini가 최종 보고서를 정리한다.
+- 서버 후처리 레이어가 시간축 분리(최근 30일/중기/과거 사례/장기 가설), 출처 등급(A/B/C/D/UNKNOWN), 티커 검증(.KS/.KQ/KRX:/KOSDAQ:), 점수 구조화(근거/신뢰도/주의)를 추가 검증한다.
+- 결과는 본문과 별개로 `qualityMeta`/`structuredMemory`에 저장 가능한 JSON으로 생성한다.
+- SQL 메모리 계층은 best-effort로 동작하며, 테이블/컬럼 미구성 시 본문은 그대로 반환하고 warnings로만 알린다.
+- `structuredMemory`의 signal 배열을 `trend_memory_signals_v2`에 `user_key + topic_key + signal_key` 기준 upsert한다.
+- DB 기반 이전 비교는 `trend_memory_signals_v2`를 조회해 `new/strengthened/repeated/weakened`로 계산한다.
+- Trend 전용 ops logging wrapper가 `web_ops_events`로 warning/error/info를 적재하고, fingerprint로 `occurrence_count`를 누적한다.
+- `/api/trend/ops-summary`는 최근 Trend 운영 로그(domain=trend)를 집계해 code/fingerprint/ticker/source-quality/memory/degraded 상태를 요약 반환한다.
+- `/trend`의 `TrendOpsSummaryPanel`은 운영 점검 정보를 접기 영역으로 노출해 본문 읽기 흐름을 방해하지 않게 유지한다.
 
 ## Private Banker — Decision Journal 연동(후속 예정)
 
@@ -150,6 +167,7 @@
 - 메모리/시트/테이블 미설정 시 기능 전체 중단 대신 섹션 단위 경고로 degrade
 - PB/위원회/Trend/Research 결과 화면은 outputQuality/model usage badge를 함께 표시
 - **Sector Radar**는 대표 ETF 몇 개의 시장 데이터를 요약한 휴리스틱 점수이며, **전 섹터 펀더멘털을 대체하지 않는다.** ETF seed 오류·시트 지연 시 섹터 단위 NO_DATA로 degrade
+- 관심종목의 섹터 매칭 우선순위: 수동 sector → 자동 매칭 sector → known/keyword fallback → 기존 키워드 매칭 → no match
 - 전량 매도 시 보유 제거 후 선택적으로 watchlist 이동 가능
 - `thesis health`는 rule+텍스트 기반 휴리스틱 평가이며 사실(Fact)과 판단(Interpretation)을 분리해 표시한다.
 - `/portfolio`의 quote recovery 패널은 상태 머신(`needs_ticker_candidates` → `quote_ready`) 기반으로 다음 조치 버튼을 안내한다.

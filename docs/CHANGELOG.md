@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **관심종목 Sector 자동 매칭:** `POST /api/portfolio/watchlist/sector-match` 추가(`preview|apply`). known map + keyword rule + ticker fallback으로 후보를 산출하고, confidence 미달은 `needs_review`로 반환.
+- **수동 섹터 보호:** `sector_is_manual` 또는 기존 수동 sector로 추정되는 항목은 자동 apply에서 덮어쓰지 않음.
+- **원장 UI 보강:** `/portfolio-ledger` 관심종목 테이블에 `섹터 자동 매칭 미리보기/적용` 버튼, 자동매칭 점수 배지, 결과 요약 표시 추가.
+- **Sector Radar 매칭 확장:** `sectorRadarRegistry`에 watchlist sector alias/추가 카테고리(소비/유통, 항공/여행, 금융/핀테크, 사이버보안, 전기차/자율주행, ETF/인컴, 조선/LNG/소재) 보강.
+- **운영 로그 추적:** watchlist sector match 이벤트를 `web_ops_events`(domain `portfolio_watchlist`)로 fingerprint 누적 저장.
+- **DDL 추가:** `docs/sql/append_watchlist_sector_match.sql` (watchlist sector match metadata additive migration).
+- **테스트 추가:** `watchlistSectorMatcher` pure function 테스트(vitest) 추가.
+
+- **Trend structured memory v2 실사용화:** `structuredMemory` signal을 `trend_memory_signals_v2`에 upsert(고유키: `user_key/topic_key/signal_key`)하고, 재등장 시 `occurrence_count`·`last_seen_at` 갱신, `first_seen_at` 유지.
+- **Trend DB 기반 compare 보강:** `trend_memory_signals_v2` 기준으로 `new/strengthened/repeated/weakened` 비교 결과를 `qualityMeta.memory.compare`로 노출.
+- **Trend ops logging 추가:** `web_ops_events` 재사용 + Trend 전용 wrapper(`trendOpsLogger`)로 warning/error/info 적재. fingerprint 중복 시 occurrence 누적.
+- **warning code 상수화:** `trendWarningCodes`에 시간축/출처/티커/메모리/fallback 코드 집계.
+- **qualityMeta 확장:** `memory.reportRunSaved`, `memory.signalUpsert`, `opsLogging` 필드 추가(모두 optional/additive).
+- **Trend 운영 점검 API/UI:** `GET /api/trend/ops-summary`와 `/trend`의 `TrendOpsSummaryPanel` 추가(최근 7일 trend domain 운영 이슈 요약).
+- **Signal 안정화/merge 보강:** signal_key 생성에서 timeBucket 의존도를 낮추고, evidence/beneficiaries/next_watch를 recent-N merge(dedupe) 방식으로 개선.
+- **Trend pure-function 테스트:** signal key normalize/merge/fingerprint/ticker/source quality 관련 vitest 케이스 추가.
+
+- **Trend 리포트 품질 고도화(additive):** 시간축 분리 검증(최근 30일/6~12개월/과거 레퍼런스/장기 가설), 출처 품질 A/B/C/D/UNKNOWN 분류, 한국 티커 교정(HYBE `352820.KS`, `KRX:352820` 등 known map), 수혜 민감도 분류(primary/secondary/mega-cap-low/watch), 점수 구조화(1~5 + 근거/신뢰도/주의), `qualityMeta` + `structuredMemory` 응답 확장.
+- **Trend SQL memory 확장(fallback 안전):** `trend_report_runs` 저장 시 확장 컬럼(`*_json`)을 우선 기록하고 컬럼 미존재 시 legacy insert로 자동 fallback. 본문 생성 실패 없이 warnings로만 알림.
+- **Trend UI 품질 스트립:** `/trend` 결과 상단에 시간축 검증 상태, 출처 등급 카운트, 티커 검증 상태 카운트, 이전 리포트 대비(새/강화/약화) 요약 노출.
+- **DDL 추가:** `docs/sql/append_trend_structured_memory.sql` (trend structured memory additive migration).
+
 - **운영 로그 / Ops Events:** `docs/sql/append_web_ops_events.sql`의 `web_ops_events` — 오류·경고·degraded·개선 메모·사용자 피드백을 DB에 남겨 backlog로 관리(자동 복구 아님). `logOpsEvent` 서버 유틸: detail 민감키 마스킹, `fingerprint` 있으면 `occurrence_count` 증분. API: `POST /api/ops/events`, `GET /api/ops/events`, `PATCH|DELETE /api/ops/events/[id]`, `GET /api/ops/summary`. UI: `/ops-events`, `OpsFeedbackButton`(portfolio·ledger·sector-radar·decision-journal·PB·committee). 일부 portfolio/quote/sector/trade/decision/system API에 실패 시 best-effort 로깅 연결.
 - **비거래 의사결정 일지 (Decision Journal):** `docs/sql/append_web_decision_journal.sql`의 `web_decision_journal_entries` — 실행하지 않은 매수/매도/추가/관망 등의 이유를 기록(주문·체결 아님). API: `GET|POST /api/decision-journal`, `PATCH|DELETE /api/decision-journal/[id]`, `GET /api/decision-journal/review-due`. UI: `/decision-journal`, `/portfolio` 종목 행·`/portfolio/[symbol]`·`/sector-radar`·대시보드(복기 예정 건수) 연동. Trade Journal(실행 거래)과 구분.
 - **Sector Radar 경고 노출 강화:** `getVisibleSectorRadarWarningsForSector` / `ForSummary` 등으로 UI 기본 경로에서 snake_case가 섞여도 한국어로만 표시. `/sector-radar`·`DashboardClient`·`/api/portfolio/dossier/[symbol]` 병합 `warnings`도 동일 원칙 적용. 내부 코드는 개발 모드 raw 토글에서만 표시.

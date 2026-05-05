@@ -5,16 +5,99 @@
 ## Trend Analysis Center — Phase 4 SQL memory
 
 **파일:** `docs/sql/append_web_trend_memory_phase1.sql`
+**추가 파일:** `docs/sql/append_trend_structured_memory.sql`
 
 | 테이블 | 역할 |
 |--------|------|
 | `trend_report_runs` | 리포트 생성 1회당 1행(실행 이력). 본문·메타·도구·freshness 스냅샷. |
 | `trend_memory_topics` | 사용자별 `memory_key`로 유일한 **구조적 테마** (전문 저장 아님). |
 | `trend_memory_signals` | 토픽별 시그널( delta_new / reinforced / weakened / dormant 등). |
+| `trend_memory_signals_v2` | user/topic/signal 단위 업서트용 구조화 시그널(시간축/근거/수혜주/다음 체크포인트 JSON). |
 
 **인덱스:** `user_key` + 시간/상태 조회 위주 (`append_web_trend_memory_phase1.sql` 참고).
 
 **제외(Phase 4):** `trend_memory_links`, `trend_followup_queue` — 후속 단계 후보.
+
+### trend_report_runs additive 컬럼 (구조화 메모리)
+
+- `time_window` (text)
+- `source_quality_json` (jsonb)
+- `ticker_validation_json` (jsonb)
+- `score_json` (jsonb)
+- `structured_memory_json` (jsonb)
+- `warnings_json` (jsonb)
+
+`structured_memory_json`에는 `TrendStructuredMemory` 스키마(`version=trend_memory_v2`, time bucket별 시그널, 수혜주/티커 검증, 출처 등급, 점수, checkpoints, warnings)가 저장된다.
+
+### trend_memory_signals_v2 운영 의미
+
+- unique index: `user_key + topic_key + signal_key`
+- 재등장 시 insert 대신 update:
+  - `occurrence_count` 증가
+  - `last_seen_at` 갱신
+  - `first_seen_at` 유지
+  - 최신 `signal_summary`, `confidence`, `source_grade` 반영
+  - evidence/beneficiaries/next_watch는 최근 N개(기본 10) merge/dedupe 정책 적용
+- 장기 미등장 신호는 compare 단계에서 `weakened`/`retire_candidate` 후보로만 표시(즉시 폐기 단정 금지)
+- signal key 정책: `topicKey + name + summary` 기반 안정화(slug+hash), timeBucket은 key에 기본 포함하지 않고 row 필드로 갱신
+
+### Ops Logging (web_ops_events 재사용)
+
+- Trend 파이프라인 경고/오류/fallback은 `domain='trend'`로 `web_ops_events`에 적재
+- fingerprint 정책:
+  - `trend:${userKey}:${topicKey}:${stage}:${warningCode}`
+  - `trend:${userKey}:${topicKey}:ticker:${companyName}:${status}`
+- fingerprint 충돌 시 신규 row 대신 `occurrence_count` 증가 + `last_seen_at` 갱신
+
+운영 조회 예시:
+
+```sql
+select
+  severity,
+  domain,
+  code,
+  status,
+  occurrence_count,
+  first_seen_at,
+  last_seen_at,
+  message,
+  detail
+from public.web_ops_events
+where domain = 'trend'
+order by last_seen_at desc
+limit 50;
+```
+
+```sql
+select
+  code,
+  severity,
+  occurrence_count,
+  first_seen_at,
+  last_seen_at,
+  detail
+from public.web_ops_events
+where domain = 'trend'
+  and detail->>'topicKey' = 'k-content'
+order by occurrence_count desc, last_seen_at desc;
+```
+
+```sql
+select
+  topic_key,
+  signal_key,
+  signal_name,
+  time_bucket,
+  confidence,
+  source_grade,
+  occurrence_count,
+  first_seen_at,
+  last_seen_at,
+  status
+from public.trend_memory_signals_v2
+order by last_seen_at desc
+limit 50;
+```
 
 ## 기타 웹 DDL (참고)
 
@@ -28,6 +111,7 @@
 | `docs/sql/append_web_realized_pnl_and_goals.sql` | 실현손익 이벤트 + 목표 자금 + 목표 배분 |
 | `docs/sql/append_web_portfolio_quote_overrides.sql` | 보유 종목 quote ticker 수동 override 컬럼 |
 | `docs/sql/append_web_portfolio_watchlist_quote_overrides.sql` | 관심종목 quote ticker 수동 override 컬럼 |
+| `docs/sql/append_watchlist_sector_match.sql` | 관심종목 섹터 자동 매칭 메타(`sector_match_*`, `sector_keywords`, `sector_is_manual`) |
 | `docs/sql/append_web_decision_journal.sql` | 비거래 의사결정 일지 `web_decision_journal_entries` (실행하지 않은 판단 로그; Trade Journal과 구분) |
 | `docs/sql/append_web_ops_events.sql` | 운영 관측 로그 `web_ops_events` (오류·경고·개선 메모; secret 저장 금지; fingerprint 중복 시 occurrence 증분) |
 
@@ -130,6 +214,8 @@
   - `google_ticker`: Google Sheets `GOOGLEFINANCE` read-back용 우선 ticker
   - `quote_symbol`: Yahoo fallback 등 일반 quote provider용 우선 심볼
 - `web_portfolio_watchlist`에도 동일한 `google_ticker`/`quote_symbol` override를 둘 수 있다(마이그레이션: `docs/sql/append_web_portfolio_watchlist_quote_overrides.sql`).
+- 관심종목 자동 섹터 매칭 메타 컬럼(선택 적용): `sector_keywords`, `sector_match_status`, `sector_match_confidence`, `sector_match_source`, `sector_match_reason`, `sector_matched_at`, `sector_is_manual`.
+- `sector_is_manual=true`는 자동 매칭 apply에서 보호되어 덮어쓰지 않는다.
 - **Ticker 추천(자동 저장 없음):** 스프레드시트 탭 `portfolio_quote_candidates`(기본명, `PORTFOLIO_TICKER_CANDIDATES_SHEET_NAME`로 변경 가능)에 후보별 수식을 쌓고, API가 read-back하여 추천 후보를 보여 준다. DB 반영은 사용자가 `POST /api/portfolio/ticker-resolver/apply`로 승인할 때만 수행한다.
 - **일괄 승인 저장:** `POST /api/portfolio/ticker-resolver/apply-bulk`는 사용자 명시 승인 시에만 다수 후보를 저장하며, 일부 실패는 `failedItems`로 반환한다.
 - **portfolio_quotes 동기화 정책:** `google_ticker`가 있는 보유만 확정 quote row를 작성하고, 누락 심볼은 `missingTickerSymbols`로 반환해 recovery flow로 연결한다. row key는 `normalized_key` 기준으로 read-back/summary를 매칭한다.

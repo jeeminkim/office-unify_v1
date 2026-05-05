@@ -90,6 +90,214 @@ export type TrendFreshnessMetaOut = {
 
 export type TrendResearchLayer = 'none' | 'openai_responses';
 
+export type TrendTimeBucket =
+  | 'fresh_30d'
+  | 'medium_6_12m'
+  | 'historical_reference'
+  | 'long_term_thesis'
+  | 'unknown';
+
+export type TrendSourceGrade = 'A' | 'B' | 'C' | 'D' | 'UNKNOWN';
+
+export type BeneficiarySensitivity =
+  | 'primary_sensitive'
+  | 'secondary_sensitive'
+  | 'mega_cap_low_sensitivity'
+  | 'watch_only';
+
+export interface TrendTimeCheckResult {
+  ok: boolean;
+  warnings: string[];
+  hasFresh30dSection: boolean;
+  hasHistoricalReferenceSection: boolean;
+  hasLongTermThesisSection: boolean;
+}
+
+export interface TrendSourceItem {
+  title?: string;
+  url?: string;
+  publisher?: string;
+  publishedAt?: string;
+}
+
+export interface TrendSourceQualityResult {
+  source: TrendSourceItem;
+  grade: TrendSourceGrade;
+  reason: string;
+  isPrimaryEnoughForInvestment: boolean;
+}
+
+export interface TrendTickerValidationResult {
+  companyName: string;
+  inputTicker?: string;
+  normalizedYahooTicker?: string;
+  normalizedGoogleTicker?: string;
+  status: 'validated' | 'corrected' | 'ambiguous' | 'unknown';
+  warning?: string;
+}
+
+export interface TrendScoreItem {
+  key:
+    | 'recurring_payment'
+    | 'ip_expansion'
+    | 'pricing_power'
+    | 'humanity_intensity'
+    | 'monetization_durability';
+  score: 1 | 2 | 3 | 4 | 5;
+  label: '낮음' | '보통' | '높음';
+  evidence: string[];
+  confidence: 'low' | 'medium' | 'high';
+  caveat?: string;
+}
+
+export interface TrendMemorySignal {
+  signalKey: string;
+  name: string;
+  summary: string;
+  timeBucket: TrendTimeBucket;
+  direction?: 'positive' | 'negative' | 'mixed' | 'neutral';
+  confidence: 'low' | 'medium' | 'high';
+  sourceGrades: TrendSourceGrade[];
+  evidence: Array<{
+    title?: string;
+    url?: string;
+    publisher?: string;
+    publishedAt?: string;
+    grade?: TrendSourceGrade;
+  }>;
+}
+
+export interface TrendBeneficiary {
+  companyName: string;
+  relationship: string;
+  sensitivity: BeneficiarySensitivity;
+  yahooTicker?: string;
+  googleTicker?: string;
+  tickerStatus: 'validated' | 'corrected' | 'ambiguous' | 'unknown';
+  evidence: string[];
+  caveat?: string;
+}
+
+export interface TrendNextCheckpoint {
+  checkpointKey: string;
+  label: string;
+  metric?: string;
+  expectedDirection?: string;
+  nextCheckWindow?: '7d' | '30d' | 'quarterly' | 'unknown';
+  relatedSignalKeys: string[];
+}
+
+export interface TrendStructuredMemory {
+  version: 'trend_memory_v2';
+  topicKey: string;
+  topicLabel: string;
+  timeWindow: {
+    requestedDays?: number;
+    resolvedStartDate?: string;
+    resolvedEndDate?: string;
+  };
+  freshSignals: TrendMemorySignal[];
+  mediumTermSignals: TrendMemorySignal[];
+  historicalReferences: TrendMemorySignal[];
+  longTermTheses: TrendMemorySignal[];
+  beneficiaries: TrendBeneficiary[];
+  tickerValidation: TrendTickerValidationResult[];
+  sourceQuality: TrendSourceQualityResult[];
+  scores: TrendScoreItem[];
+  nextCheckpoints: TrendNextCheckpoint[];
+  warnings: string[];
+}
+
+export interface TrendMemoryCompareResult {
+  newSignals: string[];
+  strengthenedSignals: string[];
+  weakenedSignals: string[];
+  repeatedSignals: string[];
+  thesisStatus: Array<{
+    thesisKey: string;
+    status: 'maintained' | 'strengthened' | 'weakened' | 'retire_candidate';
+    reason: string;
+  }>;
+  warnings: string[];
+}
+
+export interface TrendOpsSummaryResponse {
+  ok: boolean;
+  range: {
+    days: number;
+    from: string;
+    to: string;
+  };
+  totals: {
+    events: number;
+    info: number;
+    warning: number;
+    error: number;
+    occurrenceTotal: number;
+  };
+  topCodes: Array<{
+    code: string;
+    severity: string;
+    eventCount: number;
+    occurrenceTotal: number;
+    lastSeenAt?: string;
+  }>;
+  topFingerprints: Array<{
+    fingerprint: string;
+    code: string;
+    severity: string;
+    occurrenceCount: number;
+    lastSeenAt?: string;
+    message?: string;
+  }>;
+  tickerIssues: Array<{
+    code: string;
+    companyName?: string;
+    inputTicker?: string;
+    normalizedYahooTicker?: string;
+    normalizedGoogleTicker?: string;
+    status?: string;
+    occurrenceCount: number;
+    lastSeenAt?: string;
+  }>;
+  sourceQualityIssues: Array<{
+    topicKey?: string;
+    code: string;
+    occurrenceCount: number;
+    lastSeenAt?: string;
+    message?: string;
+  }>;
+  memoryIssues: Array<{
+    code: string;
+    stage?: string;
+    topicKey?: string;
+    occurrenceCount: number;
+    lastSeenAt?: string;
+    message?: string;
+  }>;
+  degradedEvents: Array<{
+    code: string;
+    stage?: string;
+    fallbackFrom?: string;
+    fallbackTo?: string;
+    reason?: string;
+    occurrenceCount: number;
+    lastSeenAt?: string;
+  }>;
+  recentEvents: Array<{
+    severity: string;
+    code: string;
+    status?: string;
+    occurrenceCount: number;
+    firstSeenAt?: string;
+    lastSeenAt?: string;
+    message?: string;
+    topicKey?: string;
+    stage?: string;
+  }>;
+  warnings: string[];
+}
+
 export type TrendAnalysisMeta = {
   /** 최종 섹션 포맷 생성기 */
   provider: 'gemini';
@@ -163,5 +371,40 @@ export type TrendAnalysisGenerateResponseBody = {
   freshnessMeta: TrendFreshnessMetaOut;
   /** SQL memory vs 현재 리포트 비교 (테이블 없으면 빈 배열) */
   memoryDelta: TrendMemoryDelta;
+  qualityMeta?: {
+    timeWindow: TrendTimeCheckResult;
+    sourceQuality: {
+      counts: Record<TrendSourceGrade, number>;
+      warnings: string[];
+    };
+    tickerValidation: {
+      counts: Record<string, number>;
+      items: TrendTickerValidationResult[];
+      warnings: string[];
+    };
+    memory: {
+      enabled: boolean;
+      saved: boolean;
+      reportRunSaved?: boolean;
+      signalUpsert?: {
+        ok: boolean;
+        insertedCount: number;
+        updatedCount: number;
+        skippedCount: number;
+        failedCount?: number;
+        warnings: string[];
+      };
+      skippedReason?: string;
+      compare?: TrendMemoryCompareResult;
+    };
+    opsLogging?: {
+      attempted: boolean;
+      savedCount?: number;
+      failedCount?: number;
+      warnings: string[];
+    };
+    warnings: string[];
+  };
+  structuredMemory?: TrendStructuredMemory;
 };
 

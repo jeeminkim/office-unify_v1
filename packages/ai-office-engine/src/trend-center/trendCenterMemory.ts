@@ -6,12 +6,20 @@ import type {
   TrendCitation,
   TrendConfidenceLevel,
   TrendFreshnessMetaOut,
+  TrendMemoryCompareResult,
   TrendMemoryDelta,
   TrendMemoryDeltaItem,
   TrendToolUsage,
+  TrendScoreItem,
+  TrendSourceQualityResult,
+  TrendStructuredMemory,
+  TrendTickerValidationResult,
+  TrendTimeCheckResult,
 } from '@office-unify/shared-types';
 import type { FormattedTrendReport } from './trendCenterFormatter';
 import { extractTrendMemoryCandidates, type TrendMemoryCandidate } from './trendMemoryCandidates';
+import { runTrendMemoryCompare } from './trendMemoryCompare';
+import { upsertTrendMemorySignalsV2, type TrendSignalUpsertResult } from './trendStructuredMemoryStore';
 
 const EMPTY_TREND_MEMORY_DELTA: TrendMemoryDelta = {
   new: [],
@@ -262,6 +270,78 @@ async function findTopicIdByKey(
   return data.id as string;
 }
 
+function buildRunInsertPayload(params: {
+  userKey: OfficeUserKey;
+  body: TrendAnalysisGenerateRequestBody;
+  title: string;
+  summary: string;
+  reportMarkdown: string;
+  confidence: TrendConfidenceLevel;
+  warnings: string[];
+  citations: TrendCitation[];
+  toolUsage: TrendToolUsage;
+  freshnessMeta: TrendFreshnessMetaOut;
+  qualityMeta?: {
+    timeWindow: TrendTimeCheckResult;
+    sourceQuality: TrendSourceQualityResult[];
+    tickerValidation: TrendTickerValidationResult[];
+    scores: TrendScoreItem[];
+    structuredMemory: TrendStructuredMemory;
+  };
+}) {
+  return {
+    user_key: params.userKey,
+    mode: params.body.mode,
+    horizon: params.body.horizon,
+    geo: params.body.geo,
+    sector_focus: params.body.sectorFocus,
+    focus: params.body.focus,
+    user_prompt: params.body.userPrompt ?? null,
+    title: params.title,
+    summary: params.summary,
+    report_markdown: params.reportMarkdown,
+    confidence: confidenceToNumeric(params.confidence),
+    warnings: params.warnings,
+    sources: params.citations.map((c) => ({ title: c.title, url: c.url, snippet: c.snippet })),
+    tool_usage: params.toolUsage,
+    freshness_meta: params.freshnessMeta,
+    time_window: params.qualityMeta?.timeWindow ?? null,
+    source_quality_json: params.qualityMeta?.sourceQuality ?? null,
+    ticker_validation_json: params.qualityMeta?.tickerValidation ?? null,
+    score_json: params.qualityMeta?.scores ?? null,
+    structured_memory_json: params.qualityMeta?.structuredMemory ?? null,
+    warnings_json: params.warnings,
+  };
+}
+
+async function insertRunWithFallback(
+  supabase: SupabaseClient,
+  payload: Record<string, unknown>,
+): Promise<{ id: string; warning?: string }> {
+  const first = await supabase.from('trend_report_runs').insert(payload).select('id').single();
+  if (!first.error && first.data?.id) return { id: first.data.id as string };
+  const msg = first.error?.message ?? '';
+  if (/column .* does not exist|schema cache/i.test(msg)) {
+    const {
+      time_window: _timeWindow,
+      source_quality_json: _sourceQuality,
+      ticker_validation_json: _tickerValidation,
+      score_json: _scoreJson,
+      structured_memory_json: _structuredMem,
+      warnings_json: _warningsJson,
+      ...legacy
+    } = payload;
+    const fallback = await supabase.from('trend_report_runs').insert(legacy).select('id').single();
+    if (!fallback.error && fallback.data?.id) {
+      return {
+        id: fallback.data.id as string,
+        warning: 'trend_memory_save_partial: trend_report_runs extended columns are missing; saved with legacy columns only',
+      };
+    }
+  }
+  throw new Error(first.error?.message ?? 'insert run');
+}
+
 export async function runTrendSqlMemoryLayer(params: {
   supabase: SupabaseClient;
   userKey: OfficeUserKey;
@@ -275,6 +355,13 @@ export async function runTrendSqlMemoryLayer(params: {
   citations: TrendCitation[];
   toolUsage: TrendToolUsage;
   freshnessMeta: TrendFreshnessMetaOut;
+  qualityMeta?: {
+    timeWindow: TrendTimeCheckResult;
+    sourceQuality: TrendSourceQualityResult[];
+    tickerValidation: TrendTickerValidationResult[];
+    scores: TrendScoreItem[];
+    structuredMemory: TrendStructuredMemory;
+  };
   includeMemoryContext: boolean;
   saveToSqlMemory: boolean;
 }): Promise<{
@@ -289,6 +376,9 @@ export async function runTrendSqlMemoryLayer(params: {
     | 'memoryStatusNote'
   >;
   extraWarnings: string[];
+  reportRunId?: string;
+  signalUpsert?: TrendSignalUpsertResult;
+  memoryCompare?: TrendMemoryCompareResult;
 }> {
   const emptyMeta = (): Pick<
     TrendAnalysisMeta,
@@ -321,6 +411,7 @@ export async function runTrendSqlMemoryLayer(params: {
         memoryStatusNote: 'trend_report_runs 테이블이 없거나 접근할 수 없습니다. docs/sql/append_web_trend_memory_phase1.sql 적용 후 다시 시도하세요.',
       },
       extraWarnings: ['SQL memory 테이블이 없어 장기 메모리 단계를 건너뜁니다.'],
+      reportRunId: undefined,
     };
   }
 
@@ -339,6 +430,7 @@ export async function runTrendSqlMemoryLayer(params: {
         memoryStatusNote: 'includeMemoryContext=false 이고 saveToSqlMemory=false 입니다.',
       },
       extraWarnings: ['이번 실행에서는 장기 메모리 비교·저장을 수행하지 않았습니다.'],
+      reportRunId: undefined,
     };
   }
 
@@ -356,6 +448,7 @@ export async function runTrendSqlMemoryLayer(params: {
           memoryStatusNote: 'includeMemoryContext=false 로 읽기·쓰기를 생략했습니다.',
         },
         extraWarnings: ['이번 실행에서는 장기 메모리 비교를 수행하지 않았습니다.'],
+        reportRunId: undefined,
       };
     }
     // write-only path: still persist run + candidates as new topics
@@ -363,29 +456,24 @@ export async function runTrendSqlMemoryLayer(params: {
     let runId: string | null = null;
     let written = 0;
     try {
-      const ins = await params.supabase
-        .from('trend_report_runs')
-        .insert({
-          user_key: params.userKey,
-          mode: params.body.mode,
-          horizon: params.body.horizon,
-          geo: params.body.geo,
-          sector_focus: params.body.sectorFocus,
-          focus: params.body.focus,
-          user_prompt: params.body.userPrompt ?? null,
+      const insertRes = await insertRunWithFallback(
+        params.supabase,
+        buildRunInsertPayload({
+          userKey: params.userKey,
+          body: params.body,
           title: params.title,
           summary: params.summary,
-          report_markdown: params.reportMarkdown,
-          confidence: confidenceToNumeric(params.confidence),
+          reportMarkdown: params.reportMarkdown,
+          confidence: params.confidence,
           warnings: params.warnings,
-          sources: params.citations.map((c) => ({ title: c.title, url: c.url, snippet: c.snippet })),
-          tool_usage: params.toolUsage,
-          freshness_meta: params.freshnessMeta,
-        })
-        .select('id')
-        .single();
-      if (ins.error || !ins.data?.id) throw new Error(ins.error?.message ?? 'insert run');
-      runId = ins.data.id as string;
+          citations: params.citations,
+          toolUsage: params.toolUsage,
+          freshnessMeta: params.freshnessMeta,
+          qualityMeta: params.qualityMeta,
+        }),
+      );
+      runId = insertRes.id;
+      const extraWarnings: string[] = insertRes.warning ? [insertRes.warning] : [];
       written += 1;
 
       for (const c of candidates) {
@@ -423,7 +511,8 @@ export async function runTrendSqlMemoryLayer(params: {
           memoryItemsWritten: written,
           memoryStatusNote: '읽기 없이 실행 이력·후보만 저장했습니다.',
         },
-        extraWarnings: ['이번 실행에서는 장기 메모리 비교를 수행하지 않았습니다.'],
+        extraWarnings: ['이번 실행에서는 장기 메모리 비교를 수행하지 않았습니다.', ...extraWarnings],
+        reportRunId: runId ?? undefined,
       };
     } catch (e: unknown) {
       logMem('TREND_MEMORY_WRITE_FAIL', { error: e instanceof Error ? e.message : String(e) });
@@ -440,6 +529,7 @@ export async function runTrendSqlMemoryLayer(params: {
         extraWarnings: [
           `장기 메모리 저장 실패: ${e instanceof Error ? e.message.slice(0, 200) : 'unknown'}`,
         ],
+        reportRunId: undefined,
       };
     }
   }
@@ -465,6 +555,7 @@ export async function runTrendSqlMemoryLayer(params: {
       extraWarnings: [
         `장기 메모리 읽기 실패: ${e instanceof Error ? e.message.slice(0, 200) : 'unknown'}`,
       ],
+      reportRunId: undefined,
     };
   }
 
@@ -489,6 +580,7 @@ export async function runTrendSqlMemoryLayer(params: {
         memoryStatusNote: 'saveToSqlMemory=false 로 저장하지 않았습니다.',
       },
       extraWarnings: [],
+      reportRunId: undefined,
     };
   }
 
@@ -496,29 +588,24 @@ export async function runTrendSqlMemoryLayer(params: {
   let written = 0;
   let runId: string | null = null;
   try {
-    const ins = await params.supabase
-      .from('trend_report_runs')
-      .insert({
-        user_key: params.userKey,
-        mode: params.body.mode,
-        horizon: params.body.horizon,
-        geo: params.body.geo,
-        sector_focus: params.body.sectorFocus,
-        focus: params.body.focus,
-        user_prompt: params.body.userPrompt ?? null,
+    const insertRes = await insertRunWithFallback(
+      params.supabase,
+      buildRunInsertPayload({
+        userKey: params.userKey,
+        body: params.body,
         title: params.title,
         summary: params.summary,
-        report_markdown: params.reportMarkdown,
-        confidence: confidenceToNumeric(params.confidence),
+        reportMarkdown: params.reportMarkdown,
+        confidence: params.confidence,
         warnings: params.warnings,
-        sources: params.citations.map((c) => ({ title: c.title, url: c.url, snippet: c.snippet })),
-        tool_usage: params.toolUsage,
-        freshness_meta: params.freshnessMeta,
-      })
-      .select('id')
-      .single();
-    if (ins.error || !ins.data?.id) throw new Error(ins.error?.message ?? 'insert run');
-    runId = ins.data.id as string;
+        citations: params.citations,
+        toolUsage: params.toolUsage,
+        freshnessMeta: params.freshnessMeta,
+        qualityMeta: params.qualityMeta,
+      }),
+    );
+    runId = insertRes.id;
+    const extraWarnings: string[] = insertRes.warning ? [insertRes.warning] : [];
     written += 1;
 
     for (const c of candidates) {
@@ -567,7 +654,26 @@ export async function runTrendSqlMemoryLayer(params: {
     await signalize('weakened', delta.weakened);
     await signalize('dormant', delta.dormant);
 
-    logMem('TREND_MEMORY_WRITE_DONE', { items: written });
+    let signalUpsert: TrendSignalUpsertResult | undefined;
+    let memoryCompare: TrendMemoryCompareResult | undefined;
+    if (params.qualityMeta?.structuredMemory) {
+      signalUpsert = await upsertTrendMemorySignalsV2(params.supabase, {
+        userKey: params.userKey,
+        topicKey: params.qualityMeta.structuredMemory.topicKey,
+        reportRunId: runId ?? undefined,
+        structuredMemory: params.qualityMeta.structuredMemory,
+      });
+      if (signalUpsert.warnings.length > 0) extraWarnings.push(...signalUpsert.warnings);
+      memoryCompare = await runTrendMemoryCompare({
+        supabase: params.supabase,
+        userKey: params.userKey,
+        topicKey: params.qualityMeta.structuredMemory.topicKey,
+        structuredMemory: params.qualityMeta.structuredMemory,
+        upsert: signalUpsert,
+      });
+      if (memoryCompare.warnings.length > 0) extraWarnings.push(...memoryCompare.warnings);
+    }
+    logMem('TREND_MEMORY_WRITE_DONE', { items: written, signalUpsertOk: signalUpsert?.ok ?? null });
     return {
       memoryDelta: delta,
       meta: {
@@ -578,7 +684,10 @@ export async function runTrendSqlMemoryLayer(params: {
         memoryItemsWritten: written,
         memoryStatusNote: undefined,
       },
-      extraWarnings: [],
+      extraWarnings,
+      reportRunId: runId ?? undefined,
+      signalUpsert,
+      memoryCompare,
     };
   } catch (e: unknown) {
     logMem('TREND_MEMORY_WRITE_FAIL', { error: e instanceof Error ? e.message : String(e) });
@@ -595,6 +704,7 @@ export async function runTrendSqlMemoryLayer(params: {
       extraWarnings: [
         `장기 메모리 저장 실패: ${e instanceof Error ? e.message.slice(0, 200) : 'unknown'}`,
       ],
+      reportRunId: runId ?? undefined,
     };
   }
 }

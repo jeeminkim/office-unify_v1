@@ -11,6 +11,7 @@ import type {
   TrendReportMode,
   TrendSectorFocus,
 } from "@office-unify/shared-types";
+import { TrendOpsSummaryPanel } from "./TrendOpsSummaryPanel";
 
 const jsonHeaders: HeadersInit = {
   "Content-Type": "application/json",
@@ -552,6 +553,36 @@ export function TrendAnalysisClient() {
                   } · 읽은 항목 ${result.meta.memoryItemsRead} · 기록 ${result.meta.memoryItemsWritten}`
                 : "비활성 또는 테이블 없음"}
             </p>
+            {result.qualityMeta ? (
+              <div className="mt-3 rounded border border-slate-200 bg-white px-2.5 py-2">
+                <p className="font-medium text-slate-800">품질 요약</p>
+                <div className="mt-1 grid gap-1 text-[11px] text-slate-700 sm:grid-cols-2">
+                  <p>시간축 검증: {result.qualityMeta.timeWindow.ok ? "OK" : "WARNING"}</p>
+                  <p>
+                    출처 품질: A {result.qualityMeta.sourceQuality.counts.A} / B {result.qualityMeta.sourceQuality.counts.B} / C{" "}
+                    {result.qualityMeta.sourceQuality.counts.C} / D {result.qualityMeta.sourceQuality.counts.D} / UNKNOWN{" "}
+                    {result.qualityMeta.sourceQuality.counts.UNKNOWN}
+                  </p>
+                  <p>
+                    티커 검증: validated {result.qualityMeta.tickerValidation.counts.validated ?? 0} / corrected{" "}
+                    {result.qualityMeta.tickerValidation.counts.corrected ?? 0} / ambiguous{" "}
+                    {result.qualityMeta.tickerValidation.counts.ambiguous ?? 0} / unknown{" "}
+                    {result.qualityMeta.tickerValidation.counts.unknown ?? 0}
+                  </p>
+                  <p>
+                    이전 리포트 비교: 새 {result.qualityMeta.memory.compare?.newSignals.length ?? 0} / 강화{" "}
+                    {result.qualityMeta.memory.compare?.strengthenedSignals.length ?? 0} / 약화{" "}
+                    {result.qualityMeta.memory.compare?.weakenedSignals.length ?? 0}
+                  </p>
+                  <p>반복 확인: {result.qualityMeta.memory.compare?.repeatedSignals.length ?? 0}</p>
+                  <p>
+                    signal upsert: ins {result.qualityMeta.memory.signalUpsert?.insertedCount ?? 0} / upd{" "}
+                    {result.qualityMeta.memory.signalUpsert?.updatedCount ?? 0} / fail{" "}
+                    {result.qualityMeta.memory.signalUpsert?.failedCount ?? 0}
+                  </p>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {result.warnings.length > 0 ? (
@@ -663,6 +694,7 @@ export function TrendAnalysisClient() {
               Sheets append: {result.meta.appendToSheetsSucceeded === true ? "성공" : "실패 또는 미설정"}
             </p>
           ) : null}
+          <TrendOpsSummaryPanel />
         </section>
       ) : null}
     </div>

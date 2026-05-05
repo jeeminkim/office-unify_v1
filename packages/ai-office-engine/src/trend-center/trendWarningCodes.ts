@@ -1,0 +1,26 @@
+export const TREND_WARNING_CODES = {
+  TIME_WINDOW_SECTION_MISSING: 'trend_time_window_section_missing',
+  SOURCE_QUALITY_LOW: 'trend_source_quality_low',
+  SOURCE_QUALITY_PARSE_FAILED: 'trend_source_quality_parse_failed',
+  TICKER_CORRECTED: 'trend_ticker_corrected',
+  TICKER_AMBIGUOUS: 'trend_ticker_ambiguous',
+  STRUCTURED_MEMORY_CREATED: 'trend_memory_structured_json_created',
+  REPORT_RUN_SAVED: 'trend_memory_report_run_saved',
+  REPORT_RUN_SAVE_FAILED: 'trend_memory_report_run_save_failed',
+  SIGNAL_UPSERT_SUCCESS: 'trend_memory_signal_upsert_success',
+  SIGNAL_UPSERT_PARTIAL_FAILED: 'trend_memory_signal_upsert_partial_failed',
+  SIGNAL_UPSERT_FAILED: 'trend_memory_signal_upsert_failed',
+  MEMORY_COMPARE_SUCCESS: 'trend_memory_compare_success',
+  MEMORY_COMPARE_FAILED: 'trend_memory_compare_failed',
+  QUALITY_POSTPROCESS_FAILED: 'trend_quality_postprocess_failed',
+  PROVIDER_FALLBACK: 'trend_provider_fallback',
+  WEB_SEARCH_DEGRADED: 'trend_web_search_degraded',
+  GEMINI_FORMAT_DEGRADED: 'trend_gemini_format_degraded',
+  OPS_SUMMARY_UNAVAILABLE: 'trend_ops_summary_unavailable',
+  MEMORY_JSON_MERGE_FAILED: 'trend_memory_json_merge_failed',
+  SIGNAL_KEY_NORMALIZE_FAILED: 'trend_signal_key_normalize_failed',
+  SIGNAL_COMPARE_HEURISTIC_USED: 'trend_signal_compare_heuristic_used',
+  UNKNOWN_WARNING: 'trend_unknown_warning',
+} as const;
+
+export type TrendWarningCode = (typeof TREND_WARNING_CODES)[keyof typeof TREND_WARNING_CODES];

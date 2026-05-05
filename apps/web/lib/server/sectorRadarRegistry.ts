@@ -164,6 +164,52 @@ export const SECTOR_RADAR_CATEGORY_SEEDS: SectorRadarCategorySeed[] = [
       { symbol: '367770', name: 'RISE Fn컨택트대표', sourceLabel: 'seed' },
     ],
   },
+  {
+    key: 'consumer_retail',
+    name: '소비/유통',
+    keywords: ['소비', '유통', '리테일', '편의점', '마트', '백화점'],
+    anchors: [],
+  },
+  {
+    key: 'airline_travel',
+    name: '항공/여행',
+    keywords: ['항공', '여행', '관광', 'lcc', '에어'],
+    anchors: [],
+  },
+  {
+    key: 'finance_fintech',
+    name: '금융/핀테크',
+    keywords: ['금융', '핀테크', '은행', '카드', '증권', '뱅크'],
+    anchors: [],
+  },
+  {
+    key: 'cybersecurity',
+    name: '사이버보안',
+    keywords: ['사이버보안', '보안', '시큐리티', '클라우드 보안', '네트워크 보안'],
+    anchors: [
+      { symbol: 'PANW', name: 'Palo Alto Networks', sourceLabel: 'seed', market: 'US', googleTicker: 'NASDAQ:PANW' },
+    ],
+  },
+  {
+    key: 'ev_autonomous',
+    name: '전기차/자율주행',
+    keywords: ['전기차', '자율주행', '배터리', '모빌리티', '테슬라'],
+    anchors: [
+      { symbol: 'TSLA', name: 'Tesla', sourceLabel: 'seed', market: 'US', googleTicker: 'NASDAQ:TSLA' },
+    ],
+  },
+  {
+    key: 'etf_income',
+    name: 'ETF/인컴',
+    keywords: ['etf', '인컴', '커버드콜', '배당', 'kodex', 'tiger'],
+    anchors: [],
+  },
+  {
+    key: 'shipping_lng_material',
+    name: '조선/LNG/소재',
+    keywords: ['조선', 'lng', '보냉재', '소재', '해운'],
+    anchors: [],
+  },
 ];
 
 export type MergedSectorRadarAnchor = {
@@ -207,11 +253,27 @@ function normLower(s: string | null | undefined): string {
   return (s ?? '').trim().toLowerCase();
 }
 
+const SECTOR_LABEL_ALIAS_TO_KEYS: Record<string, string[]> = {
+  '바이오/헬스케어': ['bio'],
+  'k-콘텐츠/미디어': ['k_content'],
+  'ai/전력인프라': ['ai_power_infra'],
+  '소비/유통': ['consumer_retail'],
+  '항공/여행': ['airline_travel'],
+  '금융/핀테크': ['finance_fintech'],
+  '사이버보안': ['cybersecurity'],
+  '전기차/자율주행': ['ev_autonomous'],
+  'etf/인컴': ['etf_income'],
+  '조선/lng/소재': ['shipping_lng_material'],
+};
+
 /** 관심종목 텍스트·섹터 필드로 매칭되는 sector_radar 카테고리 키 목록 */
 export function listSectorKeysMatchingWatchlist(row: WebPortfolioWatchlistRow): string[] {
   const blob = watchlistTextBlob(row);
   const hs = normLower(row.sector);
   const out = new Set<string>();
+  if (hs && SECTOR_LABEL_ALIAS_TO_KEYS[hs]) {
+    for (const k of SECTOR_LABEL_ALIAS_TO_KEYS[hs]) out.add(k);
+  }
   for (const cat of SECTOR_RADAR_CATEGORY_SEEDS) {
     if (categoryMatch(cat, blob)) out.add(cat.key);
     const catName = normLower(cat.name);

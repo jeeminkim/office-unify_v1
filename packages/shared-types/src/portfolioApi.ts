@@ -118,3 +118,52 @@ export type PortfolioTradeEvent = {
   memo?: string;
   reason?: string;
 };
+
+export type WatchlistSectorMatchStatus =
+  | 'matched_known_map'
+  | 'matched_keyword'
+  | 'matched_ticker_type'
+  | 'matched_existing_sector'
+  | 'needs_review'
+  | 'no_match';
+
+export type WatchlistSectorMatchResult = {
+  name: string;
+  rawTicker?: string;
+  matchedSector: string | null;
+  sectorKeywords: string[];
+  confidence: number;
+  status: WatchlistSectorMatchStatus;
+  reason: string;
+  source: 'known_map' | 'keyword_rule' | 'ticker_type_rule' | 'existing' | 'none';
+  needsReview: boolean;
+};
+
+export type WatchlistSectorMatchApiResponse = {
+  ok: boolean;
+  mode: 'preview' | 'apply';
+  total: number;
+  matched: number;
+  applied: number;
+  needsReview: number;
+  noMatch: number;
+  items: WatchlistSectorMatchResult[];
+  warnings: string[];
+  qualityMeta?: {
+    sectorMatch: {
+      total: number;
+      matched: number;
+      applied: number;
+      needsReview: number;
+      noMatch: number;
+      lowConfidence: number;
+      manualProtected: number;
+    };
+    opsLogging?: {
+      attempted: boolean;
+      savedCount?: number;
+      failedCount?: number;
+      warnings: string[];
+    };
+  };
+};

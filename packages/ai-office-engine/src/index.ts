@@ -38,6 +38,25 @@ export {
 } from './research-center/researchSheetsRows';
 export { runTrendAnalysisGeneration } from './trend-center/trendCenterOrchestrator';
 export {
+  buildTrendOpsFingerprint,
+  logTrendOpsEvent,
+} from './trend-center/trendOpsLogger';
+export { TREND_WARNING_CODES } from './trend-center/trendWarningCodes';
+export {
+  normalizeTrendSignalKey,
+  upsertTrendMemorySignalsV2,
+} from './trend-center/trendStructuredMemoryStore';
+export {
+  mergeBeneficiaries,
+  mergeEvidenceItems,
+  mergeNextWatch,
+  TREND_MEMORY_JSON_MERGE_LIMIT,
+} from './trend-center/trendMemoryMerge';
+export {
+  evaluateSourceQuality,
+  validateTrendTickers,
+} from './trend-center/trendQualityPostprocess';
+export {
   buildTrendReportsLogRow,
   buildTrendRequestRow,
   TREND_REPORTS_LOG_HEADER,

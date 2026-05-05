@@ -19,10 +19,23 @@ export async function GET() {
     );
   }
   try {
-    const [holdings, watchlist] = await Promise.all([
-      listWebPortfolioHoldingsForUser(supabase, auth.userKey),
-      listWebPortfolioWatchlistForUser(supabase, auth.userKey),
-    ]);
+    const holdings = await listWebPortfolioHoldingsForUser(supabase, auth.userKey);
+    let watchlist: unknown[] = [];
+    const wl = await supabase
+      .from('web_portfolio_watchlist')
+      .select(
+        'market,symbol,name,google_ticker,quote_symbol,sector,investment_memo,interest_reason,desired_buy_range,observation_points,priority,sector_is_manual,sector_match_status,sector_match_confidence,sector_match_source,sector_match_reason,updated_at',
+      )
+      .eq('user_key', auth.userKey)
+      .order('market', { ascending: true })
+      .order('symbol', { ascending: true });
+    if (wl.error && /column .* does not exist|schema cache/i.test(wl.error.message ?? '')) {
+      watchlist = await listWebPortfolioWatchlistForUser(supabase, auth.userKey);
+    } else if (wl.error) {
+      throw wl.error;
+    } else {
+      watchlist = wl.data ?? [];
+    }
     return NextResponse.json({ ok: true, holdings, watchlist });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';

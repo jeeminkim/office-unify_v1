@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import type {
   PortfolioLedgerApplyResponseBody,
   PortfolioLedgerValidateResponseBody,
+  WatchlistSectorMatchApiResponse,
+  WatchlistSectorMatchResult,
 } from "@office-unify/shared-types";
 import type { SectorWatchlistCandidateItem } from "@/lib/sectorRadarContract";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
@@ -57,6 +59,11 @@ type WatchlistRow = {
   desired_buy_range?: string | null;
   observation_points?: string | null;
   investment_memo?: string | null;
+  sector_is_manual?: boolean | null;
+  sector_match_status?: string | null;
+  sector_match_confidence?: number | null;
+  sector_match_source?: string | null;
+  sector_match_reason?: string | null;
 };
 type GoalRow = {
   id: string;
@@ -224,6 +231,9 @@ export function PortfolioLedgerClient() {
   const [eventsByKey, setEventsByKey] = useState<Record<string, TradeEventRow[]>>({});
   const [eventsOpenKey, setEventsOpenKey] = useState<string | null>(null);
   const [eventsBusyKey, setEventsBusyKey] = useState<string | null>(null);
+  const [watchSectorMatchBusy, setWatchSectorMatchBusy] = useState<null | "preview" | "apply">(null);
+  const [watchSectorMatchPreview, setWatchSectorMatchPreview] = useState<WatchlistSectorMatchResult[]>([]);
+  const [watchSectorMatchMeta, setWatchSectorMatchMeta] = useState<WatchlistSectorMatchApiResponse["qualityMeta"] | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -400,6 +410,41 @@ export function PortfolioLedgerClient() {
       setLoadingSnapshot(false);
     }
   }, []);
+
+  const runWatchlistSectorMatch = useCallback(
+    async (mode: "preview" | "apply") => {
+      setWatchSectorMatchBusy(mode);
+      setError(null);
+      try {
+        const res = await fetch("/api/portfolio/watchlist/sector-match", {
+          method: "POST",
+          headers: jsonHeaders,
+          credentials: "same-origin",
+          body: JSON.stringify({
+            mode,
+            onlyUnmatched: mode === "preview",
+            minConfidenceToApply: 75,
+          }),
+        });
+        const data = (await res.json()) as WatchlistSectorMatchApiResponse & { error?: string };
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        setWatchSectorMatchPreview(data.items ?? []);
+        setWatchSectorMatchMeta(data.qualityMeta ?? null);
+        if (mode === "apply") {
+          setLedgerTradeBanner({
+            kind: "info",
+            message: `관심종목 섹터 자동 매칭 적용: ${data.applied}건 (검토 필요 ${data.needsReview}, 미매칭 ${data.noMatch})`,
+          });
+          await loadSnapshot();
+        }
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "관심종목 섹터 자동 매칭 실패");
+      } finally {
+        setWatchSectorMatchBusy(null);
+      }
+    },
+    [loadSnapshot],
+  );
 
   const suggestLedgerTicker = useCallback(
     async (
@@ -1724,6 +1769,43 @@ export function PortfolioLedgerClient() {
               </Link>
               에서 전체 큐를 볼 수 있습니다.
             </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+              <button
+                type="button"
+                className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-blue-900 disabled:opacity-50"
+                disabled={watchSectorMatchBusy != null}
+                onClick={() => void runWatchlistSectorMatch("preview")}
+              >
+                {watchSectorMatchBusy === "preview" ? "미리보기..." : "섹터 자동 매칭 미리보기"}
+              </button>
+              <button
+                type="button"
+                className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-900 disabled:opacity-50"
+                disabled={watchSectorMatchBusy != null}
+                onClick={() => void runWatchlistSectorMatch("apply")}
+              >
+                {watchSectorMatchBusy === "apply" ? "적용 중..." : "섹터 자동 매칭 적용"}
+              </button>
+              {watchSectorMatchMeta ? (
+                <span className="rounded bg-slate-100 px-2 py-1 text-slate-700">
+                  매칭 {watchSectorMatchMeta.sectorMatch.matched} · 적용 {watchSectorMatchMeta.sectorMatch.applied} · 검토필요{" "}
+                  {watchSectorMatchMeta.sectorMatch.needsReview} · 미매칭 {watchSectorMatchMeta.sectorMatch.noMatch}
+                </span>
+              ) : null}
+            </div>
+            {watchSectorMatchPreview.length > 0 ? (
+              <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700">
+                <p className="font-medium">자동 매칭 미리보기 (상위 8건)</p>
+                <ul className="mt-1 list-disc pl-4">
+                  {watchSectorMatchPreview.slice(0, 8).map((x) => (
+                    <li key={`${x.name}-${x.rawTicker ?? ""}-${x.status}`}>
+                      {x.name} ({x.rawTicker ?? "-"}) → {x.matchedSector ?? "미매칭"} · {x.confidence}점 ·{" "}
+                      {x.needsReview ? "검토 필요" : "적용 가능"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div className="mt-2 overflow-auto">
               <table className="min-w-full text-[11px]">
                 <thead>
@@ -1759,6 +1841,11 @@ export function PortfolioLedgerClient() {
                             ) : null}
                             {cand?.sectorKey === "unlinked" ? (
                               <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] text-slate-800">섹터 키워드 미매칭</span>
+                            ) : null}
+                            {row.sector_match_confidence != null ? (
+                              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-900">
+                                자동매칭 {row.sector_match_confidence}점
+                              </span>
                             ) : null}
                           </div>
                         </td>

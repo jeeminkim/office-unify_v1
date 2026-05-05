@@ -26,6 +26,16 @@ import { runTrendSqlMemoryLayer } from './trendCenterMemory';
 import { buildTrendSourcePack } from './trendCenterSourcePack';
 import { runTrendOpenAiResearch } from './trendOpenAiResearch';
 import { computeTrendToolRouting, shouldAttemptOpenAiResearch } from './trendToolRouting';
+import {
+  buildBeneficiaries,
+  buildStructuredMemory,
+  buildTrendScores,
+  checkTrendTimeWindow,
+  evaluateSourceQuality,
+  validateTrendTickers,
+} from './trendQualityPostprocess';
+import { logTrendOpsEvent } from './trendOpsLogger';
+import { TREND_WARNING_CODES } from './trendWarningCodes';
 
 function logTrend(event: string, detail?: Record<string, unknown>): void {
   if (detail) {
@@ -102,6 +112,16 @@ export async function runTrendAnalysisGeneration(params: {
   body: TrendAnalysisGenerateRequestBody;
 }): Promise<TrendAnalysisGenerateResponseBody> {
   const { body, geminiApiKey, supabase, userKey } = params;
+  const opsLogState = { attempted: false, savedCount: 0, failedCount: 0, warnings: [] as string[] };
+  const trackOps = async (input: Parameters<typeof logTrendOpsEvent>[0]) => {
+    opsLogState.attempted = true;
+    const ok = await logTrendOpsEvent(input);
+    if (ok) opsLogState.savedCount += 1;
+    else {
+      opsLogState.failedCount += 1;
+      opsLogState.warnings.push(`trend_ops_logging_failed:${input.code}`);
+    }
+  };
   const openaiKey = params.openaiApiKey?.trim() || null;
   logTrend('TREND_REQ_START', { mode: body.mode, horizon: body.horizon, provider: body.provider ?? 'auto' });
 
@@ -155,11 +175,30 @@ export async function runTrendAnalysisGeneration(params: {
         `OpenAI Responses 리서치 실패: ${e instanceof Error ? e.message.slice(0, 200) : 'unknown'}. Gemini·내부 팩만으로 계속합니다.`,
       );
       logTrend('TREND_FALLBACK_TO_GEMINI', { reason: 'openai_error' });
+      await trackOps({
+        supabase,
+        userKey,
+        severity: 'warning',
+        code: TREND_WARNING_CODES.PROVIDER_FALLBACK,
+        stage: 'research',
+        message: 'OpenAI research fallback to Gemini',
+        detail: { fallback: { from: 'openai', to: 'gemini', reason: 'openai_error' } },
+        fingerprintParts: ['trend', String(userKey), body.focus, 'research', TREND_WARNING_CODES.PROVIDER_FALLBACK],
+      });
     }
   } else if (routing.hasAnyTool && !openaiKey) {
     fallbackUsed = true;
     warningsExtra.push('OPENAI_API_KEY가 없어 웹 검색·데이터 분석 도구를 사용하지 못했습니다.');
     logTrend('TREND_FALLBACK_TO_GEMINI', { reason: 'no_openai_key' });
+    await trackOps({
+      supabase,
+      userKey,
+      severity: 'warning',
+      code: TREND_WARNING_CODES.WEB_SEARCH_DEGRADED,
+      stage: 'research',
+      message: 'Web search degraded due to missing OPENAI_API_KEY',
+      fingerprintParts: ['trend', String(userKey), body.focus, 'research', TREND_WARNING_CODES.WEB_SEARCH_DEGRADED],
+    });
   }
 
   const openAiBrief = openAiResult?.text?.trim() ? openAiResult.text.trim() : undefined;
@@ -240,6 +279,18 @@ export async function runTrendAnalysisGeneration(params: {
       }),
     );
     let summaryFb = fb.summary;
+    await trackOps({
+      supabase,
+      userKey,
+      severity: 'error',
+      code: TREND_WARNING_CODES.GEMINI_FORMAT_DEGRADED,
+      stage: 'format',
+      message: 'Gemini formatting degraded, fallback report used',
+      detail: {
+        error: { message: e instanceof Error ? e.message.slice(0, 200) : 'unknown' },
+      },
+      fingerprintParts: ['trend', String(userKey), body.focus, 'format', TREND_WARNING_CODES.GEMINI_FORMAT_DEGRADED],
+    });
     if (body.mode === 'monthly') {
       const memHead = formatTrendMemoryDeltaHeadline(memoryLayer.memoryDelta);
       if (memHead) summaryFb = `${memHead}\n\n${summaryFb}`;
@@ -275,6 +326,25 @@ export async function runTrendAnalysisGeneration(params: {
       toolUsage,
       freshnessMeta,
       memoryDelta: memoryLayer.memoryDelta,
+      qualityMeta: {
+        timeWindow: { ok: false, warnings: [], hasFresh30dSection: false, hasHistoricalReferenceSection: false, hasLongTermThesisSection: false },
+        sourceQuality: { counts: { A: 0, B: 0, C: 0, D: 0, UNKNOWN: 0 }, warnings: [] },
+        tickerValidation: { counts: {}, items: [], warnings: [] },
+        memory: {
+          enabled: memoryLayer.meta.memoryEnabled,
+          saved: memoryLayer.meta.memoryWriteSucceeded,
+          reportRunSaved: Boolean(memoryLayer.reportRunId),
+          skippedReason: memoryLayer.meta.memoryStatusNote,
+          compare: memoryLayer.memoryCompare,
+        },
+        opsLogging: {
+          attempted: opsLogState.attempted,
+          savedCount: opsLogState.savedCount,
+          failedCount: opsLogState.failedCount,
+          warnings: opsLogState.warnings,
+        },
+        warnings: warningsFb,
+      },
     };
   }
 
@@ -311,6 +381,41 @@ export async function runTrendAnalysisGeneration(params: {
   logTrend('TREND_VALIDATION_DONE', { warningCount: warnings.length, confidence });
 
   const citations = mergeCitations(openAiResult?.citations, pack.sourceRefs);
+  const timeCheck = checkTrendTimeWindow(formatted.reportMarkdown, formatted.sections);
+  const sourceQuality = evaluateSourceQuality(citations);
+  const tickerValidation = validateTrendTickers(
+    [formatted.beneficiaries.direct, formatted.beneficiaries.indirect, formatted.beneficiaries.infrastructure].join('\n'),
+  );
+  const scoreSection = formatted.sections.find((s) => s.id === 'score')?.body ?? '';
+  const scores = buildTrendScores(scoreSection);
+  const qualityWarnings: string[] = [
+    ...timeCheck.warnings,
+    ...tickerValidation.flatMap((x) => (x.warning ? [x.warning] : [])),
+  ];
+  const abCount = sourceQuality.filter((s) => s.grade === 'A' || s.grade === 'B').length;
+  if (abCount === 0) qualityWarnings.push('source_quality_low: final conclusion has no A/B grade source');
+  const structuredMemory = buildStructuredMemory({
+    topicKey: `trend-${body.geo.toLowerCase()}-${body.focus}`,
+    topicLabel: body.userPrompt?.trim() || `${body.geo} ${body.focus}`,
+    requestedDays: body.horizon === '7d' ? 7 : body.horizon === '30d' ? 30 : 90,
+    sections: formatted.sections,
+    sourceQuality,
+    beneficiaries: buildBeneficiaries(tickerValidation),
+    tickerValidation,
+    scores,
+    warnings: qualityWarnings,
+  });
+  await trackOps({
+    supabase,
+    userKey,
+    topicKey: structuredMemory.topicKey,
+    severity: 'info',
+    code: TREND_WARNING_CODES.STRUCTURED_MEMORY_CREATED,
+    stage: 'structured_memory',
+    message: 'Structured memory created',
+    detail: { counts: { signals: structuredMemory.freshSignals.length + structuredMemory.mediumTermSignals.length + structuredMemory.historicalReferences.length + structuredMemory.longTermTheses.length } },
+    fingerprintParts: ['trend', String(userKey), structuredMemory.topicKey, 'structured_memory', 'created'],
+  });
   const toolUsage: TrendToolUsage = {
     webSearchUsed,
     dataAnalysisUsed: openAiResult?.dataAnalysisUsed ?? false,
@@ -341,9 +446,86 @@ export async function runTrendAnalysisGeneration(params: {
     citations,
     toolUsage,
     freshnessMeta,
+    qualityMeta: {
+      timeWindow: timeCheck,
+      sourceQuality,
+      tickerValidation,
+      scores,
+      structuredMemory,
+    },
     includeMemoryContext: body.includeMemoryContext !== false,
     saveToSqlMemory: body.saveToSqlMemory !== false,
   });
+  await trackOps({
+    supabase,
+    userKey,
+    topicKey: structuredMemory.topicKey,
+    reportRunId: memoryLayer.reportRunId,
+    severity: memoryLayer.meta.memoryWriteSucceeded ? 'info' : 'warning',
+    code: memoryLayer.meta.memoryWriteSucceeded ? TREND_WARNING_CODES.REPORT_RUN_SAVED : TREND_WARNING_CODES.REPORT_RUN_SAVE_FAILED,
+    stage: 'structured_memory',
+    message: memoryLayer.meta.memoryWriteSucceeded ? 'Trend report run saved' : 'Trend report run save failed',
+    detail: { warningMessage: memoryLayer.meta.memoryStatusNote },
+    fingerprintParts: ['trend', String(userKey), structuredMemory.topicKey, 'report_run', memoryLayer.meta.memoryWriteSucceeded ? 'saved' : 'failed'],
+  });
+  if (qualityWarnings.length > 0) {
+    await trackOps({
+      supabase,
+      userKey,
+      topicKey: structuredMemory.topicKey,
+      reportRunId: memoryLayer.reportRunId,
+      severity: 'warning',
+      code: TREND_WARNING_CODES.TIME_WINDOW_SECTION_MISSING,
+      stage: 'quality_postprocess',
+      message: 'Trend quality warnings detected',
+      detail: { warningCode: TREND_WARNING_CODES.TIME_WINDOW_SECTION_MISSING, counts: { warningCount: qualityWarnings.length } },
+      fingerprintParts: ['trend', String(userKey), structuredMemory.topicKey, 'quality_postprocess', 'warnings'],
+    });
+  }
+  if (abCount === 0) {
+    await trackOps({
+      supabase,
+      userKey,
+      topicKey: structuredMemory.topicKey,
+      reportRunId: memoryLayer.reportRunId,
+      severity: 'warning',
+      code: TREND_WARNING_CODES.SOURCE_QUALITY_LOW,
+      stage: 'quality_postprocess',
+      message: 'Final conclusion has no A/B grade source',
+      detail: {
+        warningCode: TREND_WARNING_CODES.SOURCE_QUALITY_LOW,
+        sourceQualityCounts: sourceQuality.reduce<Record<string, number>>((acc, x) => {
+          acc[x.grade] = (acc[x.grade] ?? 0) + 1;
+          return acc;
+        }, {}),
+      },
+      fingerprintParts: ['trend', String(userKey), structuredMemory.topicKey, 'source_quality_low'],
+    });
+  }
+  for (const t of tickerValidation.filter((x) => x.status === 'corrected' || x.status === 'ambiguous')) {
+    await trackOps({
+      supabase,
+      userKey,
+      topicKey: structuredMemory.topicKey,
+      reportRunId: memoryLayer.reportRunId,
+      severity: 'warning',
+      code: t.status === 'corrected' ? TREND_WARNING_CODES.TICKER_CORRECTED : TREND_WARNING_CODES.TICKER_AMBIGUOUS,
+      stage: 'quality_postprocess',
+      message: `Ticker ${t.status}: ${t.companyName}`,
+      detail: {
+        tickerItems: [
+          {
+            companyName: t.companyName,
+            inputTicker: t.inputTicker,
+            normalizedYahooTicker: t.normalizedYahooTicker,
+            normalizedGoogleTicker: t.normalizedGoogleTicker,
+            status: t.status,
+          },
+        ],
+      },
+      fingerprintParts: ['trend', String(userKey), structuredMemory.topicKey, 'ticker', t.companyName, t.status],
+    });
+  }
 
   let warningsOut = mergeTrendWarnings(warnings, memoryLayer.extraWarnings);
   const metaPartial = memoryLayer.meta;
@@ -391,6 +573,65 @@ export async function runTrendAnalysisGeneration(params: {
   }
 
   logTrend('TREND_REQ_DONE', { ok: true });
+  const compareResult = memoryLayer.memoryCompare;
+  const sourceCounts = sourceQuality.reduce<Record<'A' | 'B' | 'C' | 'D' | 'UNKNOWN', number>>(
+    (acc, x) => {
+      acc[x.grade] += 1;
+      return acc;
+    },
+    { A: 0, B: 0, C: 0, D: 0, UNKNOWN: 0 },
+  );
+  const tickerCounts = tickerValidation.reduce<Record<string, number>>((acc, x) => {
+    acc[x.status] = (acc[x.status] ?? 0) + 1;
+    return acc;
+  }, {});
+  if (memoryLayer.signalUpsert) {
+    await trackOps({
+      supabase,
+      userKey,
+      topicKey: structuredMemory.topicKey,
+      reportRunId: memoryLayer.reportRunId,
+      severity: memoryLayer.signalUpsert.ok ? 'info' : memoryLayer.signalUpsert.failedCount > 0 ? 'warning' : 'error',
+      code: memoryLayer.signalUpsert.ok
+        ? TREND_WARNING_CODES.SIGNAL_UPSERT_SUCCESS
+        : memoryLayer.signalUpsert.insertedCount + memoryLayer.signalUpsert.updatedCount > 0
+          ? TREND_WARNING_CODES.SIGNAL_UPSERT_PARTIAL_FAILED
+          : TREND_WARNING_CODES.SIGNAL_UPSERT_FAILED,
+      stage: 'signal_upsert',
+      message: 'Trend memory signal upsert completed',
+      detail: {
+        counts: {
+          inserted: memoryLayer.signalUpsert.insertedCount,
+          updated: memoryLayer.signalUpsert.updatedCount,
+          skipped: memoryLayer.signalUpsert.skippedCount,
+          failed: memoryLayer.signalUpsert.failedCount,
+        },
+        signalKeys: memoryLayer.signalUpsert.items.map((x) => x.signalKey).slice(0, 20),
+      },
+      fingerprintParts: ['trend', String(userKey), structuredMemory.topicKey, 'signal_upsert'],
+    });
+  }
+  if (compareResult) {
+    await trackOps({
+      supabase,
+      userKey,
+      topicKey: structuredMemory.topicKey,
+      reportRunId: memoryLayer.reportRunId,
+      severity: compareResult.warnings.length > 0 ? 'warning' : 'info',
+      code: compareResult.warnings.length > 0 ? TREND_WARNING_CODES.MEMORY_COMPARE_FAILED : TREND_WARNING_CODES.MEMORY_COMPARE_SUCCESS,
+      stage: 'memory_compare',
+      message: 'Trend memory compare completed',
+      detail: {
+        counts: {
+          newSignals: compareResult.newSignals.length,
+          strengthenedSignals: compareResult.strengthenedSignals.length,
+          repeatedSignals: compareResult.repeatedSignals.length,
+          weakenedSignals: compareResult.weakenedSignals.length,
+        },
+      },
+      fingerprintParts: ['trend', String(userKey), structuredMemory.topicKey, 'memory_compare'],
+    });
+  }
 
   return {
     ok: true,
@@ -422,5 +663,42 @@ export async function runTrendAnalysisGeneration(params: {
     toolUsage,
     freshnessMeta,
     memoryDelta: memoryLayer.memoryDelta,
+    qualityMeta: {
+      timeWindow: timeCheck,
+      sourceQuality: {
+        counts: sourceCounts,
+        warnings: abCount === 0 ? ['source_quality_low: final conclusion has no A/B grade source'] : [],
+      },
+      tickerValidation: {
+        counts: tickerCounts,
+        items: tickerValidation,
+        warnings: tickerValidation.flatMap((x) => (x.warning ? [x.warning] : [])),
+      },
+      memory: {
+        enabled: memoryLayer.meta.memoryEnabled,
+        saved: memoryLayer.meta.memoryWriteSucceeded,
+        reportRunSaved: Boolean(memoryLayer.reportRunId),
+        signalUpsert: memoryLayer.signalUpsert
+          ? {
+              ok: memoryLayer.signalUpsert.ok,
+              insertedCount: memoryLayer.signalUpsert.insertedCount,
+              updatedCount: memoryLayer.signalUpsert.updatedCount,
+              skippedCount: memoryLayer.signalUpsert.skippedCount,
+              failedCount: memoryLayer.signalUpsert.failedCount,
+              warnings: memoryLayer.signalUpsert.warnings,
+            }
+          : undefined,
+        skippedReason: memoryLayer.meta.memoryStatusNote,
+        compare: compareResult,
+      },
+      opsLogging: {
+        attempted: opsLogState.attempted,
+        savedCount: opsLogState.savedCount,
+        failedCount: opsLogState.failedCount,
+        warnings: opsLogState.warnings,
+      },
+      warnings: qualityWarnings,
+    },
+    structuredMemory,
   };
 }
