@@ -411,6 +411,11 @@ export function DashboardClient() {
                         <span key={`${c.candidateId}-${b}`} className={`rounded px-1.5 py-0.5 text-[10px] ${badgeTone(b)}`}>{b}</span>
                       ))}
                     </div>
+                    {c.dataQuality?.primaryRisk ? (
+                      <p className="mt-1 text-[10px] text-amber-900">
+                        {c.dataQuality.primaryRisk.label}
+                      </p>
+                    ) : null}
                     <div className="mt-1 flex gap-2 text-[11px]">
                       <button type="button" className="rounded border border-slate-300 px-2 py-0.5" onClick={() => void onOpenReason(c)}>사유 보기</button>
                       <button
@@ -447,6 +452,11 @@ export function DashboardClient() {
                         <span key={`${c.candidateId}-${b}`} className={`rounded px-1.5 py-0.5 text-[10px] ${badgeTone(b)}`}>{b}</span>
                       ))}
                     </div>
+                    {c.dataQuality?.primaryRisk ? (
+                      <p className="mt-1 text-[10px] text-amber-900">
+                        {c.dataQuality.primaryRisk.label}
+                      </p>
+                    ) : null}
                     <div className="mt-1 flex gap-2 text-[11px]">
                       <button type="button" className="rounded border border-slate-300 px-2 py-0.5" onClick={() => void onOpenReason(c)}>사유 보기</button>
                       <button
@@ -497,11 +507,50 @@ export function DashboardClient() {
               </p>
             ) : null}
             <p className="mt-2 font-semibold text-violet-950">신뢰도 판단 이유</p>
-            <ul className="mt-1 list-inside list-disc space-y-1 text-violet-900">
-              {(allTodayCandidates.find((c) => c.candidateId === openedCandidateId)?.dataQuality?.reasons ?? []).map((d, i) => (
-                <li key={`dq-${openedCandidateId}-${i}`}>{d}</li>
-              ))}
-            </ul>
+            {(() => {
+              const target = allTodayCandidates.find((c) => c.candidateId === openedCandidateId);
+              const items = target?.dataQuality?.reasonItems ?? [];
+              if (items.length === 0) {
+                return (
+                  <ul className="mt-1 list-inside list-disc space-y-1 text-violet-900">
+                    {(target?.dataQuality?.reasons ?? []).map((d, i) => (
+                      <li key={`dq-fallback-${openedCandidateId}-${i}`}>{d}</li>
+                    ))}
+                  </ul>
+                );
+              }
+              const positives = items.filter((x) => x.severity === "positive");
+              const warnings = items.filter((x) => x.severity === "warning" || x.severity === "neutral");
+              const risks = items.filter((x) => x.severity === "risk");
+              return (
+                <div className="mt-1 space-y-2 text-violet-900">
+                  {positives.length > 0 ? (
+                    <div>
+                      <p className="font-medium text-emerald-800">긍정</p>
+                      <ul className="list-inside list-disc">
+                        {positives.map((d, i) => <li key={`dq-pos-${openedCandidateId}-${i}`}>{d.message}</li>)}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {warnings.length > 0 ? (
+                    <div>
+                      <p className="font-medium text-amber-800">주의</p>
+                      <ul className="list-inside list-disc">
+                        {warnings.map((d, i) => <li key={`dq-warn-${openedCandidateId}-${i}`}>{d.message}</li>)}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {risks.length > 0 ? (
+                    <div>
+                      <p className="font-medium text-red-800">핵심 리스크</p>
+                      <ul className="list-inside list-disc">
+                        {risks.map((d, i) => <li key={`dq-risk-${openedCandidateId}-${i}`}>{d.message}</li>)}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })()}
           </div>
         ) : null}
       </section>

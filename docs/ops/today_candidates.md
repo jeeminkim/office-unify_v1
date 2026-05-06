@@ -68,6 +68,25 @@ low/very_low 후보는 기본 숨김(토글로 표시) 정책을 사용한다.
 5. 과열 주의
 6. 관심종목 연결
 
+## primaryRisk (핵심 리스크)
+
+- 카드 뱃지 최대 4개 제한과 별개로 `primaryRisk` 1개를 항상 노출한다.
+- 산정 우선순위:
+  1. `overheated_risk`
+  2. `chasing_risk`
+  3. `surge_risk`
+  4. `quote_missing`
+  5. `us_market_no_data` (미국장 후보)
+  6. `sector_low_confidence`
+  7. `very_low_confidence`
+  8. `low_confidence`
+
+## reason code 정책
+
+- `reasonItems[]`는 코드 + 메시지 + severity를 함께 제공한다.
+- 기존 `reasons[]`는 호환성을 위해 유지하며, 기본적으로 `reasonItems.message`를 평탄화한 목록으로 동작한다.
+- 상세 UI는 `reasonItems`가 있으면 `긍정/주의/핵심 리스크` 섹션으로 나눠 표시한다.
+
 ## 후보 운영 상태 카드
 
 - 대시보드에 `후보 운영 상태 · 최근 7일` 카드 노출

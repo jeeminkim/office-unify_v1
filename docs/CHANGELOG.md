@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Today Candidates primaryRisk 강제 노출:** 카드 뱃지 최대 4개 정책과 별도로 `primaryRisk`를 항상 노출해 과열/추격/급등/시세부족 등 핵심 리스크를 놓치지 않도록 개선.
+- **dataQuality reason code 기반화:** `reasonItems(code/message/severity)`를 추가해 i18n/템플릿 확장 가능한 구조로 정리하고 기존 `reasons`는 호환 유지.
 - **Today Candidates low confidence 요약:** `dataQuality.summary`를 추가해 low/very_low 후보의 낮은 신뢰도 원인을 1문장으로 표시.
 - **DataQuality 뱃지 세분화:** 신뢰도/시세/섹터/미국장/과열/관심종목 기준으로 우선순위 뱃지 생성(최대 4개 노출).
 - **후보 상세 신뢰도 가독성 개선:** 데이터 신뢰도 요약과 이유 목록을 상세 패널에 분리 표시.

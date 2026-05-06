@@ -9,10 +9,48 @@ export type TodayCandidateSource =
 
 export type TodayCandidateRiskLevel = 'low' | 'medium' | 'high' | 'unknown';
 
+export type TodayCandidateDataQualityReasonCode =
+  | 'quote_ready'
+  | 'quote_missing'
+  | 'sector_confirmed'
+  | 'sector_low_confidence'
+  | 'us_market_available'
+  | 'us_market_no_data'
+  | 'watchlist_connected'
+  | 'watchlist_not_connected'
+  | 'overheated_risk'
+  | 'chasing_risk'
+  | 'surge_risk'
+  | 'low_confidence'
+  | 'very_low_confidence';
+
+export interface TodayCandidateDataQualityReason {
+  code: TodayCandidateDataQualityReasonCode;
+  message: string;
+  severity: 'positive' | 'neutral' | 'warning' | 'risk';
+}
+
+export interface TodayCandidatePrimaryRisk {
+  code:
+    | 'overheated_risk'
+    | 'chasing_risk'
+    | 'surge_risk'
+    | 'quote_missing'
+    | 'us_market_no_data'
+    | 'sector_low_confidence'
+    | 'low_confidence'
+    | 'very_low_confidence';
+  label: string;
+  message: string;
+  severity: 'warning' | 'risk';
+}
+
 export interface TodayCandidateDataQuality {
   overall: 'high' | 'medium' | 'low' | 'very_low';
   badges: string[];
   reasons: string[];
+  reasonItems?: TodayCandidateDataQualityReason[];
+  primaryRisk?: TodayCandidatePrimaryRisk;
   summary?: string;
   quoteReady?: boolean;
   sectorConfidence?: 'high' | 'medium' | 'low' | 'very_low' | 'unknown';
