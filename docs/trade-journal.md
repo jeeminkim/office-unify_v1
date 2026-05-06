@@ -9,12 +9,19 @@
 3. PB/페르소나 2차 검토
 4. 거래 후 회고 및 누적 분석
 
+역할 구분:
+
+- Trade Journal: 실제 실행한 거래의 원칙 점검/복기
+- Decision Journal: 실행하지 않은 판단(관망/보류/미진입) 기록
+
 핵심 원칙:
 
 - 자동 매매/자동 주문/원장 자동 수정 금지
 - 체크리스트가 1차 필터
 - PB/페르소나는 2차 검토자
 - blocking 규칙은 score와 분리 집계
+- Today Candidates/ Sector Radar 점수는 체크리스트를 대체하지 않음
+- 후보는 관찰 대상이며, 실제 진입 전 Trade Journal 점검이 우선
 
 ## API
 
@@ -102,6 +109,18 @@
 5. reflection에서 자주 나온 실패 패턴 Top 5
 
 세부 지표(예: verdict 분포)는 하단/접기 영역으로 분리한다.
+
+## Today Candidates 연계 원칙
+
+- Today Candidates는 관찰 우선순위 신호이며 실행 지시가 아니다.
+- 후보를 실제 거래로 전환하려면 Trade Journal check/review를 반드시 거친다.
+- 향후 suitability gate와 연계할 수 있도록 구조 필드/증거 저장을 유지한다.
+
+## ops logging 대상 예시
+
+- check/review/reflection 실패
+- principle validation warning
+- analytics degraded
 
 ## Sell 체크리스트 강화
 

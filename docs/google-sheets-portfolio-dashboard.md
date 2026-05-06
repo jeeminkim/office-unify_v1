@@ -57,6 +57,19 @@
 
 동기화 API는 **앞 4개 탭만** 덮어씁니다. `ledger_change_queue`는 API로 **한 줄 append**만 합니다. `portfolio_quote_candidates`는 ticker-resolver API가 별도로 관리한다.
 
+## API별 탭 책임 분리
+
+- `/api/integrations/google-sheets/sync`
+  - `holdings_dashboard`, `watchlist_dashboard`, `portfolio_summary`, `committee_input_summary`
+- `/api/portfolio/quotes/refresh`
+  - `portfolio_quotes`
+- `/api/portfolio/ticker-resolver/refresh`
+  - `portfolio_quote_candidates`
+- `/api/sector-radar/refresh`
+  - `sector_radar_quotes`
+
+요약/조회(read-only) API는 시트 지연/빈값 상태를 `qualityMeta`/warnings로 보여줄 수 있지만, 동일 경고를 매 호출마다 `web_ops_events`로 쓰지 않도록 제한 정책을 적용한다.
+
 ## 환경 변수 (Vercel)
 
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — 서비스 계정 JSON **전체**

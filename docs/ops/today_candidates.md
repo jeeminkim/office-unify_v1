@@ -13,6 +13,8 @@
 
 - 내 관심사 기반: watchlist/보유/Trend memory/Sector Radar 기반
 - 미국시장 기반 한국주식: 오전 데이터 신호와 rule map 매핑
+- 응답 구조: `today-brief`의 optional `candidates.userContext` / `candidates.usMarketKr`
+- 모든 후보는 `isBuyRecommendation=false`
 
 ## 관심종목 추가
 
@@ -38,6 +40,72 @@
 - `today_candidate_watchlist_add_postprocess_failed`
 - `today_candidates_ops_summary_unavailable`
 
+## Read-only API 로깅 정책
+
+- `GET /api/dashboard/today-brief`는 화면용 경고(`qualityMeta.todayCandidates.warnings`)를 유지한다.
+- 같은 경고를 매 호출마다 `web_ops_events`에 쓰지 않는다.
+- `today_candidates_us_market_no_data`는 KST 날짜 fingerprint 기준 하루 1회만 기록한다.
+  - fingerprint 예: `today_candidates:{userKey}:{yyyyMMdd}:us_market_no_data`
+- 사용자 액션 이벤트(사유 보기, 관심종목 추가 성공/실패)는 기존대로 기록 가능하다.
+- `qualityMeta` 경고와 `web_ops_events`는 목적이 다르다:
+  - `qualityMeta`: 현재 화면 상태 전달
+  - `web_ops_events`: 운영 누적/재발 추적
+
+## 반복 로그 점검 SQL
+
+```sql
+select
+  fingerprint,
+  domain,
+  code,
+  count(*) as row_count,
+  sum(coalesce(occurrence_count, 1)) as occurrence_total,
+  max(last_seen_at) as last_seen_at
+from public.web_ops_events
+where fingerprint is not null
+group by fingerprint, domain, code
+having count(*) > 1
+order by row_count desc, last_seen_at desc;
+```
+
+```sql
+select
+  id,
+  domain,
+  code,
+  status,
+  severity,
+  occurrence_count,
+  first_seen_at,
+  last_seen_at,
+  message,
+  detail
+from public.web_ops_events
+where code in (
+  'today_candidates_us_market_no_data',
+  'sector_radar_score_no_data',
+  'sector_radar_score_quote_coverage_low',
+  'sector_radar_score_very_low_confidence'
+)
+order by last_seen_at desc
+limit 100;
+```
+
+```sql
+update public.web_ops_events
+set
+  status = 'backlog',
+  updated_at = now()
+where domain in ('today_candidates', 'sector_radar')
+  and code in (
+    'today_candidates_us_market_no_data',
+    'sector_radar_score_no_data',
+    'sector_radar_score_quote_coverage_low',
+    'sector_radar_score_very_low_confidence'
+  )
+  and status = 'open';
+```
+
 ## 점수 해석
 
 - 후보 score는 **매수 점수**가 아니라 **관찰 우선순위**다.
@@ -48,6 +116,7 @@
 
 - 후보별 `dataQuality`를 제공한다.
 - `dataQuality.summary`는 low/very_low 후보에서 "왜 낮은지"를 1문장으로 요약한다.
+- `dataQuality.reasonItems`(code/message/severity)와 `primaryRisk`를 additive로 제공한다.
 - 뱃지 예시:
   - `신뢰도 높음`, `신뢰도 보통`
   - `Sector Radar 확인됨`
@@ -97,3 +166,18 @@ low/very_low 후보는 기본 숨김(토글로 표시) 정책을 사용한다.
 
 - `GET /api/dashboard/today-candidates/ops-summary?days=7`
 - `today_candidates` domain의 최근 이벤트를 생성/중복/no_data/실패 기준으로 집계한다.
+
+## read-only 경로 DB write 제한
+
+- `GET /api/dashboard/today-brief`는 화면 경고를 유지하고 DB write는 제한한다.
+- `today_candidates_us_market_no_data`는 같은 사용자 + KST 날짜 fingerprint 기준 하루 1회 수준으로 제한한다.
+- detail_opened/add_success/add_failed 같은 사용자 액션 이벤트는 별도 기록 가능하다.
+
+## 수동 검증 시나리오
+
+1. today-brief 응답에서 `candidates.userContext`/`candidates.usMarketKr` optional 확인
+2. low confidence 기본 숨김 + 토글 표시 동작 확인
+3. 카드에서 `primaryRisk`가 뱃지 4개 제한과 별도로 노출되는지 확인
+4. 상세에서 `reasonItems`가 있으면 severity별 섹션으로 표시되는지 확인
+5. 미국장 no_data 상황에서 후보 억지 생성 없이 보수 문구가 노출되는지 확인
+6. `/api/dashboard/today-candidates/ops-summary` 집계가 정상인지 확인

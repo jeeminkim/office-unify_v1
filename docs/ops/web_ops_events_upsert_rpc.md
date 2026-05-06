@@ -87,3 +87,64 @@ where domain = 'today_candidates'
 order by last_seen_at desc
 limit 100;
 ```
+
+## Read-only 경로 write 억제 정책
+
+- read-only API(`GET /api/dashboard/today-brief`, `GET /api/sector-radar/summary`)는 화면 경고용 상태를 `qualityMeta.warnings`로 전달하고, DB write는 제한한다.
+- DB write는 아래 상황 중심으로만 허용한다.
+  - 최초 발생(first seen)
+  - cooldown 경과 후 재발
+  - 상태 전이(open/resolved 등)
+  - 사용자 명시적 refresh
+  - critical/error
+- 요청 단위 write budget(기본 3건)을 초과하면 `skipped_budget_exceeded`로 생략한다.
+
+## 반복 경고 점검/정리 SQL
+
+```sql
+select
+  id,
+  domain,
+  code,
+  status,
+  severity,
+  occurrence_count,
+  first_seen_at,
+  last_seen_at,
+  message,
+  detail
+from public.web_ops_events
+where code in (
+  'today_candidates_us_market_no_data',
+  'sector_radar_score_no_data',
+  'sector_radar_score_quote_coverage_low',
+  'sector_radar_score_very_low_confidence'
+)
+order by last_seen_at desc
+limit 100;
+```
+
+```sql
+update public.web_ops_events
+set
+  status = 'backlog',
+  updated_at = now()
+where domain in ('today_candidates', 'sector_radar')
+  and code in (
+    'today_candidates_us_market_no_data',
+    'sector_radar_score_no_data',
+    'sector_radar_score_quote_coverage_low',
+    'sector_radar_score_very_low_confidence'
+  )
+  and status = 'open';
+```
+
+```sql
+update public.web_ops_events
+set
+  status = 'ignored',
+  updated_at = now()
+where domain = 'sector_radar'
+  and code = 'sector_radar_score_overheated'
+  and status in ('open', 'backlog');
+```

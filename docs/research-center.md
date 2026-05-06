@@ -2,9 +2,18 @@
 
 단일 종목 심층 리포트 생성 모듈입니다. **투자위원회(포트폴리오 전체)**·**조일현 원장 반영**·**portfolio ledger**와 역할이 분리되어 있습니다.
 
+- Today Candidates의 관찰 후보를 단일 종목 단위로 심화 분석할 때 연결 가능한 경로입니다.
+- Committee는 포트폴리오/토론 중심, Research Center는 단일 종목 리포트 중심입니다.
+
 - **Supabase**: 원장 기준 사실(보유/관심, 단가 등).
 - **Gemini**: 데스크별 리포트 + Chief Editor 종합.
 - **Google Sheets** (선택): `research_requests`, `research_context_cache`, `research_reports_log` 탭에 요약 append. 전체 본문은 저장하지 않습니다.
+
+## 품질/운영 원칙
+
+- `outputQuality`/`modelUsage`/`fallback` 배지를 통해 결과 상태를 표시합니다.
+- Sheets append 실패 시에도 본문 생성은 유지하고, 실패는 warnings/ops로만 남깁니다.
+- 리포트 전체 본문은 Sheets에 저장하지 않고 요약만 append합니다.
 
 ## API
 

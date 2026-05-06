@@ -53,6 +53,12 @@
 
 Trend logger는 DB RPC(`upsert_web_ops_event_by_fingerprint`)를 우선 사용하고, RPC 미설치/권한 오류 시 앱 fallback(update/insert)로 동작한다.
 
+## read-only / budget 정책
+
+- read-only 조회와 사용자 write action을 구분해 기록한다.
+- 동일 경고를 매 요청마다 반복 write하지 않도록 cooldown/예산 정책을 적용한다.
+- `qualityMeta`는 사용자 표시 상태, `web_ops_events`는 운영 누적 추적 용도다.
+
 `detail`에는 가능한 한 아래만 저장한다(API 키·토큰·원문 입력 전체·credential 제외).
 
 ```json

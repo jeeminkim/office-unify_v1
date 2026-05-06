@@ -209,6 +209,20 @@
 - PDF는 텍스트 레이어 중심 파싱이며 OCR 미지원
 - 결과 저장/히스토리/재호출은 2차 범위
 
+## 운영 로그(선택)
+
+- 기본 원칙은 DB 비저장이지만, 품질 회귀 추적을 위해 `web_ops_events`를 보조적으로 사용할 수 있다.
+- 코드 후보:
+  - `infographic_degraded_fallback`
+  - `infographic_weak_numeric_support`
+  - `infographic_export_render_failed`
+- 결과 데이터 자체 저장과 운영 로그 기록은 다른 책임이다(로그는 품질 추적용).
+
+## 회귀 테스트 운영 포인트
+
+- `resultMode` / `articlePattern` / `industryPattern` 조합별 fixture 회귀를 유지한다.
+- 입력 유형(text/url/pdf)별 degraded 비율을 추적해 prompt/cleanup 회귀를 조기 탐지한다.
+
 ## 추후 2차 범위
 
 - 결과 스냅샷 DB 저장 + 히스토리

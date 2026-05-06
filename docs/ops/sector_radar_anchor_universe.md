@@ -15,6 +15,7 @@
 - 카드에 `표본 n개 / 시세 성공 n개 / 시세 없음 n개` 표시
 - 시세 0개면 `NO_DATA` + 재시도 안내 문구
 - 일부 누락이면 점수는 계산하되 누락 수를 표시
+- read-only summary 호출에서는 이 경고를 qualityMeta/UI에 유지하고 DB write는 제한한다.
 
 ## 로그 코드
 
@@ -36,6 +37,7 @@
 2. 30~90초 후 `GET /api/sector-radar/status`에서 anchor별 `rowStatus` 확인
 3. `parse_failed`/`empty` anchor의 `googleTicker`/`quoteSymbol` 점검
 4. 필요 시 anchor registry(`sectorRadarRegistry.ts`)의 seed ticker 보정
+   - KOSDAQ 종목은 `KOSDAQ:xxxxxx` 표기를 우선 점검 (예: 동성화인텍 `KOSDAQ:033500`)
 5. 재실행 후 `qualityMeta.sectorRadar`와 ops detail의 `missingSymbols` 감소 여부 확인
 
 ## Registry 분리 메모

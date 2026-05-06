@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+> 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
+
+### 2026-05 Ops / Today Candidates / Sector Radar stabilization
+
+- **Docs 기준선 분리/최신화:** `CURRENT_SYSTEM_BASELINE`, `DOCS_MAINTENANCE_CHECKLIST`, `ops/sql-application-status`, `ops/sector_radar_quote_recovery`를 추가하고 SYSTEM/ops/feature 문서의 역할 분리를 정리.
+- **Ops log transaction budget 도입:** `opsLogBudget`를 추가해 read-only 경로 warning DB write를 기본 억제하고, cooldown/예산(요청당 max 3) 정책으로 단기 write 트랜잭션을 제한.
+- **Today brief no_data write 축소:** `today_candidates_us_market_no_data`는 KST 날짜 fingerprint 기준 하루 1회만 기록하고, 나머지는 `qualityMeta.todayCandidates.warnings`로만 노출.
+- **Sector Radar summary write 억제:** `/api/sector-radar/summary`에서는 품질 경고를 화면/qualityMeta에 유지하되 DB write를 기본 생략하도록 정책화.
+- **US morning anchor universe 보강:** 미국장 요약 anchor를 SPY/QQQ/DIA/IWM/SOXX/SMH/XLK/XLF/TSLA/NVDA 기준으로 정리.
+- **조선/LNG/소재 ticker 보정:** 동성화인텍(033500) `googleTicker`를 `KOSDAQ:033500`으로 보정.
 - **Today Candidates primaryRisk 강제 노출:** 카드 뱃지 최대 4개 정책과 별도로 `primaryRisk`를 항상 노출해 과열/추격/급등/시세부족 등 핵심 리스크를 놓치지 않도록 개선.
 - **dataQuality reason code 기반화:** `reasonItems(code/message/severity)`를 추가해 i18n/템플릿 확장 가능한 구조로 정리하고 기존 `reasons`는 호환 유지.
 - **Today Candidates low confidence 요약:** `dataQuality.summary`를 추가해 low/very_low 후보의 낮은 신뢰도 원인을 1문장으로 표시.
@@ -29,6 +39,8 @@
 - **Sector Radar score explanation 확장:** `scoreExplanation.watchlistConnectionSummary`를 추가해 점수와 관심종목 연결성 문구를 분리 노출.
 - **Sector Radar registry 분리(부분):** 서버 전용 registry는 `server-only`를 유지하고, 공용 alias/정규화 헬퍼를 `sectorRadarRegistry.shared.ts`로 분리.
 - **Ops DB upsert 검토 SQL 추가:** `docs/sql/append_web_ops_events_upsert_rpc.sql` 초안 추가(운영 DB 자동 적용 없음).
+### 2026-05 Trend hardening
+
 - **Trend Gemini finalizer fallback:** Gemini 최종 정리 호출에 타임아웃·1회 재시도 후 실패 시 OpenAI 리서치 브리프 기반 임시 마크다운으로 대체. `qualityMeta.finalizer`(provider/retry/degraded/fallback), 최소 `structuredMemory`, finalizer degraded 시 `trend_memory_signals_v2` upsert 생략. `web_ops_events`에 `trend_gemini_*`·`trend_final_report_fallback_used`·`trend_raw_error_report_blocked`·`trend_gemini_format_degraded` 등 기록.
 - **Trend UI:** 원문 마크다운·섹션 본문에 API/Gemini 오류 패턴이 있으면 치환 표시, degraded 시 상단 안내.
 - **Sheets `trend_requests`:** 탭·헤더 자동 생성, 따옴표 보호 A1 range·열 폭 동적 조정·append 후보 순차 시도, 실패 시 경고만.
@@ -72,6 +84,8 @@
 - **Sector Radar 2차:** `sector_radar_quotes` 시트를 **A–U( market·normalized_key·currency·52주 low/high·volume·rolling volume_avg )** 로 재동기화하고, 거래량/거래량평균 비율로 거래량 점수(5~30)를 반영. **코인/디지털자산(`crypto`)** 카테고리·US seed(IBIT/FBTC/ARKB/ETHA/FETH/NASDAQ:COIN/NASDAQ:MSTR)·관심종목(US 포함) 병합, crypto 전용 가중(BTC 45 / Alt 25 / Infra 30) 서브스코어. Dossier에 `relatedSector`(단일 픽) 추가·매칭 confidence `high`. `/api/portfolio/summary`에 보유별 `sectorRadarBadge`(fear\|greed). 홈에 Crypto Radar 카드·Fear/Greed 카드 문구 정리. **브레이킹(운영):** 기존 시트 첫 열이 `category_key`인 1차 레이아웃은 자동 읽기 호환만 되고, US/crypto·volume_avg를 쓰려면 `POST /api/sector-radar/refresh`로 헤더/행을 새 계약으로 덮어써야 한다.
 - **Dossier × Sector Radar (1차):** `/api/portfolio/dossier/[symbol]`에 `relatedSectorRadar`를 추가하고, `buildSectorRadarSummaryForUser`를 재사용해 보유·관심(동일 심볼) 텍스트/섹터·registry 키워드로 매칭. `/portfolio/[symbol]`에 「관련 섹터 온도 (판단 보조)」카드.
 - **Sector Fear & Greed Radar:** `/sector-radar` 페이지와 `GET /api/sector-radar/summary`, `POST /api/sector-radar/refresh`, `GET /api/sector-radar/status` 추가. 한국 상장 ETF seed + 관심종목 키워드 병합 anchor를 `sector_radar_quotes` 시트에 `GOOGLEFINANCE` read-back으로 점수화(자동 주문 없음). 홈 대시보드에 조정 후보/과열 주의 Top3 카드 연동.
+### 2026-04 Portfolio / Sheets / Quote recovery
+
 - **Portfolio Ledger 모드 분리 + 자동 동기화:** `/portfolio-ledger`를 기본 모드/고급(SQL) 모드로 분리하고 SQL 블록 기본 숨김을 적용. 신규 보유/관심 등록 및 `apply-trade` 성공 후 `quotes/refresh -> quotes/status -> snapshot/goals/history/dashboard` 자동 동기화 체인을 추가.
 - **등록 직후 ticker 추천 연계:** 보유/관심 등록 시 `google_ticker`가 비어 있으면 KR(`KRX:{pad6}`)/US(symbol) 기본 후보와 quote symbol(`.KS/.KQ` 또는 US symbol)을 채워 요청하고 `ticker-resolver/refresh`를 백그라운드로 연계(자동 DB 확정 없음, 승인 구조 유지).
 - **Dashboard 즉시 반영 UX:** ledger 업데이트 시 홈 대시보드가 custom event 기반으로 overview를 재로딩하고, `/api/dashboard/overview`를 `force-dynamic`으로 설정해 stale 응답 가능성을 낮춤.

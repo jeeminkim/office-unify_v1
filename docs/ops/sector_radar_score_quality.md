@@ -94,6 +94,25 @@ Sector Radar 점수는 **매수 추천이 아니라 섹터 관찰 신호**입니
   - 관찰 경고(`sector_radar_score_overheated`): 24시간
 - cooldown 윈도우 내 반복은 DB write를 건너뛰고(`skippedByThrottle`) 응답/화면 상태는 유지
 
+## read-only summary 로깅 정책
+
+- `GET /api/sector-radar/summary`는 기본적으로 read-only 경로로 간주한다.
+- 이 경로에서는 `sector_radar_score_no_data`, `sector_radar_score_quote_coverage_low`, `sector_radar_score_very_low_confidence`를 qualityMeta/화면에는 유지하되 DB write는 기본 생략한다.
+- `POST /api/sector-radar/refresh` 같은 명시적 새로고침 이후 점검 흐름에서만 write를 허용한다.
+- `qualityMeta.sectorRadar.opsLogging`에는 `attempted/written/skippedReadOnly/skippedCooldown/skippedBudgetExceeded`를 기록한다.
+- 목적은 이슈 은닉이 아니라, read-only 조회 반복으로 인한 Supabase write transaction 급증을 줄이는 것이다.
+
+## qualityMeta vs web_ops_events 분리
+
+- `qualityMeta.sectorRadar`: 현재 요청의 상태/경고 표시(사용자 UI)
+- `web_ops_events`: 누적 운영 추적(최초/재발/cooldown/refresh/critical 중심)
+- 따라서 summary 호출마다 DB write를 강제하지 않는다.
+
+## 조선/LNG/소재 ticker 보정
+
+- `동성화인텍(033500)`은 KOSDAQ 종목으로 `googleTicker=KOSDAQ:033500`, `quoteSymbol=033500.KQ`를 우선 사용한다.
+- 그 외 KOSPI 종목/ETF(`009540`, `042660`, `010140`, `466920`)는 `KRX:*` + `.KS` 조합을 유지한다.
+
 ## status 재발 처리 정책
 
 - `open` / `investigating` / `backlog`: occurrence 누적 + last_seen_at/detail 갱신

@@ -11,6 +11,7 @@
 2. 클라이언트에 필요한 공개 값만 `NEXT_PUBLIC_`를 사용한다. Supabase Auth는 **`NEXT_PUBLIC_SUPABASE_URL`** + **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**(anon, 공개 키)로 세션을 맞추고, **DB에 대한 민감한 쓰기는 서버에서만 `SUPABASE_SERVICE_ROLE_KEY`로 수행**한다.
 3. 예시 파일이 필요하면 `.env.example`에 **키 이름만** 두고 값은 비우거나 placeholder만 사용한다.
 4. 저장소에는 실제 토큰·키 문자열을 넣지 않는다.
+5. 단일 사용자 정책 문서에는 실이메일 반복 대신 `<allowed-email>` placeholder 표기를 권장한다.
 
 ## persona chat 관련 (참고)
 
@@ -18,6 +19,7 @@
 - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`: 서버 전용 Supabase(DB; 기존 repository + `web_persona_chat_requests` 멱등 테이블)
 - `GEMINI_API_KEY`: 서버에서만 Gemini 호출 — **Dev_Support** (`/api/generate`)와 **persona-chat** 공통. 브라우저·`NEXT_PUBLIC_`로 노출하지 않는다.
 - `OPENAI_API_KEY`: 서버에서만 OpenAI 호출 (**Private Banker / J. Pierpont** 전용)
+- `GEMINI_API_KEY`: 서버에서만 Gemini 호출
 - `OFFICE_UNIFY_PORTFOLIO_READ_SECRET` 등: 포트폴리오 등 **다른 API**용 Bearer(선택)
 
 ## 시스템 상태판 (`/system-status`)

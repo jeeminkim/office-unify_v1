@@ -10,6 +10,19 @@ type YahooQuoteResult = {
   regularMarketPreviousClose?: number;
 };
 
+export const US_MARKET_MORNING_ANCHORS = [
+  { key: 'SPY', quoteSymbol: 'SPY', googleTicker: 'NYSEARCA:SPY', label: 'S&P500' },
+  { key: 'QQQ', quoteSymbol: 'QQQ', googleTicker: 'NASDAQ:QQQ', label: 'Nasdaq 100' },
+  { key: 'DIA', quoteSymbol: 'DIA', googleTicker: 'NYSEARCA:DIA', label: 'Dow' },
+  { key: 'IWM', quoteSymbol: 'IWM', googleTicker: 'NYSEARCA:IWM', label: 'Russell 2000' },
+  { key: 'SOXX', quoteSymbol: 'SOXX', googleTicker: 'NASDAQ:SOXX', label: 'Semiconductor' },
+  { key: 'SMH', quoteSymbol: 'SMH', googleTicker: 'NASDAQ:SMH', label: 'Semiconductor ETF' },
+  { key: 'XLK', quoteSymbol: 'XLK', googleTicker: 'NYSEARCA:XLK', label: 'Technology' },
+  { key: 'XLF', quoteSymbol: 'XLF', googleTicker: 'NYSEARCA:XLF', label: 'Financials' },
+  { key: 'TSLA', quoteSymbol: 'TSLA', googleTicker: 'NASDAQ:TSLA', label: 'Tesla' },
+  { key: 'NVDA', quoteSymbol: 'NVDA', googleTicker: 'NASDAQ:NVDA', label: 'Nvidia' },
+] as const;
+
 async function fetchQuotes(symbols: string[]): Promise<Map<string, YahooQuoteResult>> {
   const endpoint = `${YAHOO_QUOTE_URL}${encodeURIComponent(symbols.join(','))}`;
   const res = await fetch(endpoint, { method: 'GET', next: { revalidate: 300 } });
@@ -29,7 +42,7 @@ function pctChange(row?: YahooQuoteResult): number | null {
 export async function buildUsMarketMorningSummary(): Promise<UsMarketMorningSummary> {
   const asOfKst = new Date().toISOString();
   try {
-    const symbols = ['^GSPC', '^IXIC', '^DJI', 'SOXX', 'SMH', 'QQQ'];
+    const symbols = US_MARKET_MORNING_ANCHORS.map((x) => x.quoteSymbol);
     const map = await fetchQuotes(symbols);
     if (map.size === 0) {
       return {
@@ -41,8 +54,8 @@ export async function buildUsMarketMorningSummary(): Promise<UsMarketMorningSumm
         warnings: ['us_market_quote_unavailable'],
       };
     }
-    const spx = pctChange(map.get('^GSPC'));
-    const ndx = pctChange(map.get('^IXIC'));
+    const spx = pctChange(map.get('SPY'));
+    const ndx = pctChange(map.get('QQQ'));
     const soxx = pctChange(map.get('SOXX'));
     const positiveCount = [spx, ndx, soxx].filter((x) => (x ?? 0) > 0.6).length;
     const negativeCount = [spx, ndx, soxx].filter((x) => (x ?? 0) < -0.6).length;

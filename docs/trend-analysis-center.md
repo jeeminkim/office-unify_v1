@@ -99,7 +99,7 @@
 ## Google Sheets (append-only)
 
 - 선택: `appendToSheets: true` 일 때 `trend_requests` / `trend_reports_log` 탭에 한 줄씩 append합니다 (`apps/web/lib/server/trend-sheets.ts`).
-- 스프레드시트에 위 이름의 탭을 만들고, 첫 행에 `TREND_REQUESTS_HEADER` / `TREND_REPORTS_LOG_HEADER` 컬럼(엔진 `trendSheetsRows.ts` 참고)을 맞춰야 append가 의미 있게 쌓입니다.
+- 앱이 탭 생성/헤더 보정을 best-effort로 시도합니다. 다만 운영 안정성을 위해 수동으로 탭/헤더 상태를 주기적으로 확인하는 것을 권장합니다.
 - **read-back·GOOGLEFINANCE 재반영은 하지 않습니다.** 실패해도 리포트 본문은 200으로 반환하고 `warnings`·`meta.appendToSheetsSucceeded`에 남깁니다.
 
 ## SQL 장기 메모리 (Phase 4, 3테이블 최소안)
@@ -120,6 +120,14 @@
 **Graceful degradation:** `trend_report_runs` 조회 실패(테이블 없음) 시 `memoryEnabled=false`, `warnings`에 안내. **리포트·HTTP 200은 유지.** 쓰기 실패 시 `memoryWriteSucceeded=false`, 읽기 실패 시 delta 비우거나 읽기만 실패로 표시.
 
 **엔진:** `trendCenterMemory.ts`(DB), `trendMemoryCandidates.ts`·`trendMemoryKey.ts`(후보·키), orchestrator에서 OpenAI/Gemini 경로 **이후**에만 실행해 실패를 국소화.
+
+## Finalizer / 오류 차단 / ops
+
+- Gemini finalizer는 timeout + 1회 retry 후 fallback 경로를 가진다.
+- fallback 시 `qualityMeta.finalizer`에 `degraded`/`fallbackUsed`/`retryCount`를 기록한다.
+- raw 오류 본문은 UI sanitizer로 차단해 사용자 화면에 원문 오류가 직접 노출되지 않게 한다.
+- finalizer degraded 실행은 `trend_memory_signals_v2` upsert를 건너뛰어 오염을 줄인다.
+- Trend ops는 `web_ops_events`를 사용하며, read-only 조회와 사용자 write action을 분리해 기록한다.
 
 **DDL:** `docs/sql/append_web_trend_memory_phase1.sql` — 적용 전에도 앱은 빌드·실행된다.
 

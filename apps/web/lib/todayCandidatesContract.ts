@@ -134,6 +134,14 @@ export interface TodayBriefWithCandidatesResponse {
         failedCount: number;
         warnings: string[];
       };
+      opsLogging?: {
+        attempted: number;
+        written: number;
+        skippedReadOnly: number;
+        skippedCooldown: number;
+        skippedBudgetExceeded: number;
+        warnings: string[];
+      };
       warnings: string[];
     };
   };

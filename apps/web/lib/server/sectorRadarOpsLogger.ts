@@ -7,6 +7,7 @@ import {
 } from '@/lib/sectorRadarOpsPolicy';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
+import { OPS_LOG_MAX_WRITES_PER_REQUEST, shouldWriteOpsEvent } from '@/lib/server/opsLogBudget';
 
 const DEFAULT_THROTTLE_MINUTES = 30;
 
@@ -61,15 +62,21 @@ export async function logSectorRadarScoreQualityEvent(input: {
   message: string;
   detail: SectorRadarScoreOpsDetail;
   throttleMinutes?: number;
+  isReadOnlyRoute?: boolean;
+  isExplicitRefresh?: boolean;
+  writesUsed?: number;
+  maxWritesPerRequest?: number;
 }): Promise<{
   attempted: boolean;
+  skippedReadOnly: boolean;
   skippedByThrottle: boolean;
+  skippedBudgetExceeded: boolean;
   bumped: boolean;
   inserted: boolean;
   warning?: string;
 }> {
   const supabase = getServiceSupabase();
-  if (!supabase) return { attempted: false, skippedByThrottle: false, bumped: false, inserted: false, warning: 'supabase_unconfigured' };
+  if (!supabase) return { attempted: false, skippedReadOnly: false, skippedByThrottle: false, skippedBudgetExceeded: false, bumped: false, inserted: false, warning: 'supabase_unconfigured' };
 
   const fingerprint = buildSectorRadarScoreFingerprint({
     userKey: input.userKey ?? null,
@@ -85,10 +92,32 @@ export async function logSectorRadarScoreQualityEvent(input: {
       .eq('fingerprint', fingerprint)
       .maybeSingle<ExistingEventRow>();
     if (selectErr) throw selectErr;
+    const budgetDecision = shouldWriteOpsEvent({
+      domain: 'sector_radar',
+      code: input.code,
+      severity: input.severity,
+      fingerprint,
+      isReadOnlyRoute: input.isReadOnlyRoute,
+      isExplicitRefresh: input.isExplicitRefresh,
+      lastSeenAt: existing?.last_seen_at ?? null,
+      cooldownMinutes: throttleMinutes,
+      writesUsed: input.writesUsed ?? 0,
+      maxWritesPerRequest: input.maxWritesPerRequest ?? OPS_LOG_MAX_WRITES_PER_REQUEST,
+    });
+    if (!budgetDecision.shouldWrite) {
+      return {
+        attempted: true,
+        skippedReadOnly: budgetDecision.reason === 'skipped_read_only',
+        skippedByThrottle: budgetDecision.reason === 'skipped_cooldown',
+        skippedBudgetExceeded: budgetDecision.reason === 'skipped_budget_exceeded',
+        bumped: false,
+        inserted: false,
+      };
+    }
 
     if (existing) {
       if (shouldThrottle({ code: input.code, lastSeenAt: existing.last_seen_at, throttleMinutes })) {
-        return { attempted: true, skippedByThrottle: true, bumped: false, inserted: false };
+        return { attempted: true, skippedReadOnly: false, skippedByThrottle: true, skippedBudgetExceeded: false, bumped: false, inserted: false };
       }
     }
     const res = await upsertOpsEventByFingerprint({
@@ -106,7 +135,9 @@ export async function logSectorRadarScoreQualityEvent(input: {
     });
     return {
       attempted: true,
+      skippedReadOnly: false,
       skippedByThrottle: false,
+      skippedBudgetExceeded: false,
       bumped: Boolean(res.updated),
       inserted: Boolean(res.inserted),
       warning: res.ok ? undefined : res.warning,
@@ -114,7 +145,9 @@ export async function logSectorRadarScoreQualityEvent(input: {
   } catch (e: unknown) {
     return {
       attempted: true,
+      skippedReadOnly: false,
       skippedByThrottle: false,
+      skippedBudgetExceeded: false,
       bumped: false,
       inserted: false,
       warning: e instanceof Error ? e.message : 'sector_radar_ops_log_failed',

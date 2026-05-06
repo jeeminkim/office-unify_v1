@@ -1,6 +1,7 @@
 # Google 로그인 + Supabase Auth (persona-chat)
 
-1인 전용 내부 서비스 기준으로, **허용 이메일은 `kingjeemin@gmail.com` 하나**이며, 서버·클라이언트 모두에서 이 정책을 따른다.
+1인 전용 내부 서비스 기준으로, **허용 이메일은 단일 계정(`<allowed-email>`)** 정책이며, 서버·클라이언트 모두에서 이 정책을 따른다.
+현재 구현 예시는 특정 단일 계정 상수 기반이며, 문서에서는 실이메일 반복 기재를 지양한다.
 
 ## 역할 분리
 
@@ -25,7 +26,7 @@
 
 ## 향후 확장 포인트
 
-- 허용 사용자가 여러 명이 되면 `ALLOWED_PERSONA_CHAT_EMAIL` 상수 대신 DB 매핑 테이블(예: `app_users`)을 두고, `auth.users.id` ↔ `OfficeUserKey`를 조회하는 방식으로 확장할 수 있다. 이번 단계에서는 **테이블을 도입하지 않았다.**
+- 허용 사용자가 여러 명이 되면 `ALLOWED_APP_EMAILS` 또는 DB 매핑 테이블(예: `app_users`)을 두고, `auth.users.id` ↔ `OfficeUserKey`를 조회하는 방식으로 확장할 수 있다. 이번 단계에서는 **테이블을 도입하지 않았다.**
 
 ---
 

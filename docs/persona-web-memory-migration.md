@@ -1,5 +1,7 @@
 # `web_persona_memory` 분리 — 점진 이행
 
+이 문서는 **이행 절차/백필/검증/롤백** 중심 문서다. 현재 운영 기준/정책은 `docs/persona-long-term-memory-strategy.md`를 기준으로 본다.
+
 ## 현재 (유지)
 
 - **저장소**: `persona_memory.last_feedback_summary` (`personaMemoryWebRepository.ts`)
@@ -20,6 +22,11 @@
 2. `persona_memory` → `web_persona_memory` **일회성 백필**(스크립트·SQL)
 3. `selectPersonaLongTermSummary` / `upsertPersonaLongTermSummary`를 **신규 테이블 우선**으로 바꾸거나, 어댑터에서 플래그 분기
 4. 검증 후 `persona_memory` 웹 행 정리(선택)
+
+## 롤백 기준 (요약)
+
+- 신규 테이블 읽기 실패 또는 데이터 불일치가 확인되면 기존 `persona_memory` 읽기 경로로 즉시 복귀한다.
+- 이행 단계에서는 가급적 읽기 우선 전환 후 쓰기 전환을 분리해 리스크를 줄인다.
 
 ## 관련 파일
 

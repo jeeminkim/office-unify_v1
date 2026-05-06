@@ -90,10 +90,10 @@ export type SectorRadarQualityMeta = {
     warnings: string[];
     opsLogging?: {
       attempted: number;
-      inserted: number;
-      bumped: number;
-      skippedByThrottle: number;
-      failed: number;
+      written: number;
+      skippedReadOnly: number;
+      skippedCooldown: number;
+      skippedBudgetExceeded: number;
       warnings: string[];
     };
   };

@@ -271,7 +271,7 @@ export const SECTOR_RADAR_CATEGORY_SEEDS: SectorRadarCategorySeed[] = [
     name: '조선/LNG/소재',
     keywords: ['조선', 'lng', '보냉재', '소재', '해운'],
     anchors: [
-      { symbol: '033500', name: '동성화인텍', sourceLabel: 'seed', quoteSymbol: '033500.KQ', assetType: 'STOCK', role: 'representative_stock', confidence: 90, reason: 'LNG 보냉재 대표주' },
+      { symbol: '033500', name: '동성화인텍', sourceLabel: 'seed', googleTicker: 'KOSDAQ:033500', quoteSymbol: '033500.KQ', assetType: 'STOCK', role: 'representative_stock', confidence: 90, reason: 'LNG 보냉재 대표주' },
       { symbol: '009540', name: 'HD한국조선해양', sourceLabel: 'seed', quoteSymbol: '009540.KS', assetType: 'STOCK', role: 'representative_stock', confidence: 88, reason: '조선 대표주' },
       { symbol: '042660', name: '한화오션', sourceLabel: 'seed', quoteSymbol: '042660.KS', assetType: 'STOCK', role: 'representative_stock', confidence: 87, reason: '조선 대표주' },
       { symbol: '010140', name: '삼성중공업', sourceLabel: 'seed', quoteSymbol: '010140.KS', assetType: 'STOCK', role: 'representative_stock', confidence: 85, reason: '조선 대형주 proxy' },
@@ -300,10 +300,19 @@ function defaultGoogleTickerKr(symbol: string): string {
   return `KRX:${padKrSymbol(symbol)}`;
 }
 
+function inferKrTickerPrefix(seed: SectorRadarAnchorSeed): 'KRX' | 'KOSDAQ' {
+  const quote = (seed.quoteSymbol ?? '').toUpperCase();
+  if (quote.endsWith('.KQ')) return 'KOSDAQ';
+  return 'KRX';
+}
+
 function resolveSeedGoogleTicker(seed: SectorRadarAnchorSeed): { market: SectorRadarMarket; ticker: string; symbolNorm: string } {
   const market: SectorRadarMarket = seed.market ?? 'KR';
   const symbolNorm = normalizedSectorSymbol(market, seed.symbol);
-  const ticker = (seed.googleTicker?.trim() || (market === 'KR' ? defaultGoogleTickerKr(seed.symbol) : symbolNorm)).toUpperCase();
+  const fallbackTicker = market === 'KR'
+    ? `${inferKrTickerPrefix(seed)}:${padKrSymbol(seed.symbol)}`
+    : symbolNorm;
+  const ticker = (seed.googleTicker?.trim() || fallbackTicker).toUpperCase();
   return { market, ticker, symbolNorm };
 }
 

@@ -12,11 +12,21 @@ import { loadHoldingQuotes } from '@/lib/server/marketQuoteService';
 import { analyzeThesisHealth } from '@/lib/server/thesisHealthAnalyzer';
 import { buildTodayStockCandidates } from '@/lib/server/todayStockCandidateService';
 import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
+import { OPS_LOG_MAX_WRITES_PER_REQUEST, shouldWriteOpsEvent } from '@/lib/server/opsLogBudget';
 import type { TodayBriefWithCandidatesResponse } from '@/lib/todayCandidatesContract';
 
 function toNum(v: number | string | null | undefined): number {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
+}
+
+function ymdKst(): string {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date()).replaceAll('-', '');
 }
 
 export async function GET() {
@@ -216,76 +226,58 @@ export async function GET() {
       userKey: auth.userKey,
       limitPerSection: 3,
     });
-    const ymd = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-    void upsertOpsEventByFingerprint({
-      userKey: String(auth.userKey),
-      domain: 'today_candidates',
-      eventType: 'info',
-      severity: 'info',
-      code: 'today_candidates_generated',
-      message: 'today candidates generated from brief API',
-      detail: {
-        userContextCount: todayCandidates.userContextCandidates.length,
-        usMarketKrCount: todayCandidates.usMarketKrCandidates.length,
-        usMarketAvailable: todayCandidates.usMarketSummary.available,
-        warnings: todayCandidates.warnings,
-      },
-      fingerprint: `today_candidates:${auth.userKey}:${ymd}:generated`,
-      status: 'open',
-      route: '/api/dashboard/today-brief',
-      component: 'today-brief',
-    });
+    const ymd = ymdKst();
+    const opsLogging = {
+      attempted: 0,
+      written: 0,
+      skippedReadOnly: 0,
+      skippedCooldown: 0,
+      skippedBudgetExceeded: 0,
+      warnings: [] as string[],
+    };
     if (!todayCandidates.usMarketSummary.available) {
-      void upsertOpsEventByFingerprint({
-        userKey: String(auth.userKey),
+      const fingerprint = `today_candidates:${auth.userKey}:${ymd}:us_market_no_data`;
+      const { data: existing } = await supabase
+        .from('web_ops_events')
+        .select('last_seen_at')
+        .eq('fingerprint', fingerprint)
+        .maybeSingle<{ last_seen_at: string }>();
+      const decision = shouldWriteOpsEvent({
         domain: 'today_candidates',
-        eventType: 'warning',
-        severity: 'warning',
         code: 'today_candidates_us_market_no_data',
-        message: 'US market morning summary unavailable',
-        detail: { warnings: todayCandidates.usMarketSummary.warnings },
-        fingerprint: `today_candidates:${auth.userKey}:${ymd}:us_market_no_data`,
-        status: 'open',
-        route: '/api/dashboard/today-brief',
-        component: 'today-brief',
-      });
-    }
-    const lowConfidenceCount = todayCandidates.confidenceCounts.low + todayCandidates.confidenceCounts.very_low;
-    if (lowConfidenceCount > 0) {
-      void upsertOpsEventByFingerprint({
-        userKey: String(auth.userKey),
-        domain: 'today_candidates',
-        eventType: 'warning',
         severity: 'warning',
-        code: 'today_candidate_low_confidence_batch',
-        message: 'low confidence candidates present in batch',
-        detail: {
-          lowConfidenceCount,
-          total: todayCandidates.userContextCandidates.length + todayCandidates.usMarketKrCandidates.length,
-        },
-        fingerprint: `today_candidates:${auth.userKey}:${ymd}:low_confidence_batch`,
-        status: 'open',
-        route: '/api/dashboard/today-brief',
-        component: 'today-brief',
+        fingerprint,
+        isReadOnlyRoute: false,
+        lastSeenAt: existing?.last_seen_at ?? null,
+        cooldownMinutes: 60 * 24,
+        writesUsed: opsLogging.written,
+        maxWritesPerRequest: OPS_LOG_MAX_WRITES_PER_REQUEST,
       });
-    }
-    const degradedCandidates = [...todayCandidates.userContextCandidates, ...todayCandidates.usMarketKrCandidates]
-      .filter((c) => c.confidence === 'very_low')
-      .slice(0, 3);
-    for (const c of degradedCandidates) {
-      void upsertOpsEventByFingerprint({
-        userKey: String(auth.userKey),
-        domain: 'today_candidates',
-        eventType: 'warning',
-        severity: 'warning',
-        code: 'today_candidate_data_quality_degraded',
-        message: 'candidate data quality degraded',
-        detail: { candidateId: c.candidateId, stockCode: c.stockCode, confidence: c.confidence },
-        fingerprint: `today_candidates:${auth.userKey}:${c.candidateId}:data_quality_degraded`,
-        status: 'open',
-        route: '/api/dashboard/today-brief',
-        component: 'today-brief',
-      });
+      opsLogging.attempted += 1;
+      if (!decision.shouldWrite) {
+        if (decision.reason === 'skipped_read_only') opsLogging.skippedReadOnly += 1;
+        if (decision.reason === 'skipped_cooldown') opsLogging.skippedCooldown += 1;
+        if (decision.reason === 'skipped_budget_exceeded') opsLogging.skippedBudgetExceeded += 1;
+      } else {
+        const write = await upsertOpsEventByFingerprint({
+          userKey: String(auth.userKey),
+          domain: 'today_candidates',
+          eventType: 'warning',
+          severity: 'warning',
+          code: 'today_candidates_us_market_no_data',
+          message: 'US market morning summary unavailable',
+          detail: {
+            warnings: todayCandidates.usMarketSummary.warnings,
+            loggingDecision: decision.reason,
+          },
+          fingerprint,
+          status: 'open',
+          route: '/api/dashboard/today-brief',
+          component: 'today-brief',
+        });
+        if (write.ok) opsLogging.written += 1;
+        else if (opsLogging.warnings.length < 10) opsLogging.warnings.push(write.warning ?? 'today_candidates_us_market_no_data_log_failed');
+      }
     }
     const { data: ppRows, error: ppErr } = await supabase
       .from('web_ops_events')
@@ -348,6 +340,7 @@ export async function GET() {
             failedCount: postProcessFailed,
             warnings: postProcessWarnings,
           },
+          opsLogging,
           warnings: todayCandidates.warnings,
         },
       },

@@ -1,15 +1,3 @@
-## Dashboard Today Candidates
-
-- 홈 `오늘의 3줄 브리핑` 응답에 optional `candidates` 블록을 추가한다.
-- 생성 서비스: `todayStockCandidateService`
-  - user context 후보: watchlist/보유/Sector Radar/Trend memory 참조
-  - us market 후보: `usMarketMorningSummary` + `todayCandidateRules` 매핑
-- 모든 후보는 `isBuyRecommendation=false`이며 관찰 후보로만 표기한다.
-- 상세 열람/관심종목 추가/중복 이벤트는 `web_ops_events`에 fingerprint upsert로 기록한다.
-- 관심종목 추가 API는 insert 후 postprocess를 best-effort로 실행해 sector/ticker 메타를 보정한다.
-- today candidates 운영 상태는 `today-candidates/ops-summary`로 집계해 대시보드에 소형 상태로 노출한다.
-- 후보별 `dataQuality`(신뢰도/뱃지/근거)를 응답에 포함하고, low confidence는 기본 숨김+토글 노출을 사용한다.
-- `qualityMeta.todayCandidates`에 confidence 분포(high/medium/low/very_low)와 postprocess 요약을 누적한다.
 # System Architecture (Personal Investment Console)
 
 ## 목적
@@ -42,6 +30,22 @@
 - `/decision-journal` : 비거래 의사결정 일지 — **실제 주문이 아니라** 사지 않음·팔지 않음·관망·대기 등의 판단을 기록. Trade Journal(실행 거래)과 구분.
 - `/ops-events` : 운영 로그·개선 포인트 — `web_ops_events` 조회·상태 변경·메모. 시스템 오류/경고와 사용자 **개선 메모**를 같은 테이블에서 backlog로 관리(자동 수정 없음).
 
+## Dashboard Today Candidates
+
+- 홈 `오늘의 3줄 브리핑` 응답은 기존 3줄 라인 + optional `candidates` 확장을 함께 사용한다.
+- 후보 축:
+  - `candidates.userContext`
+  - `candidates.usMarketKr`
+- 후보 원칙:
+  - `isBuyRecommendation=false`
+  - 점수는 매수 점수가 아니라 **관찰 우선순위**
+  - 자동 매매/자동 주문 없음
+- `dataQuality`는 `summary`, `reasonItems`, `primaryRisk`를 포함할 수 있으며 기존 `reasons`와 호환된다.
+- low/very_low 후보는 기본 숨김(토글로 표시) 정책을 사용한다.
+- `POST /api/portfolio/watchlist/add-candidate`는 `added|already_exists`를 반환하고, 성공 후 postprocess를 best-effort로 수행한다.
+- 운영 요약은 `GET /api/dashboard/today-candidates/ops-summary`로 조회한다.
+- read-only 경로(`GET /api/dashboard/today-brief`)는 warning을 `qualityMeta`에 유지하고 `web_ops_events` write는 제한한다(일 1회/cooldown/budget).
+
 ## 서버 API 계층
 
 - `/api/system/status`
@@ -53,7 +57,10 @@
 - `/api/dashboard/today-brief`
   - 오늘의 3줄 브리핑(리스크/성과/행동) 생성
   - 사실 데이터와 제안 문장을 분리하고 confidence/경고를 함께 반환
+  - optional `candidates` 블록(`userContext`/`usMarketKr`) 지원
+  - 후보별 `dataQuality.summary`, `reasonItems`, `primaryRisk`(additive)
   - 데이터 부족 시 NO_DATA 문구로 degrade
+  - read-only 경로에서는 warning을 `qualityMeta.todayCandidates.warnings`에 유지하고 `web_ops_events` write는 제한(하루 1회/no_data, cooldown, budget 정책)
 - `/api/dashboard/profit-goal-summary`
   - 이번달/연간 실현손익과 목표 배분(미배분 포함) 요약
 - `/api/portfolio/summary`
@@ -139,6 +146,7 @@
   - `scoreExplanation`에는 `confidence`, `summary`, `conservativeActionHint`, `mainDrivers`, `riskNotes`, `watchlistConnectionSummary` 포함
   - 높은 점수는 매수 추천이 아니라 최근 강한 움직임 관찰 신호로 해석(과열/위험 시 추격매수 주의 문구)
   - Sheets 미설정·탭 비어 있음 시 `degraded` + NO_DATA 유지
+  - read-only summary는 경고 상태를 응답으로 유지하되 `web_ops_events` write는 기본 생략, 명시적 refresh/critical에서만 제한적으로 기록
 - `/api/sector-radar/refresh`
   - `sector_radar_quotes` 탭 생성/덮어쓰기 및 GOOGLEFINANCE 수식 동기화(`USER_ENTERED`)
 - `/api/sector-radar/status`
@@ -198,4 +206,13 @@
   - `high`: 다중 출처 신호/기록이 일치
   - `medium`: 일부 출처만 일치
   - `low`: 원장 메모 또는 단일 출처 기반 추정
+
+## Ops Logging 정책
+
+- `web_ops_events`는 fingerprint upsert(RPC 우선, 실패 시 fallback) 정책을 사용한다.
+- `qualityMeta`와 `web_ops_events`는 역할을 분리한다.
+  - `qualityMeta`: 현재 요청의 사용자 표시 상태
+  - `web_ops_events`: 운영 추적용 누적 상태
+- read-only API의 warning은 가능한 한 DB write를 억제하고, 명시적 refresh/critical/error/state transition/cooldown 경과 시에만 기록한다.
+- 요청 단위 write budget(`opsLogBudget`)을 적용해 단기 트랜잭션 폭증을 방지한다.
 

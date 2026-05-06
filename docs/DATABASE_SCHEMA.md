@@ -1,4 +1,6 @@
 # 데이터베이스 스키마 (웹 앱 요약)
+SQL 적용 상태/우선순위는 `docs/ops/sql-application-status.md`를 함께 참고한다.
+
 
 웹 앱이 Supabase(Postgres)에 기대는 **문서화된 DDL 조각**과의 대응 관계를 정리한다. 전체 레거시(Discord 등) 스키마는 이 저장소 범위를 넘을 수 있다.
 
@@ -139,6 +141,7 @@ limit 50;
   - `resolved` 재발: `open`으로 reopen
   - `ignored` 재발: `ignored` 유지(카운트/last_seen 갱신)
 - 앱 로거는 RPC 우선 호출 후 실패 시 앱 레벨 fallback(upsert by select/update/insert)로 동작한다.
+- `opsLogBudget`은 **DB 스키마가 아니라 앱 레이어 로깅 정책**이다(read-only 억제/cooldown/budget).
 
 운영 점검 SQL:
 
@@ -154,6 +157,7 @@ where routine_schema = 'public'
 ### today_candidates ops logging
 
 - domain: `today_candidates`
+- Today Candidates는 신규 전용 테이블 없이 기존 원장(`web_portfolio_watchlist` 등) + `web_ops_events` 조합으로 운영한다.
 - fingerprint 예시:
   - `today_candidates:${userKey}:${yyyyMMdd}:generated`
   - `today_candidates:${userKey}:${yyyyMMdd}:us_market_no_data`
@@ -162,6 +166,7 @@ where routine_schema = 'public'
   - `today_candidates:${userKey}:${yyyyMMdd}:${candidateId}:detail_opened`
   - `today_candidates:${userKey}:${stockCode}:postprocess_success|postprocess_partial|postprocess_failed`
   - `today_candidates:${userKey}:${yyyyMMdd}:ops_summary_unavailable`
+- read-only 경로(`GET /api/dashboard/today-brief`)는 warning을 `qualityMeta`로 유지하고, 동일 no_data write는 날짜 단위(cooldown)로 제한한다.
 
 ## Decision Journal (비거래 의사결정 일지)
 

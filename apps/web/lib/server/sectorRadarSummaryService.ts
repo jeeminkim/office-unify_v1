@@ -42,6 +42,11 @@ function pickGreedTop3(sectors: SectorRadarSummarySector[]): SectorRadarSummaryS
 export async function buildSectorRadarSummaryForUser(
   supabase: SupabaseClient,
   userKey: OfficeUserKey,
+  options?: {
+    isReadOnlyRoute?: boolean;
+    isExplicitRefresh?: boolean;
+    maxOpsWritesPerRequest?: number;
+  },
 ): Promise<SectorRadarSummaryResponse> {
   const warnings: string[] = [];
   const generatedAt = new Date().toISOString();
@@ -85,19 +90,29 @@ export async function buildSectorRadarSummaryForUser(
 
   const opsLogging = {
     attempted: 0,
-    inserted: 0,
-    bumped: 0,
-    skippedByThrottle: 0,
-    failed: 0,
+    written: 0,
+    skippedReadOnly: 0,
+    skippedCooldown: 0,
+    skippedBudgetExceeded: 0,
     warnings: [] as string[],
   };
+  let writesUsed = 0;
   for (const s of sectors) {
-    const ops = await logSectorRadarQualityOps(userKey, s);
+    const ops = await logSectorRadarQualityOps(userKey, s, {
+      isReadOnlyRoute: options?.isReadOnlyRoute ?? true,
+      isExplicitRefresh: options?.isExplicitRefresh ?? false,
+      writesUsed,
+      maxWritesPerRequest: options?.maxOpsWritesPerRequest,
+    });
     opsLogging.attempted += ops.attempted;
-    opsLogging.inserted += ops.inserted;
-    opsLogging.bumped += ops.bumped;
-    opsLogging.skippedByThrottle += ops.skippedByThrottle;
-    opsLogging.failed += ops.failed;
+    opsLogging.written += ops.written;
+    opsLogging.skippedReadOnly += ops.skippedReadOnly;
+    opsLogging.skippedCooldown += ops.skippedCooldown;
+    opsLogging.skippedBudgetExceeded += ops.skippedBudgetExceeded;
+    if (ops.failed > 0 && opsLogging.warnings.length < 30) {
+      opsLogging.warnings.push(`ops_failed:${s.key}:${ops.failed}`);
+    }
+    writesUsed += ops.written;
     if (ops.warnings.length && opsLogging.warnings.length < 30) {
       opsLogging.warnings.push(...ops.warnings.slice(0, 30 - opsLogging.warnings.length));
     }

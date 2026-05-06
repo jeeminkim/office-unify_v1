@@ -37,7 +37,7 @@ export async function buildTodayStockCandidates(input: {
   const [watchlist, holdings, sectorRadar, usSummary, trendSignalsRes] = await Promise.all([
     listWebPortfolioWatchlistForUser(input.supabase, input.userKey).catch(() => []),
     listWebPortfolioHoldingsForUser(input.supabase, input.userKey).catch(() => []),
-    buildSectorRadarSummaryForUser(input.supabase, input.userKey).catch(() => null),
+    buildSectorRadarSummaryForUser(input.supabase, input.userKey, { isReadOnlyRoute: true }).catch(() => null),
     buildUsMarketMorningSummary(),
     input.supabase
       .from('trend_memory_signals_v2')

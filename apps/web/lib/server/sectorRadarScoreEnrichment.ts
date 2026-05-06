@@ -126,16 +126,31 @@ function buildOpsDetail(sector: SectorRadarSummarySector, code: string): SectorR
 export async function logSectorRadarQualityOps(
   userKey: OfficeUserKey,
   sector: SectorRadarSummarySector,
-): Promise<{ attempted: number; inserted: number; bumped: number; skippedByThrottle: number; failed: number; warnings: string[] }> {
+  options?: {
+    isReadOnlyRoute?: boolean;
+    isExplicitRefresh?: boolean;
+    writesUsed?: number;
+    maxWritesPerRequest?: number;
+  },
+): Promise<{
+  attempted: number;
+  written: number;
+  skippedReadOnly: number;
+  skippedCooldown: number;
+  skippedBudgetExceeded: number;
+  failed: number;
+  warnings: string[];
+}> {
   const exp = sector.scoreExplanation;
-  if (!exp) return { attempted: 0, inserted: 0, bumped: 0, skippedByThrottle: 0, failed: 0, warnings: [] };
+  if (!exp) return { attempted: 0, written: 0, skippedReadOnly: 0, skippedCooldown: 0, skippedBudgetExceeded: 0, failed: 0, warnings: [] };
 
   const codes = sectorRadarOpsCodesForQuality({
     quality: exp.quality,
     temperature: exp.temperature,
   });
 
-  const out = { attempted: 0, inserted: 0, bumped: 0, skippedByThrottle: 0, failed: 0, warnings: [] as string[] };
+  const out = { attempted: 0, written: 0, skippedReadOnly: 0, skippedCooldown: 0, skippedBudgetExceeded: 0, failed: 0, warnings: [] as string[] };
+  let writesUsed = options?.writesUsed ?? 0;
   for (const code of codes) {
     const detail = buildOpsDetail(sector, code);
     const res = await logSectorRadarScoreQualityEvent({
@@ -147,11 +162,19 @@ export async function logSectorRadarQualityOps(
       message: `sector radar score quality — ${sector.name}`,
       detail,
       throttleMinutes: classifySectorRadarWarningPolicy(code).throttleMinutes,
+      isReadOnlyRoute: options?.isReadOnlyRoute,
+      isExplicitRefresh: options?.isExplicitRefresh,
+      writesUsed,
+      maxWritesPerRequest: options?.maxWritesPerRequest,
     });
     if (res.attempted) out.attempted += 1;
-    if (res.inserted) out.inserted += 1;
-    if (res.bumped) out.bumped += 1;
-    if (res.skippedByThrottle) out.skippedByThrottle += 1;
+    if (res.inserted || res.bumped) {
+      out.written += 1;
+      writesUsed += 1;
+    }
+    if (res.skippedReadOnly) out.skippedReadOnly += 1;
+    if (res.skippedByThrottle) out.skippedCooldown += 1;
+    if (res.skippedBudgetExceeded) out.skippedBudgetExceeded += 1;
     if (res.warning) {
       out.failed += 1;
       if (out.warnings.length < 10) out.warnings.push(`${sector.name}:${code}:${res.warning}`);

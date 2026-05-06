@@ -38,7 +38,10 @@ export async function GET() {
   }
 
   try {
-    const body = await buildSectorRadarSummaryForUser(supabase, auth.userKey);
+    const body = await buildSectorRadarSummaryForUser(supabase, auth.userKey, {
+      isReadOnlyRoute: true,
+      isExplicitRefresh: false,
+    });
     return NextResponse.json(body);
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'sector radar summary failed';

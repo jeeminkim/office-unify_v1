@@ -1,5 +1,7 @@
 # 웹 페르소나 채팅 — 장기 기억 저장소 전략
 
+이 문서는 **현재 운영 전략/기준**을 다룬다. 실제 이행 절차(백필·검증·롤백)는 `docs/persona-web-memory-migration.md`를 참고한다.
+
 ## 현재 (Phase 2): `persona_memory` 재사용
 
 - **저장 위치**: legacy 테이블 `persona_memory.last_feedback_summary`
