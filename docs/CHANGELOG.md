@@ -6,11 +6,28 @@
 
 ### 2026-05 Ops / Today Candidates / Sector Radar stabilization
 
+- **Sector Radar ETF 테마 매칭 고도화:** ETF `theme eligibility` 게이트(strict/adjacent/exclude/unknown)를 점수 계산보다 먼저 적용하도록 변경.
+- **AI/전력 인프라 seed 확장:** `487240`, `487230`, `486450`, `491010`을 strict 테마로 반영하고, `SOL 조선TOP3플러스(466920)`를 AI/전력 인프라에서 hard exclude.
+- **미디어/콘텐츠 universe 확장:** `395150`, `228810`, `266360`, `395290`, `0132D0`을 포함해 웹툰/드라마/K콘텐츠/K-POP/K컬처 범위를 확장.
+- **Quote empty 품질 정책:** quote empty ETF를 섹터 점수 산정에서 제한하고 `etf_quote_missing`, `etf_quote_coverage_low`, `etf_universe_quote_degraded` 경고를 `qualityMeta` 중심으로 노출.
+- **API/UI additive 확장:** 기존 필드를 삭제하지 않고 anchor 메타(`etfDisplayGroup`, reason code, user hint)와 `qualityMeta.sectorRadar.etfQualityWarnings`를 추가.
+- **운영 정책 유지:** read-only route에서 개별 warning `web_ops_events` write를 늘리지 않고 aggregate degraded 정책과 분리 원칙을 유지.
+- **ETF gate 운영 진단 추가:** `qualityMeta.sectorRadar.etfQualityDiagnostics`에 섹터별 universe/eligible/excluded/quote/scoring 집계를 additive로 제공.
+- **ETF 표시 그룹 고정:** `etfDisplayGroup`을 `scored`/`watch_only`/`excluded`로 명확화해, 시세 미반영 ETF가 점수 반영 ETF로 오해되지 않도록 UI 분리.
+- **ETF quote alias/resolver 기반:** `quoteAlias`(`googleTicker`/`yahooTicker`/`displayCode`)와 resolver를 추가해 특수 코드 ETF(`0132D0` 등) 대응 기반 마련.
+- **Today brief 설명 보강:** Sector Radar ETF 메타를 활용해 직접 관련 ETF/인접 관찰 ETF/시세 미반영 상태를 후보 설명에 additive 반영.
+- **Quote alias 점진 연결:** ETF seed google ticker 생성 경로에서 `quoteAlias` 기반 resolver를 참조하도록 연결(기존 일반 ETF 동작 유지).
+- **Quote 품질 분리:** `missing`/`stale`/`invalid`/`unknown`을 구분하고 `stale`·`invalid`·`unknown` ETF는 `watch_only`로 분류해 점수 반영에서 제외.
+- **Gate mode 도입:** `off`/`diagnostic_only`/`enforced` 모드를 도입해 `ai_power_infra`/`k_content`는 enforced, `nuclear_energy`/`defense_space`/`semiconductor`/`battery`는 diagnostic_only로 확장 준비.
+- **Diagnostics snapshot 원칙:** read-only summary에서는 snapshot DB write를 하지 않고 explicit refresh/admin/scheduled 경로에서만 저장 허용(현 단계는 타입/문서 기준 준비).
+- **Alias/quality 계약 정리:** quote key 우선순위(`seed.googleTicker override → alias → fallback`)를 명시하고 `missing/stale/invalid/unknown` 판정 계약을 고정.
+
 - **Docs 기준선 분리/최신화:** `CURRENT_SYSTEM_BASELINE`, `DOCS_MAINTENANCE_CHECKLIST`, `ops/sql-application-status`, `ops/sector_radar_quote_recovery`를 추가하고 SYSTEM/ops/feature 문서의 역할 분리를 정리.
 - **Ops log transaction budget 도입:** `opsLogBudget`를 추가해 read-only 경로 warning DB write를 기본 억제하고, cooldown/예산(요청당 max 3) 정책으로 단기 write 트랜잭션을 제한.
 - **Today brief no_data write 축소:** `today_candidates_us_market_no_data`는 KST 날짜 fingerprint 기준 하루 1회만 기록하고, 나머지는 `qualityMeta.todayCandidates.warnings`로만 노출.
 - **Sector Radar summary write 억제:** `/api/sector-radar/summary`에서는 품질 경고를 화면/qualityMeta에 유지하되 DB write를 기본 생략하도록 정책화.
 - **Read-only aggregate degraded 추가:** summary/today-brief는 개별 warning write를 억제하고, 심한 저하 시 `sector_radar_summary_batch_degraded` / `today_candidates_summary_batch_degraded`를 날짜 fingerprint + cooldown/budget 기준으로 제한 기록.
+- **Read-only critical 화이트리스트:** `isCritical` 단독으로 read-only를 통과하지 못하게 하고, 허용 eventCode(`sector_radar_summary_batch_degraded`, `today_candidates_summary_batch_degraded`, `today_candidates_us_market_no_data`)와 쌍일 때만 예외. aggregate/`us_market_no_data` `detail`은 `schemaVersion`·`kind`·집계·`reasonCodes` 고정 타입(`opsAggregateWarnings.ts`). `qualityMeta.opsLogging.eventTrace` additive. `SYSTEM_ARCHITECTURE.md` 문서 스모크 테스트 추가.
 - **US morning anchor universe 보강:** 미국장 요약 anchor를 SPY/QQQ/DIA/IWM/SOXX/SMH/XLK/XLF/TSLA/NVDA 기준으로 정리.
 - **조선/LNG/소재 ticker 보정:** 동성화인텍(033500) `googleTicker`를 `KOSDAQ:033500`으로 보정.
 - **Today Candidates primaryRisk 강제 노출:** 카드 뱃지 최대 4개 정책과 별도로 `primaryRisk`를 항상 노출해 과열/추격/급등/시세부족 등 핵심 리스크를 놓치지 않도록 개선.

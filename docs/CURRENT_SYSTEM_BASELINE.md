@@ -29,6 +29,16 @@
   - add-candidate + best-effort postprocess
 - Sector Radar
   - `rawScore`/`adjustedScore`/`scoreExplanation`
+  - ETF `theme eligibility` 우선 게이트(strict/adjacent/exclude/unknown)
+  - ETF 표시 그룹 `scored`/`watch_only`/`excluded`
+  - AI/전력 인프라와 조선 테마 분리(조선 ETF hard exclude)
+  - 미디어/콘텐츠 ETF universe 확장(웹툰/드라마/K콘텐츠/K-POP/K컬처)
+  - ETF quote alias/resolver 기반(`quoteAlias`)으로 특수 코드 대응 준비
+  - quote key 우선순위: `seed.googleTicker`(운영 확정 override) → alias → fallback
+  - quote 품질 상태 분리(`missing`/`stale`/`invalid`/`unknown`) + 점수 반영 제한
+  - gate mode(`off`/`diagnostic_only`/`enforced`)로 단계적 확장
+  - quote empty ETF 점수 산정 제한 + `qualityMeta` 경고 코드
+  - `qualityMeta.sectorRadar.etfQualityDiagnostics`로 운영 진단(additive)
   - `qualityMeta.sectorRadar`와 운영 상태 분리
   - read-only summary 경로 write 제한
 - Trend
@@ -38,7 +48,8 @@
 - Ops
   - `web_ops_events` fingerprint upsert RPC 우선
   - `opsLogBudget` 기반 write budget/cooldown/read-only 억제
-  - read-only 요약 경로는 개별 warning 대신 aggregate degraded를 제한 기록
+  - read-only 요약 경로: 개별 warning write 억제, 심각 저하는 **화이트리스트 eventCode + isCritical + cooldown/budget/fingerprint**로 aggregate/US no_data만 제한 기록
+  - `qualityMeta`는 화면 상태, `web_ops_events`는 제한적 운영 누적
 - Portfolio Quote Recovery
   - quotes/ticker/sector-radar 각각 전용 refresh API
   - read-back 지연/빈값을 NO_DATA 경고로 표시

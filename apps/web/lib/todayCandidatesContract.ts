@@ -141,6 +141,8 @@ export interface TodayBriefWithCandidatesResponse {
         skippedCooldown: number;
         skippedBudgetExceeded: number;
         warnings: string[];
+        /** Additive: last N ops write decisions (whitelist-gated read-only events). */
+        eventTrace?: Array<{ code: string; shouldWrite: boolean; reason: string }>;
       };
       warnings: string[];
     };

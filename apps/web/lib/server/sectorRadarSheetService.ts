@@ -74,6 +74,7 @@ export type SectorRadarSheetReadRow = {
   rawVolumeAvg: string;
   rawCurrency: string;
   rawDatadelay: string;
+  rawLastSyncedAt: string;
   price?: number;
   volume?: number;
   changePct?: number;
@@ -169,6 +170,7 @@ function parseV2Row(row: unknown[]): SectorRadarSheetReadRow | null {
     rawVolumeAvg,
     rawCurrency,
     rawDatadelay: '',
+    rawLastSyncedAt: googleSheetCellAsString(row[20]),
     price,
     volume,
     changePct,
@@ -231,6 +233,7 @@ function parseV1Row(row: unknown[]): SectorRadarSheetReadRow | null {
     rawVolumeAvg,
     rawCurrency: '',
     rawDatadelay,
+    rawLastSyncedAt: '',
     price,
     volume,
     changePct,
@@ -371,6 +374,9 @@ export function mergeSheetRowsWithAnchors(
         name: a.name,
         googleTicker: a.googleTicker,
         sourceLabel: a.sourceLabel,
+        assetType: a.assetType,
+        etfQuoteKeySource: a.quoteKeySource,
+        quoteUpdatedAt: undefined,
         dataStatus: classifyDataStatus(undefined, undefined),
       };
     }
@@ -380,6 +386,9 @@ export function mergeSheetRowsWithAnchors(
       name: a.name,
       googleTicker: a.googleTicker,
       sourceLabel: a.sourceLabel,
+      assetType: a.assetType,
+      etfQuoteKeySource: a.quoteKeySource,
+      quoteUpdatedAt: s.rawLastSyncedAt || undefined,
       price: s.price,
       volume: s.volume,
       changePct: s.changePct,

@@ -8,6 +8,7 @@ import type {
   SectorRadarSummarySector,
   SectorRadarZone,
 } from '@/lib/sectorRadarContract';
+import type { EtfThemeEligibility } from '@/lib/server/sectorRadarEtfThemeCatalog';
 
 export type AnchorMetricRow = {
   market?: SectorRadarMarket;
@@ -22,7 +23,47 @@ export type AnchorMetricRow = {
   low52?: number;
   volumeAvg?: number;
   dataStatus: SectorRadarAnchorDataStatus;
+  quoteUpdatedAt?: string;
+  assetType?: 'ETF' | 'STOCK';
+  etfQuoteKeySource?: 'manual_override' | 'alias' | 'fallback' | 'watchlist';
+  etfThemeEligibility?: EtfThemeEligibility;
+  etfDisplayGroup?: 'scored' | 'watch_only' | 'excluded';
+  /** When false, row is omitted from numeric sector score (theme/quote gate). */
+  includeInSectorScore?: boolean;
+  etfReasonCodes?: string[];
+  etfQuoteQualityStatus?: 'ok' | 'missing' | 'stale' | 'invalid' | 'unknown';
 };
+
+function etfAnchorUserHint(row: AnchorMetricRow): string | undefined {
+  if (row.etfReasonCodes?.includes('etf_quote_missing')) {
+    return '관련 ETF로 분류되지만 시세가 비어 있어 점수 산정에서는 제외했습니다.';
+  }
+  if (row.etfReasonCodes?.includes('etf_quote_stale')) {
+    return '시세는 있으나 갱신 시점이 오래되어 점수 산정에서 제외했습니다.';
+  }
+  if (row.etfReasonCodes?.includes('etf_quote_invalid')) {
+    return '시세 값이 비정상으로 확인되어 점수 산정에서 제외했습니다.';
+  }
+  if (row.etfReasonCodes?.includes('etf_quote_unknown_freshness')) {
+    return '시세 갱신 시점을 확인할 수 없어 관찰 ETF로 분류했습니다.';
+  }
+  if (row.etfReasonCodes?.includes('etf_quote_alias_applied')) {
+    return '특수 ETF 코드라 provider별 ticker alias를 적용했습니다.';
+  }
+  if (row.etfReasonCodes?.includes('etf_quote_manual_override_applied')) {
+    return '운영 확정 ticker override를 적용했습니다.';
+  }
+  if (row.etfReasonCodes?.includes('etf_quote_fallback_key_used')) {
+    return 'provider별 ticker alias가 없어 기본 코드로 시세 조회를 시도했습니다.';
+  }
+  if (row.assetType === 'ETF' && row.etfDisplayGroup === 'watch_only') {
+    return '관찰 ETF로 분류했습니다.';
+  }
+  if (row.assetType === 'ETF' && row.etfDisplayGroup === 'scored') {
+    return '직접 관련 ETF만 점수에 반영했습니다.';
+  }
+  return undefined;
+}
 
 function zoneFromScore(score: number): SectorRadarZone {
   if (score <= 24) return 'extreme_fear';
@@ -131,6 +172,10 @@ export function buildSummaryAnchors(rows: AnchorMetricRow[]): SectorRadarSummary
     low52: r.low52,
     volumeAvg: r.volumeAvg,
     dataStatus: r.dataStatus,
+    etfDisplayGroup: r.etfDisplayGroup,
+    etfReasonCodes: r.etfReasonCodes,
+    etfThemeUserHint: etfAnchorUserHint(r),
+    etfQuoteQualityStatus: r.etfQuoteQualityStatus,
   }));
 }
 

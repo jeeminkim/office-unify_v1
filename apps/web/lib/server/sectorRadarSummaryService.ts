@@ -13,20 +13,31 @@ import {
   enrichSectorRadarSector,
   logSectorRadarQualityOps,
 } from '@/lib/server/sectorRadarScoreEnrichment';
-import { scoreSectorFromAnchors } from '@/lib/server/sectorRadarScoring';
+import { applyEtfThemeGate } from '@/lib/server/sectorRadarEtfThemeGate';
+import { ETF_THEME_GATED_SECTOR_KEYS, getEtfThemeGateModeForSector } from '@/lib/server/sectorRadarEtfThemeCatalog';
+import { buildSummaryAnchors, scoreSectorFromAnchors } from '@/lib/server/sectorRadarScoring';
 import {
   isSectorRadarSheetsConfigured,
   mergeSheetRowsWithAnchors,
   readSectorRadarQuoteSheetRows,
 } from '@/lib/server/sectorRadarSheetService';
 import { attachSectorRadarDisplayFields } from '@/lib/sectorRadarWarningMessages';
-import type { SectorRadarSummaryResponse, SectorRadarSummarySector } from '@/lib/sectorRadarContract';
+import type {
+  SectorRadarEtfThemeGateDiagnostics,
+  SectorRadarSummaryResponse,
+  SectorRadarSummarySector,
+} from '@/lib/sectorRadarContract';
 import {
+  buildSectorRadarSummaryBatchDegradedDetail,
   buildSectorRadarSummaryBatchDegradedFingerprint,
   OPS_AGGREGATE_WARNING_CODES,
   shouldLogSectorRadarSummaryBatchDegraded,
 } from '@/lib/server/opsAggregateWarnings';
-import { shouldWriteOpsEvent } from '@/lib/server/opsLogBudget';
+import {
+  appendQualityMetaOpsEventTrace,
+  type OpsQualityMetaEventTraceEntry,
+  shouldWriteOpsEvent,
+} from '@/lib/server/opsLogBudget';
 import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
 function pickTop3(
   sectors: SectorRadarSummarySector[],
@@ -57,6 +68,7 @@ export async function buildSectorRadarSummaryForUser(
 ): Promise<SectorRadarSummaryResponse> {
   const warnings: string[] = [];
   const generatedAt = new Date().toISOString();
+  const etfDiagnostics: SectorRadarEtfThemeGateDiagnostics[] = [];
 
   let watchlist: WebPortfolioWatchlistRow[] = [];
   try {
@@ -89,19 +101,45 @@ export async function buildSectorRadarSummaryForUser(
     const catMerged = merged.filter((a) => a.categoryKey === cat.key);
     const catSheet = sheetRows.filter((s) => s.categoryKey === cat.key);
     const metrics = mergeSheetRowsWithAnchors(catMerged, catSheet);
-    return scoreSectorFromAnchors(cat.key, cat.name, metrics);
+    const gate = applyEtfThemeGate(cat.key, metrics);
+    etfDiagnostics.push(...gate.diagnostics);
+    const sector = scoreSectorFromAnchors(cat.key, cat.name, gate.scoringRows);
+    const display = gate.displayRows;
+    const quoteOk = (r: (typeof display)[number]) => r.dataStatus === 'ok' && r.price != null && r.price > 0;
+    return {
+      ...sector,
+      sampleCount: display.length,
+      quoteOkCount: display.filter(quoteOk).length,
+      quoteMissingCount: display.filter((r) => !quoteOk(r)).length,
+      anchors: buildSummaryAnchors(display),
+      warnings: Array.from(new Set([...(sector.warnings ?? []), ...gate.sectorWarnings])),
+      etfThemeMeta: {
+        gated: ETF_THEME_GATED_SECTOR_KEYS.has(cat.key),
+        gateMode: getEtfThemeGateModeForSector(cat.key),
+        sectorWarnings: gate.sectorWarnings,
+        excludedSymbolCount: gate.traceExcluded.length,
+      },
+    };
   });
 
   const linkedBySector = countLinkedWatchlistBySector(watchlist);
   const sectors = scored.map((s) => enrichSectorRadarSector(s, linkedBySector[s.key] ?? 0));
 
-  const opsLogging = {
+  const opsLogging: {
+    attempted: number;
+    written: number;
+    skippedReadOnly: number;
+    skippedCooldown: number;
+    skippedBudgetExceeded: number;
+    warnings: string[];
+    eventTrace?: OpsQualityMetaEventTraceEntry[];
+  } = {
     attempted: 0,
     written: 0,
     skippedReadOnly: 0,
     skippedCooldown: 0,
     skippedBudgetExceeded: 0,
-    warnings: [] as string[],
+    warnings: [],
   };
   let writesUsed = 0;
   for (const s of sectors) {
@@ -126,6 +164,7 @@ export async function buildSectorRadarSummaryForUser(
   }
 
   const qualityMeta = buildSectorRadarQualityMeta(sectors);
+  qualityMeta.sectorRadar.etfQualityDiagnostics = etfDiagnostics.length ? etfDiagnostics : undefined;
   const ymdKst = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Seoul',
     year: 'numeric',
@@ -162,11 +201,23 @@ export async function buildSectorRadarSummaryForUser(
         writesUsed,
         maxWritesPerRequest: options?.maxOpsWritesPerRequest,
       });
+      appendQualityMetaOpsEventTrace(opsLogging, {
+        code: OPS_AGGREGATE_WARNING_CODES.SECTOR_RADAR_SUMMARY_BATCH_DEGRADED,
+        shouldWrite: decision.shouldWrite,
+        reason: decision.reason,
+      });
       if (!decision.shouldWrite) {
         if (decision.reason === 'skipped_read_only') opsLogging.skippedReadOnly += 1;
         if (decision.reason === 'skipped_cooldown') opsLogging.skippedCooldown += 1;
         if (decision.reason === 'skipped_budget_exceeded') opsLogging.skippedBudgetExceeded += 1;
       } else {
+        const detail = buildSectorRadarSummaryBatchDegradedDetail({
+          yyyyMMdd: ymdKst,
+          noDataCount: qualityMeta.sectorRadar.noDataCount,
+          quoteMissingSectors: qualityMeta.sectorRadar.quoteMissingSectors,
+          veryLowConfidenceCount: qualityMeta.sectorRadar.veryLowConfidence,
+          totalSectors: qualityMeta.sectorRadar.totalSectors,
+        });
         const write = await upsertOpsEventByFingerprint({
           userKey: String(userKey),
           domain: 'sector_radar',
@@ -174,15 +225,7 @@ export async function buildSectorRadarSummaryForUser(
           severity: 'warning',
           code: OPS_AGGREGATE_WARNING_CODES.SECTOR_RADAR_SUMMARY_BATCH_DEGRADED,
           message: 'Sector radar summary degraded in read-only mode',
-          detail: {
-            route: '/api/sector-radar/summary',
-            component: 'sector-radar-summary',
-            noDataCount: qualityMeta.sectorRadar.noDataCount,
-            quoteMissingSectors: qualityMeta.sectorRadar.quoteMissingSectors,
-            veryLowConfidenceCount: qualityMeta.sectorRadar.veryLowConfidence,
-            skippedIndividualWarnings: true,
-            reason: 'read_only_aggregate_degraded',
-          },
+          detail: detail as unknown as Record<string, unknown>,
           fingerprint,
           status: 'open',
           route: '/api/sector-radar/summary',

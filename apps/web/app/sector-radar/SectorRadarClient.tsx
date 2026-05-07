@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  SectorRadarSummaryAnchor,
   SectorRadarSummaryResponse,
   SectorRadarSummarySector,
   SectorRadarStatusResponse,
@@ -305,6 +306,12 @@ export function SectorRadarClient() {
           {summary.qualityMeta.sectorRadar.mediumConfidence} · 낮음 {summary.qualityMeta.sectorRadar.lowConfidence} · 매우 낮음{" "}
           {summary.qualityMeta.sectorRadar.veryLowConfidence} · NO_DATA {summary.qualityMeta.sectorRadar.noDataCount} · 시세 누락 섹터{" "}
           {summary.qualityMeta.sectorRadar.quoteMissingSectors} · 과열/위험 {summary.qualityMeta.sectorRadar.overheatedSectors}
+          {summary.qualityMeta.sectorRadar.etfQualityWarnings?.length ? (
+            <span className="mt-1 block text-amber-900">
+              ETF 테마/시세 메타: {summary.qualityMeta.sectorRadar.etfQualityWarnings.slice(0, 4).join(" · ")}
+              {summary.qualityMeta.sectorRadar.etfQualityWarnings.length > 4 ? " …" : ""}
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -412,14 +419,48 @@ export function SectorRadarClient() {
                 </div>
               ) : null}
               {s.anchors.length > 0 ? (
-                <ul className="mt-2 space-y-1 text-[11px] text-slate-700">
-                  {s.anchors.slice(0, 5).map((a) => (
-                    <li key={`${s.key}-${a.symbol}`}>
-                      {a.name} <span className="font-mono text-slate-500">{a.symbol}</span> · {a.dataStatus}
-                      {a.changePct != null ? ` · ${a.changePct.toFixed(2)}%` : ""}
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-2 space-y-2 text-[11px] text-slate-700">
+                  {(() => {
+                    const scoredEtf = s.anchors.filter((a) => a.etfDisplayGroup === "scored");
+                    const watchEtf = s.anchors.filter((a) => a.etfDisplayGroup === "watch_only");
+                    const baseAnchors = s.anchors.filter((a) => !a.etfDisplayGroup);
+                    const showSplit = scoredEtf.length > 0 || watchEtf.length > 0;
+                    const line = (a: SectorRadarSummaryAnchor) => (
+                      <li key={`${s.key}-${a.symbol}`}>
+                        {a.name} <span className="font-mono text-slate-500">{a.symbol}</span> · {a.dataStatus}
+                        {a.changePct != null ? ` · ${a.changePct.toFixed(2)}%` : ""}
+                        {a.etfThemeUserHint ? (
+                          <span className="mt-0.5 block text-slate-500">{a.etfThemeUserHint}</span>
+                        ) : null}
+                      </li>
+                    );
+                    if (!showSplit) {
+                      return (
+                        <ul className="space-y-1">
+                          {s.anchors.slice(0, 8).map(line)}
+                        </ul>
+                      );
+                    }
+                    return (
+                      <>
+                        <div>
+                          <p className="mb-0.5 font-medium text-slate-600">점수 반영 ETF</p>
+                          <ul className="space-y-1">{scoredEtf.slice(0, 6).map(line)}</ul>
+                        </div>
+                        <div>
+                          <p className="mb-0.5 font-medium text-slate-600">관찰 ETF(시세 미반영)</p>
+                          <ul className="space-y-1">{watchEtf.slice(0, 6).map(line)}</ul>
+                        </div>
+                        {baseAnchors.length > 0 ? (
+                          <div>
+                            <p className="mb-0.5 font-medium text-slate-600">기타 앵커</p>
+                            <ul className="space-y-1">{baseAnchors.slice(0, 6).map(line)}</ul>
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
+                </div>
               ) : null}
               <div className="mt-3 border-t border-slate-200/80 pt-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">

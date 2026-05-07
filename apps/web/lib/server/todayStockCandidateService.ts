@@ -6,6 +6,7 @@ import { buildUsMarketMorningSummary } from './usMarketMorningSummary';
 import { pickRulesFromUsSummary } from './todayCandidateRules';
 import type { TodayStockCandidate, UsMarketMorningSummary } from '../todayCandidatesContract';
 import { buildCandidateDataQuality } from '../todayCandidateDataQuality';
+import type { SectorRadarSummarySector } from '../sectorRadarContract';
 
 function clampScore(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
@@ -13,6 +14,37 @@ function clampScore(n: number): number {
 
 export function scoreCandidate(input: { base: number; watchlistBoost?: number; usBoost?: number; confidencePenalty?: number; riskPenalty?: number }): number {
   return clampScore(input.base + (input.watchlistBoost ?? 0) + (input.usBoost ?? 0) - (input.confidencePenalty ?? 0) - (input.riskPenalty ?? 0));
+}
+
+function buildEtfThemeBriefForToday(sectorInfo: SectorRadarSummarySector | undefined): string | null {
+  if (!sectorInfo?.anchors?.length) return null;
+  const scored = sectorInfo.anchors.filter((a) => a.etfDisplayGroup === 'scored').length;
+  const watchOnly = sectorInfo.anchors.filter((a) => a.etfDisplayGroup === 'watch_only').length;
+  const strict = sectorInfo.anchors.filter((a) => a.etfReasonCodes?.includes('etf_theme_strict_match')).length;
+  const adjacent = sectorInfo.anchors.filter((a) => a.etfReasonCodes?.includes('etf_theme_adjacent_match')).length;
+  const diagnosticOnly = sectorInfo.anchors.some((a) => a.etfReasonCodes?.includes('etf_theme_gate_diagnostic_only'));
+  const watchMissing = sectorInfo.anchors.filter((a) => a.etfReasonCodes?.includes('etf_quote_missing')).length;
+  const watchStale = sectorInfo.anchors.filter((a) => a.etfReasonCodes?.includes('etf_quote_stale')).length;
+  const watchInvalid = sectorInfo.anchors.filter((a) => a.etfReasonCodes?.includes('etf_quote_invalid')).length;
+  const watchUnknown = sectorInfo.anchors.filter((a) => a.etfReasonCodes?.includes('etf_quote_unknown_freshness')).length;
+
+  if (diagnosticOnly) {
+    return 'ETF 테마 진단만 수행했고 점수 제한은 적용하지 않았습니다.';
+  }
+  if (strict > 0 && scored > 0 && watchOnly === 0) {
+    return `ETF 테마: 직접 관련 ETF(${strict}개)를 점수에 반영했습니다.`;
+  }
+  if (adjacent > 0 && scored > 0) {
+    return `ETF 테마: 직접 관련 ETF(${scored}개)와 인접 관찰 ETF(${adjacent}개)를 구분해 해석하세요.`;
+  }
+  if (watchOnly > 0) {
+    if (watchStale > 0) return `ETF 테마: 관련 ETF ${watchOnly}개 중 ${watchStale}개는 시세 갱신 지연으로 점수 미반영입니다.`;
+    if (watchInvalid > 0) return `ETF 테마: 관련 ETF ${watchOnly}개 중 ${watchInvalid}개는 시세 값 이상으로 점수 미반영입니다.`;
+    if (watchUnknown > 0) return `ETF 테마: 관련 ETF ${watchOnly}개 중 ${watchUnknown}개는 시세 신선도 확인 불가로 점수 미반영입니다.`;
+    if (watchMissing > 0) return `ETF 테마: 관련 ETF ${watchOnly}개 중 ${watchMissing}개는 시세 누락으로 점수 미반영입니다.`;
+    return `ETF 테마: 관련 ETF ${watchOnly}개는 시세 품질 이슈로 점수 미반영입니다.`;
+  }
+  return null;
 }
 
 export async function buildTodayStockCandidates(input: {
@@ -55,6 +87,7 @@ export async function buildTodayStockCandidates(input: {
     .map((w) => {
       const related = trendTopics.filter((t) => t.includes((w.sector ?? '').toLowerCase())).slice(0, 2);
       const sectorInfo = sectorRadar?.sectors.find((s) => (w.sector ?? '').includes(s.name));
+      const etfThemeBrief = buildEtfThemeBriefForToday(sectorInfo);
       const sectorConfidence = sectorInfo?.scoreExplanation?.confidence;
       const confidencePenalty = sectorConfidence === 'very_low' || sectorConfidence === 'low' ? 12 : 0;
       const riskPenalty = sectorInfo?.zone === 'extreme_greed' ? 8 : 0;
@@ -77,6 +110,7 @@ export async function buildTodayStockCandidates(input: {
         reasonDetails: [
           '관심종목에 이미 포함된 종목입니다.',
           sectorInfo ? `Sector Radar ${sectorInfo.name} 신뢰도 ${sectorInfo.scoreExplanation?.confidence ?? 'unknown'}` : '섹터 레이더 연결 정보는 제한적입니다.',
+          ...(etfThemeBrief ? [etfThemeBrief] : []),
           related.length > 0 ? `최근 Trend memory 연관 키워드: ${related.join(', ')}` : '최근 Trend memory 직접 연결은 제한적입니다.',
         ],
         positiveSignals: ['관심종목 기반', '개인화 관찰 흐름 반영'],

@@ -80,6 +80,24 @@ export function formatSectorRadarWarningShort(code: string): string {
       return "재무 목표 없음";
     case "sector_radar_dossier_attach_failed":
       return "섹터 레이더 요약을 불러오지 못함";
+    case "etf_quote_coverage_low":
+      return "테마 ETF 시세 누락 다수 → 점수 제한";
+    case "etf_quote_missing":
+      return "관련 ETF 일부 시세 미반영";
+    case "etf_quote_stale":
+      return "ETF 시세 갱신 지연";
+    case "etf_quote_invalid":
+      return "ETF 시세 값 이상";
+    case "etf_quote_unknown_freshness":
+      return "ETF 시세 신선도 확인 불가";
+    case "etf_universe_seed_insufficient":
+      return "테마 ETF 시드 부족";
+    case "etf_universe_quote_degraded":
+      return "ETF 시세 커버리지 저하";
+    case "etf_candidate_excluded_by_quote_quality":
+      return "시세 없는 ETF는 점수에서 제외";
+    case "etf_candidate_shortage_after_theme_gate":
+      return "테마 적합 ETF 부족";
     default:
       return looksLikeSectorRadarWarningCode(t) ? "일부 데이터 부족 → 점수 보수적 반영" : t;
   }
@@ -152,6 +170,24 @@ export function formatSectorRadarWarningDetail(code: string): string {
       return "등록된 재무 목표가 없습니다.";
     case "sector_radar_dossier_attach_failed":
       return "도사(dossier)에 섹터 레이더 요약을 붙이는 중 오류가 났습니다.";
+    case "etf_quote_coverage_low":
+      return "직접·인접 테마 ETF 중 시세가 비어 있는 비율이 높습니다. 새로고침 후에도 동일하면 티커·시트 매핑을 확인하세요.";
+    case "etf_quote_missing":
+      return "관련 ETF로 분류되었지만 시세가 비어 있어 점수 산정에서는 제외했습니다.";
+    case "etf_quote_stale":
+      return "시세는 있으나 갱신 시점이 오래되어 점수 산정에서 제외했습니다.";
+    case "etf_quote_invalid":
+      return "시세 값이 비정상(파싱 실패/0 또는 음수)으로 확인되어 점수 산정에서 제외했습니다.";
+    case "etf_quote_unknown_freshness":
+      return "시세 갱신 시점을 확인할 수 없어 관찰 ETF로 분류했습니다.";
+    case "etf_universe_seed_insufficient":
+      return "해당 테마의 ETF 시드가 아직 충분하지 않아 진단/후보 품질이 보수적으로 동작합니다.";
+    case "etf_universe_quote_degraded":
+      return "ETF 앵커 시세 커버리지가 전반적으로 낮아 qualityMeta에 저하 상태를 표시합니다. read-only 경로에서는 개별 web_ops_events를 늘리지 않습니다.";
+    case "etf_candidate_excluded_by_quote_quality":
+      return "테마 적합 ETF는 있으나 유효 시세가 없어 합성 점수에 포함하지 않았습니다.";
+    case "etf_candidate_shortage_after_theme_gate":
+      return "테마 적합성 검증 후 점수에 쓸 앵커가 거의 없습니다. 시트 시세·시드 티커를 점검하세요.";
     default:
       return looksLikeSectorRadarWarningCode(t) ? "일부 데이터가 부족해 점수는 보수적으로 계산했습니다." : t;
   }

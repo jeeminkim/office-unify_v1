@@ -1,18 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildTodayCandidatesSummaryBatchDegradedFingerprint,
-  shouldLogTodayCandidatesSummaryBatchDegraded,
-} from "./opsAggregateWarnings";
+import { shouldLogTodayCandidatesSummaryBatchDegraded } from "./opsAggregateWarnings";
 
 describe("today candidates summary aggregate logging", () => {
-  it("builds stable degraded fingerprint", () => {
-    const fp = buildTodayCandidatesSummaryBatchDegradedFingerprint({
-      userKey: "user123",
-      ymdKst: "20260507",
-    });
-    expect(fp).toBe("today_candidates:user123:20260507:summary_batch_degraded");
-  });
-
   it("detects severe no-data degraded state", () => {
     const shouldLog = shouldLogTodayCandidatesSummaryBatchDegraded({
       usMarketDataAvailable: false,

@@ -30,6 +30,63 @@ export type SectorRadarSummaryAnchor = {
   low52?: number;
   volumeAvg?: number;
   dataStatus: SectorRadarAnchorDataStatus;
+  /** Additive: ETF 노출 그룹 (점수반영/관찰/제외). */
+  etfDisplayGroup?: "scored" | "watch_only" | "excluded";
+  /** Additive: 테마/시세 게이트 reason 코드(운영·디버그). */
+  etfReasonCodes?: string[];
+  /** Additive: 카드에 노출할 짧은 한국어 안내. */
+  etfThemeUserHint?: string;
+  /** Additive: ETF quote 품질 상태. */
+  etfQuoteQualityStatus?: "ok" | "missing" | "stale" | "invalid" | "unknown";
+};
+
+/** Additive: ETF 테마 게이트·시세 커버리지 요약(섹터 카드). */
+export type SectorRadarEtfThemeMeta = {
+  gated: boolean;
+  gateMode?: "off" | "diagnostic_only" | "enforced";
+  sectorWarnings: string[];
+  excludedSymbolCount?: number;
+};
+
+export type SectorRadarEtfThemeBucket =
+  | "ai_power_infra"
+  | "nuclear_smr"
+  | "media_content"
+  | "k_culture"
+  | "shipbuilding"
+  | "semiconductor"
+  | "battery"
+  | "defense"
+  | "robot"
+  | "aerospace"
+  | "bio_healthcare"
+  | "generic_market";
+
+export type SectorRadarEtfThemeGateDiagnostics = {
+  sectorKey: string;
+  themeBucket: SectorRadarEtfThemeBucket;
+  totalUniverseCount: number;
+  eligibleCount: number;
+  strictCount: number;
+  adjacentCount: number;
+  hardExcludedCount: number;
+  mismatchExcludedCount: number;
+  quoteOkCount: number;
+  quoteMissingCount: number;
+  quoteStaleCount?: number;
+  quoteInvalidCount?: number;
+  quoteUnknownFreshnessCount?: number;
+  scoringIncludedCount: number;
+  displayOnlyCount: number;
+  aliasAppliedCount?: number;
+  fallbackQuoteKeyUsedCount?: number;
+  warnings: string[];
+};
+
+export type EtfQualityDiagnosticsSnapshot = {
+  capturedAt: string;
+  source: "explicit_refresh" | "admin_ops" | "scheduled_job";
+  sectors: SectorRadarEtfThemeGateDiagnostics[];
 };
 
 /** 사용자-facing 온도 라벨(판단 보조·관찰용). 기존 `zone`(fear/greed…)과 별개로 표시용 해석에 씁니다. */
@@ -88,6 +145,10 @@ export type SectorRadarQualityMeta = {
     quoteMissingSectors: number;
     overheatedSectors: number;
     warnings: string[];
+    /** Additive: ETF 시세 커버리지/테마 게이트 요약 코드(화면·메타용, web_ops 단건과 분리). */
+    etfQualityWarnings?: string[];
+    /** Additive: ETF theme gate 운영 검증 진단(요청 단위). */
+    etfQualityDiagnostics?: SectorRadarEtfThemeGateDiagnostics[];
     opsLogging?: {
       attempted: number;
       written: number;
@@ -95,6 +156,8 @@ export type SectorRadarQualityMeta = {
       skippedCooldown: number;
       skippedBudgetExceeded: number;
       warnings: string[];
+      /** Additive: last N ops write decisions (read-only whitelist / aggregate attempts, etc.). */
+      eventTrace?: Array<{ code: string; shouldWrite: boolean; reason: string }>;
     };
   };
 };
@@ -134,6 +197,8 @@ export type SectorRadarSummarySector = {
   displayWarningDetails?: string[];
   /** 점수 해석·신뢰도·보수적 안내(선택). */
   scoreExplanation?: SectorRadarScoreExplanation;
+  /** Additive: ETF 테마 eligibility·시세 게이트 메타. */
+  etfThemeMeta?: SectorRadarEtfThemeMeta;
 };
 
 export type SectorRadarSummaryResponse = {

@@ -42,17 +42,19 @@
 
 ## Read-only API 로깅 정책
 
+- **`qualityMeta`**: 사용자·화면 상태 표시.
+- **`web_ops_events`**: 제한적 운영 누적(동일 경고를 매 요청마다 쓰지 않음).
 - `GET /api/dashboard/today-brief`는 화면용 경고(`qualityMeta.todayCandidates.warnings`)를 유지한다.
-- 같은 경고를 매 호출마다 `web_ops_events`에 쓰지 않는다.
-- `today_candidates_us_market_no_data`는 KST 날짜 fingerprint 기준 하루 1회만 기록한다.
-  - fingerprint 예: `today_candidates:{userKey}:{yyyyMMdd}:us_market_no_data`
-- read-only 상태가 크게 저하되면 aggregate degraded 1건만 제한 기록한다.
+- read-only에서는 **`isCritical`만으로 통과 불가.** `today_candidates_us_market_no_data`·`today_candidates_summary_batch_degraded`는 **화이트리스트 코드 + `isCritical` + cooldown + 요청당 budget + fingerprint**를 통과할 때만 기록한다.
+- `today_candidates_us_market_no_data`는 KST 날짜 fingerprint 기준으로 제한 기록한다.
+  - fingerprint: `today_candidates:{userKey}:{yyyyMMdd}:us_market_no_data` (`buildTodayCandidatesUsMarketNoDataFingerprint`)
+  - `detail`: `schemaVersion`·`kind`·`yyyyMMdd`·`usMarketWarnings` 등 고정 스키마
+- aggregate degraded:
   - code: `today_candidates_summary_batch_degraded`
   - fingerprint: `today_candidates:{userKey}:{yyyyMMdd}:summary_batch_degraded`
+  - `detail`: 집계 필드·`reasonCodes`·`read_only_aggregate_degraded`
 - 사용자 액션 이벤트(사유 보기, 관심종목 추가 성공/실패)는 기존대로 기록 가능하다.
-- `qualityMeta` 경고와 `web_ops_events`는 목적이 다르다:
-  - `qualityMeta`: 현재 화면 상태 전달
-  - `web_ops_events`: 운영 누적/재발 추적
+- 선택: `qualityMeta.todayCandidates.opsLogging.eventTrace`에 whitelist 판정 요약(additive).
 
 ## 반복 로그 점검 SQL
 
@@ -185,3 +187,15 @@ low/very_low 후보는 기본 숨김(토글로 표시) 정책을 사용한다.
 4. 상세에서 `reasonItems`가 있으면 severity별 섹션으로 표시되는지 확인
 5. 미국장 no_data 상황에서 후보 억지 생성 없이 보수 문구가 노출되는지 확인
 6. `/api/dashboard/today-candidates/ops-summary` 집계가 정상인지 확인
+
+## ETF 테마 매칭 연동 메모 (2026-05)
+
+- Today Candidates가 참조하는 Sector Radar 요약은 ETF `theme eligibility` 우선 정책을 적용한 결과를 사용합니다.
+- 관련 없는 ETF는 점수가 높아도 후보 해석에 반영하지 않습니다(예: 조선 ETF를 AI/전력 인프라에 미노출).
+- 미디어/콘텐츠는 웹툰/드라마/K콘텐츠/K-POP/K컬처 범위를 확장해 후보군을 해석합니다.
+- quote empty ETF는 품질 저하 사유로 다루며, 후보 점수 산정에서 제한됩니다.
+- read-only 경로는 `qualityMeta` 경고를 유지하되 개별 warning DB write를 늘리지 않습니다.
+- Sector Radar ETF는 `scored`/`watch_only`/`excluded`로 구분되며, today-brief 설명 문구는 이 분류를 활용해 직접 관련/관찰 ETF를 분리 안내합니다.
+- `watch_only`에는 quote `missing`뿐 아니라 `stale`/`invalid`/`unknown`도 포함될 수 있습니다.
+- today-brief reasonDetails는 `missing`/`stale`/`invalid`/`unknown`을 구분해 점수 미반영 사유를 안내합니다.
+- `diagnostic_only` 섹터는 ETF 테마 진단은 수행하지만 후보 점수 제한은 강제하지 않습니다.

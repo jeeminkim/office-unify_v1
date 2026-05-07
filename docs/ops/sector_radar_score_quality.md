@@ -97,10 +97,12 @@ Sector Radar 점수는 **매수 추천이 아니라 섹터 관찰 신호**입니
 ## read-only summary 로깅 정책
 
 - `GET /api/sector-radar/summary`는 기본적으로 read-only 경로로 간주한다.
-- 이 경로에서는 `sector_radar_score_no_data`, `sector_radar_score_quote_coverage_low`, `sector_radar_score_very_low_confidence`를 qualityMeta/화면에는 유지하되 DB write는 기본 생략한다.
-- 요약 상태가 심하게 나쁘면 aggregate code `sector_radar_summary_batch_degraded`를 날짜 fingerprint 기준으로 제한 기록한다.
-- `POST /api/sector-radar/refresh` 같은 명시적 새로고침 이후 점검 흐름에서만 write를 허용한다.
-- `qualityMeta.sectorRadar.opsLogging`에는 `attempted/written/skippedReadOnly/skippedCooldown/skippedBudgetExceeded`를 기록한다.
+- **`qualityMeta`**: 사용자 표시용 상태·경고 유지.
+- **`web_ops_events`**: 개별 섹터 품질 warning write는 기본 생략(`sector_radar_score_*` 등은 화면/qualityMeta만).
+- 요약이 심하게 저하되면 `sector_radar_summary_batch_degraded`만 **화이트리스트 + `isCritical` + cooldown + budget + KST 날짜 fingerprint**로 제한 기록한다(`detail` 스키마: `opsAggregateWarnings.ts`).
+- `isCritical` 단독으로는 read-only 예외가 되지 않는다(허용 코드와 쌍).
+- `POST /api/sector-radar/refresh` 등 명시적 refresh 경로에서는 상대적으로 상세 기록을 허용할 수 있으나 **요청당 budget은 우회하지 않는다.**
+- `qualityMeta.sectorRadar.opsLogging`에는 `attempted/written/skippedReadOnly/skippedCooldown/skippedBudgetExceeded` 및 선택적 `eventTrace`를 기록한다.
 - 목적은 이슈 은닉이 아니라, read-only 조회 반복으로 인한 Supabase write transaction 급증을 줄이는 것이다.
 
 ## qualityMeta vs web_ops_events 분리
@@ -184,6 +186,37 @@ order by row_count desc, last_seen_at desc;
 ```
 
 같은 fingerprint가 여러 row로 나오면 dedupe 정책이 제대로 적용되지 않은 것입니다.
+
+## ETF theme eligibility 우선 정책 (2026-05)
+
+- ETF 추천/표시는 market score 계산보다 `theme eligibility`를 먼저 적용합니다.
+- `strict`/`adjacent`/`exclude`/`unknown` 매칭을 계산하고, `exclude`·`mismatch` ETF는 거래량·모멘텀이 좋아도 후보에서 제외합니다.
+- AI/전력 인프라와 조선은 별도 테마로 분리하며, `SOL 조선TOP3플러스(466920)`는 AI/전력 인프라에서 hard exclude 됩니다.
+- 미디어/콘텐츠는 웹툰/드라마/K콘텐츠/K-POP/K컬처 밸류체인 ETF까지 후보군을 확장합니다.
+- quote empty ETF는 점수 산정에서 제외(또는 강한 제한)하며 `etf_quote_missing`, `etf_quote_coverage_low`, `etf_universe_quote_degraded`를 `qualityMeta`/warning으로 표시합니다.
+- `qualityMeta`는 화면 상태 표시용이고, `web_ops_events`는 제한적 운영 로그용입니다. read-only summary route에서는 개별 ETF warning write를 늘리지 않습니다.
+- ETF는 `scored` / `watch_only` / `excluded` 그룹으로 분류합니다.
+  - `scored`: 테마 통과 + quote ok + 점수 반영
+  - `watch_only`: 테마 통과 + quote missing/stale로 점수 미반영
+  - `excluded`: hard exclude/mismatch로 기본 미표시
+- 운영 진단(`qualityMeta.sectorRadar.etfQualityDiagnostics`)은 섹터별 universe/eligible/excluded/quote/scoring 집계를 additive로 제공합니다.
+- ETF quote alias(`quoteAlias`)는 특수 코드(예: `0132D0`)와 provider별 ticker 차이를 흡수하기 위한 기반 구조입니다.
+- quote key 우선순위(현행 정책): `seed.googleTicker(운영 확정 override)` → `quoteAlias.googleTicker` → fallback code.
+- reasonCode로 `etf_quote_manual_override_applied` / `etf_quote_alias_applied` / `etf_quote_fallback_key_used`를 구분합니다.
+- quote `missing`과 `stale`은 분리합니다. `stale`/`invalid`/`unknown`은 관련 ETF라도 점수 산정에서 제외되어 `watch_only`가 될 수 있습니다.
+- quote quality 계약:
+  - `missing`: 값 자체 없음(null/undefined/empty)
+  - `invalid`: 값은 있으나 파싱 실패/NaN/0 이하/parse_failed
+  - `stale`: 값 정상이나 freshness 정책 기준 초과
+  - `unknown`: 값 정상이나 갱신시각 없음/파싱 불가
+  - `ok`: 값/신선도 모두 정상
+- gate mode는 `off` / `diagnostic_only` / `enforced`로 관리합니다.
+  - `ai_power_infra`, `k_content`는 `enforced`
+  - `nuclear_energy`, `defense_space`, `semiconductor`, `battery`는 `diagnostic_only`
+- diagnostics snapshot 저장 정책:
+  - read-only summary route에서는 DB snapshot write를 하지 않습니다.
+  - 저장형 snapshot은 explicit refresh / admin ops route / scheduled job에서만 허용합니다(일 단위 dedupe + budget/cooldown 권장).
+- freshness 정책은 현재 calendar-hour + weekend tolerance 기반이며, 향후 시장 휴장일 캘린더 연동으로 확장 가능합니다.
 
 RPC/인덱스 확인:
 

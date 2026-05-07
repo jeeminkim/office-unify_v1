@@ -12,10 +12,19 @@ import { loadHoldingQuotes } from '@/lib/server/marketQuoteService';
 import { analyzeThesisHealth } from '@/lib/server/thesisHealthAnalyzer';
 import { buildTodayStockCandidates } from '@/lib/server/todayStockCandidateService';
 import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
-import { OPS_LOG_MAX_WRITES_PER_REQUEST, shouldWriteOpsEvent } from '@/lib/server/opsLogBudget';
 import {
+  appendQualityMetaOpsEventTrace,
+  OPS_LOG_MAX_WRITES_PER_REQUEST,
+  shouldWriteOpsEvent,
+  type OpsQualityMetaEventTraceEntry,
+} from '@/lib/server/opsLogBudget';
+import {
+  buildTodayCandidatesSummaryBatchDegradedDetail,
   buildTodayCandidatesSummaryBatchDegradedFingerprint,
+  buildTodayCandidatesUsMarketNoDataDetail,
+  buildTodayCandidatesUsMarketNoDataFingerprint,
   OPS_AGGREGATE_WARNING_CODES,
+  OPS_TODAY_CANDIDATES_EVENT_CODES,
   shouldLogTodayCandidatesSummaryBatchDegraded,
 } from '@/lib/server/opsAggregateWarnings';
 import type { TodayBriefWithCandidatesResponse } from '@/lib/todayCandidatesContract';
@@ -232,16 +241,27 @@ export async function GET() {
       limitPerSection: 3,
     });
     const ymd = ymdKst();
-    const opsLogging = {
+    const opsLogging: {
+      attempted: number;
+      written: number;
+      skippedReadOnly: number;
+      skippedCooldown: number;
+      skippedBudgetExceeded: number;
+      warnings: string[];
+      eventTrace?: OpsQualityMetaEventTraceEntry[];
+    } = {
       attempted: 0,
       written: 0,
       skippedReadOnly: 0,
       skippedCooldown: 0,
       skippedBudgetExceeded: 0,
-      warnings: [] as string[],
+      warnings: [],
     };
     if (!todayCandidates.usMarketSummary.available) {
-      const fingerprint = `today_candidates:${auth.userKey}:${ymd}:us_market_no_data`;
+      const fingerprint = buildTodayCandidatesUsMarketNoDataFingerprint({
+        userKey: String(auth.userKey),
+        ymdKst: ymd,
+      });
       const { data: existing } = await supabase
         .from('web_ops_events')
         .select('last_seen_at')
@@ -249,7 +269,7 @@ export async function GET() {
         .maybeSingle<{ last_seen_at: string }>();
       const decision = shouldWriteOpsEvent({
         domain: 'today_candidates',
-        code: 'today_candidates_us_market_no_data',
+        code: OPS_TODAY_CANDIDATES_EVENT_CODES.US_MARKET_NO_DATA,
         severity: 'warning',
         fingerprint,
         isReadOnlyRoute: true,
@@ -260,22 +280,29 @@ export async function GET() {
         maxWritesPerRequest: OPS_LOG_MAX_WRITES_PER_REQUEST,
       });
       opsLogging.attempted += 1;
+      appendQualityMetaOpsEventTrace(opsLogging, {
+        code: OPS_TODAY_CANDIDATES_EVENT_CODES.US_MARKET_NO_DATA,
+        shouldWrite: decision.shouldWrite,
+        reason: decision.reason,
+      });
       if (!decision.shouldWrite) {
         if (decision.reason === 'skipped_read_only') opsLogging.skippedReadOnly += 1;
         if (decision.reason === 'skipped_cooldown') opsLogging.skippedCooldown += 1;
         if (decision.reason === 'skipped_budget_exceeded') opsLogging.skippedBudgetExceeded += 1;
       } else {
+        const detail = buildTodayCandidatesUsMarketNoDataDetail({
+          yyyyMMdd: ymd,
+          usMarketWarnings: todayCandidates.usMarketSummary.warnings,
+          loggingDecisionReason: decision.reason,
+        });
         const write = await upsertOpsEventByFingerprint({
           userKey: String(auth.userKey),
           domain: 'today_candidates',
           eventType: 'warning',
           severity: 'warning',
-          code: 'today_candidates_us_market_no_data',
+          code: OPS_TODAY_CANDIDATES_EVENT_CODES.US_MARKET_NO_DATA,
           message: 'US market morning summary unavailable',
-          detail: {
-            warnings: todayCandidates.usMarketSummary.warnings,
-            loggingDecision: decision.reason,
-          },
+          detail: detail as unknown as Record<string, unknown>,
           fingerprint,
           status: 'open',
           route: '/api/dashboard/today-brief',
@@ -318,11 +345,25 @@ export async function GET() {
         maxWritesPerRequest: OPS_LOG_MAX_WRITES_PER_REQUEST,
       });
       opsLogging.attempted += 1;
+      appendQualityMetaOpsEventTrace(opsLogging, {
+        code: OPS_AGGREGATE_WARNING_CODES.TODAY_CANDIDATES_SUMMARY_BATCH_DEGRADED,
+        shouldWrite: decision.shouldWrite,
+        reason: decision.reason,
+      });
       if (!decision.shouldWrite) {
         if (decision.reason === 'skipped_read_only') opsLogging.skippedReadOnly += 1;
         if (decision.reason === 'skipped_cooldown') opsLogging.skippedCooldown += 1;
         if (decision.reason === 'skipped_budget_exceeded') opsLogging.skippedBudgetExceeded += 1;
       } else {
+        const detail = buildTodayCandidatesSummaryBatchDegradedDetail({
+          yyyyMMdd: ymd,
+          usMarketDataAvailable: todayCandidates.usMarketSummary.available,
+          userContextCount: todayCandidates.userContextCandidates.length,
+          usMarketKrCount: todayCandidates.usMarketKrCandidates.length,
+          candidateCount: totalCandidates,
+          lowConfidenceCount: todayCandidates.confidenceCounts.low,
+          veryLowConfidenceCount: todayCandidates.confidenceCounts.very_low,
+        });
         const write = await upsertOpsEventByFingerprint({
           userKey: String(auth.userKey),
           domain: 'today_candidates',
@@ -330,17 +371,7 @@ export async function GET() {
           severity: 'warning',
           code: OPS_AGGREGATE_WARNING_CODES.TODAY_CANDIDATES_SUMMARY_BATCH_DEGRADED,
           message: 'Today candidates summary degraded in read-only mode',
-          detail: {
-            route: '/api/dashboard/today-brief',
-            component: 'today-brief',
-            usMarketDataAvailable: todayCandidates.usMarketSummary.available,
-            userContextCount: todayCandidates.userContextCandidates.length,
-            usMarketKrCount: todayCandidates.usMarketKrCandidates.length,
-            lowConfidenceCount: todayCandidates.confidenceCounts.low,
-            veryLowConfidenceCount: todayCandidates.confidenceCounts.very_low,
-            skippedIndividualWarnings: true,
-            reason: 'read_only_aggregate_degraded',
-          },
+          detail: detail as unknown as Record<string, unknown>,
           fingerprint,
           status: 'open',
           route: '/api/dashboard/today-brief',

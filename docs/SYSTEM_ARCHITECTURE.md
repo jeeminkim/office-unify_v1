@@ -22,6 +22,16 @@
 - `/financial-goals` : 목표 자금 관리(목표 생성/배분/달성률)
 - `/sector-radar` : 섹터 Fear & Greed Radar(섹터 온도계)
   - **KR ETF + US 티커(코인/디지털자산 등)** anchor seed + 관심종목(`web_portfolio_watchlist`, KR·US) sector/메모 키워드 **custom anchor** 병합
+  - ETF는 섹터 점수 계산 전에 `theme eligibility`(strict/adjacent/exclude/unknown)로 필터링
+  - ETF 표시를 `scored`(점수 반영) / `watch_only`(관찰, 시세 미반영) / `excluded`(기본 미표시)로 구분
+  - AI/전력 인프라와 조선 ETF를 분리하고 `SOL 조선TOP3플러스(466920)`는 AI/전력 인프라에서 hard exclude
+  - 미디어/콘텐츠는 웹툰/드라마/K콘텐츠/K-POP/K컬처 밸류체인 ETF까지 universe 확장
+  - ETF quote alias/resolver(`quoteAlias`)로 provider별 ticker 차이·특수 코드 대응 기반 제공
+  - quote key는 `seed.googleTicker` override 우선, 이후 alias/fallback 순으로 점진 적용
+  - gate mode는 `off`/`diagnostic_only`/`enforced`를 지원하며 신규 섹터는 `diagnostic_only`부터 시작
+  - quote empty ETF는 점수 반영을 제한하고 `qualityMeta` 경고(`etf_quote_*`)로 상태를 표시
+  - quote `stale`/`invalid`/`unknown`도 `watch_only`로 분리해 점수 반영에서 제외 가능
+  - 운영 진단(`qualityMeta.sectorRadar.etfQualityDiagnostics`)은 additive 메타로 제공하고, read-only DB write를 늘리지 않음
   - `sector_radar_quotes` 시트(2차: `market`·`normalized_key`·`volume_avg` 등 A–U)에 `GOOGLEFINANCE` 수식 주입 후 read-back → 섹터별 점수/구간(zone)/판단 보조 문구
   - **점수 계약:** 기존 필드 `score`는 raw 산식 값으로 유지. 표본 수·시세 커버리지 패널티를 반영한 **`adjustedScore`**·해석 메타 **`scoreExplanation`**(temperature/confidence/breakdown/요약·행동 힌트·리스크·관심종목 연결 문구)은 선택 필드로 추가. UI 기본 표시는 보정 점수·사용자 라벨 온도(관망~위험/NO_DATA).
   - API **`qualityMeta.sectorRadar`** 로 신뢰도 분포·NO_DATA·시세 누락 섹터 수·과열/위험 카운트 요약
@@ -211,9 +221,11 @@
 
 - `web_ops_events`는 fingerprint upsert(RPC 우선, 실패 시 fallback) 정책을 사용한다.
 - `qualityMeta`와 `web_ops_events`는 역할을 분리한다.
-  - `qualityMeta`: 현재 요청의 사용자 표시 상태
-  - `web_ops_events`: 운영 추적용 누적 상태
-- read-only API의 warning은 가능한 한 DB write를 억제하고, 명시적 refresh/critical/error/state transition/cooldown 경과 시에만 기록한다.
-- read-only에서 상태가 심하게 나쁠 때는 aggregate degraded code(`sector_radar_summary_batch_degraded`, `today_candidates_summary_batch_degraded`)만 제한적으로 기록한다.
-- 요청 단위 write budget(`opsLogBudget`)을 적용해 단기 트랜잭션 폭증을 방지한다.
+  - **`qualityMeta`**: 사용자·화면에 보이는 **현재 요청 상태**(경고, 분포, 요약).
+  - **`web_ops_events`**: 운영자가 추적하는 **제한적 누적 로그**(fingerprint·cooldown·예산).
+- read-only route(`GET` 요약류)에서는 **개별 warning**에 대한 DB write를 기본 **억제**한다. 화면/응답 경고는 `qualityMeta`·`warnings`에 그대로 둔다.
+- 심각한 요약 저하(aggregate degraded)만 예외적으로 허용하되, **`isCritical`만으로 통과하지 않는다.** `shouldWriteOpsEvent`는 **read-only critical 허용 eventCode 화이트리스트**(`sector_radar_summary_batch_degraded`, `today_candidates_summary_batch_degraded`, `today_candidates_us_market_no_data`)와 `isCritical`이 **함께** 맞을 때만 read-only 차단을 풀고, 이후에도 **cooldown·요청당 budget·fingerprint(일 단위 등)** 를 그대로 적용한다.
+- aggregate 이벤트 `detail`은 `schemaVersion`·`kind`·집계 필드·`reasonCodes` 등 **고정 스키마**(`apps/web/lib/server/opsAggregateWarnings.ts`)로 생성한다.
+- 명시적 refresh 경로에서는 상대적으로 상세 기록을 허용할 수 있으나, **요청당 write budget은 모든 경로에서 최우선**이다. (기존 구현에서 `isExplicitRefresh` 분기는 read-only 억제 해제 등에 쓰인다.)
+- 선택 필드: `qualityMeta.*.opsLogging.eventTrace`에 최근 write 판정 요약을 붙일 수 있다(additive).
 

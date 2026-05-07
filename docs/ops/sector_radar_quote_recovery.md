@@ -15,10 +15,10 @@
 
 - `GET /api/sector-radar/summary`:
   - 경고는 응답(`qualityMeta`, `displayWarnings`)에 유지
-  - DB write는 기본 제한(read-only 억제), 심한 저하는 aggregate degraded 1건만 제한 기록
+  - 개별 warning DB write는 억제, 심한 저하는 **`sector_radar_summary_batch_degraded`만** 화이트리스트+`isCritical`+cooldown+budget+일 fingerprint로 제한 기록
 - `POST /api/sector-radar/refresh`:
   - 시트 수식 동기화 후 재조회 시 필요한 상세 로그 기록 가능
-  - cooldown/budget 정책 적용
+  - cooldown/budget 정책 적용(요청당 budget 우선)
 
 ## 조선/LNG/소재 ticker 보정 포인트
 

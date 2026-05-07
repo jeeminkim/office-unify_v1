@@ -90,16 +90,20 @@ limit 100;
 
 ## Read-only 경로 write 억제 정책
 
-- read-only API(`GET /api/dashboard/today-brief`, `GET /api/sector-radar/summary`)는 화면 경고용 상태를 `qualityMeta.warnings`로 전달하고, DB write는 제한한다.
-- read-only API는 개별 warning write를 기본 생략하고, 요약 상태가 심하게 나쁠 때만 aggregate degraded code를 날짜 fingerprint 기준으로 제한 기록한다.
+- **`qualityMeta`**: 사용자·화면 상태 표시용(경고·집계).
+- **`web_ops_events`**: 제한적 운영 누적 로그(fingerprint upsert).
+- read-only API(`GET /api/dashboard/today-brief`, `GET /api/sector-radar/summary`)는 경고를 응답/`qualityMeta`에 유지하고, **개별 warning**에 대한 DB write는 기본 생략한다.
+- aggregate degraded 등 read-only에서의 예외 기록은 아래를 **모두** 만족할 때만 시도한다.
+  - **eventCode가 read-only critical 화이트리스트에 포함**
+  - `isCritical: true`와 코드가 쌍을 이룸(`isCritical` 단독으로는 read-only 통과 불가)
+  - **cooldown·요청당 budget·KST 날짜 fingerprint** 조건 통과
+- 화이트리스트(코드 상수 `OPS_READ_ONLY_CRITICAL_WHITELIST_CODES`, `apps/web/lib/server/opsAggregateWarnings.ts`):
   - `sector_radar_summary_batch_degraded`
   - `today_candidates_summary_batch_degraded`
-- DB write는 아래 상황 중심으로만 허용한다.
-  - 최초 발생(first seen)
-  - cooldown 경과 후 재발
-  - 상태 전이(open/resolved 등)
-  - 사용자 명시적 refresh
-  - critical/error
+  - `today_candidates_us_market_no_data`
+- `severity: error`인 이벤트는 운영 장애 추적용으로 read-only 화이트리스트와 별도로 기록 시도할 수 있다(요청당 budget은 항상 최우선).
+- 그 외 DB write는 상태 전이·명시적 refresh 분기·first_seen/cooldown 등 기존 `shouldWriteOpsEvent` 규칙을 따른다. 명시적 refresh에서도 **budget은 우회하지 않는다.**
+- aggregate `detail` JSON은 `schemaVersion: 1`, `kind`, 집계 필드, `reasonCodes` 등 고정 스키마를 사용한다.
 - 요청 단위 write budget(기본 3건)을 초과하면 `skipped_budget_exceeded`로 생략한다.
 
 ## 반복 경고 점검/정리 SQL

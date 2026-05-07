@@ -224,6 +224,13 @@ export function buildSectorRadarQualityMeta(sectors: SectorRadarSummarySector[])
     }
   }
 
+  const etfQualityWarnings: string[] = [];
+  for (const s of sectors) {
+    for (const w of s.etfThemeMeta?.sectorWarnings ?? []) {
+      etfQualityWarnings.push(`${s.key}:${w}`);
+    }
+  }
+
   return {
     sectorRadar: {
       totalSectors: sectors.length,
@@ -235,6 +242,8 @@ export function buildSectorRadarQualityMeta(sectors: SectorRadarSummarySector[])
       quoteMissingSectors,
       overheatedSectors,
       warnings: Array.from(new Set(warnings)).slice(0, 50),
+      etfQualityWarnings:
+        etfQualityWarnings.length > 0 ? Array.from(new Set(etfQualityWarnings)).slice(0, 50) : undefined,
       opsLogging: undefined,
     },
   };

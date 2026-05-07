@@ -1,6 +1,7 @@
 import 'server-only';
 import type { WebPortfolioWatchlistRow } from '@office-unify/supabase-access';
 import { getSectorKeyByAliasName, normalizeSectorLabelForLookup } from '@/lib/sectorRadarRegistry.shared';
+import { ETF_THEME_PROFILES_BY_KEY, lookupEtfThemeProfile, resolveEtfQuoteKey } from '@/lib/server/sectorRadarEtfThemeCatalog';
 
 export type SectorRadarMarket = 'KR' | 'US';
 
@@ -115,10 +116,37 @@ export const SECTOR_RADAR_CATEGORY_SEEDS: SectorRadarCategorySeed[] = [
   {
     key: 'ai_power_infra',
     name: 'AI/전력인프라',
-    keywords: ['ai', '전력', '인프라', '데이터센터', '인공지능'],
+    keywords: [
+      'ai전력',
+      '전력인프라',
+      '전력 핵심설비',
+      '전력핵심',
+      '변압기',
+      '전력기기',
+      '전력망',
+      '송배전',
+      '데이터센터',
+      '데이터센터 전력',
+      '전력 슈퍼사이클',
+      '원자력',
+      'smr',
+      '전력설비',
+      'grid',
+      'power infrastructure',
+      'electric power',
+      'nuclear',
+      'data center power',
+      'ai',
+      '전력',
+      '인프라',
+      '인공지능',
+    ],
     anchors: [
-      { symbol: '456600', name: 'TIMEFOLIO 글로벌AI인공지능액티브', sourceLabel: 'seed', quoteSymbol: '456600.KS', assetType: 'ETF', role: 'core_etf', confidence: 92, reason: 'AI 테마 대표 ETF' },
-      { symbol: '466920', name: 'SOL 조선TOP3플러스', sourceLabel: 'seed', quoteSymbol: '466920.KS', assetType: 'ETF', role: 'fallback_proxy', confidence: 72, reason: '전력인프라와 일부 밸류체인 연동 proxy' },
+      { symbol: '487240', name: 'KODEX AI전력핵심설비', sourceLabel: 'seed', quoteSymbol: '487240.KS', assetType: 'ETF', role: 'core_etf', confidence: 96, reason: 'AI·전력 핵심설비 직접 테마' },
+      { symbol: '487230', name: 'KODEX 미국AI전력핵심인프라', sourceLabel: 'seed', quoteSymbol: '487230.KS', assetType: 'ETF', role: 'core_etf', confidence: 95, reason: '미국 AI 전력 인프라' },
+      { symbol: '486450', name: 'SOL 미국AI전력인프라', sourceLabel: 'seed', quoteSymbol: '486450.KS', assetType: 'ETF', role: 'core_etf', confidence: 94, reason: '미국 AI 전력 인프라' },
+      { symbol: '491010', name: 'TIGER 글로벌AI전력인프라액티브', sourceLabel: 'seed', quoteSymbol: '491010.KS', assetType: 'ETF', role: 'theme_etf', confidence: 94, reason: '글로벌 AI 전력 인프라 액티브' },
+      { symbol: '456600', name: 'TIMEFOLIO 글로벌AI인공지능액티브', sourceLabel: 'seed', quoteSymbol: '456600.KS', assetType: 'ETF', role: 'theme_etf', confidence: 88, reason: 'AI 광역 테마(전력 인프라와는 인접)' },
       { symbol: '453450', name: '그리드위즈', sourceLabel: 'seed', quoteSymbol: '453450.KQ', assetType: 'STOCK', role: 'representative_stock', confidence: 84, reason: '스마트그리드 대표 관찰주' },
       { symbol: '267260', name: 'HD현대일렉트릭', sourceLabel: 'seed', quoteSymbol: '267260.KS', assetType: 'STOCK', role: 'representative_stock', confidence: 86, reason: '전력기기 대표 관찰주' },
       { symbol: '010120', name: 'LS ELECTRIC', sourceLabel: 'seed', quoteSymbol: '010120.KS', assetType: 'STOCK', role: 'representative_stock', confidence: 85, reason: '전력 인프라 대표 관찰주' },
@@ -155,11 +183,11 @@ export const SECTOR_RADAR_CATEGORY_SEEDS: SectorRadarCategorySeed[] = [
       '코인',
     ],
     anchors: [
-      { symbol: 'IBIT', name: 'iShares Bitcoin Trust', sourceLabel: 'seed', market: 'US', googleTicker: 'IBIT' },
-      { symbol: 'FBTC', name: 'Fidelity Wise Origin Bitcoin Fund', sourceLabel: 'seed', market: 'US', googleTicker: 'FBTC' },
-      { symbol: 'ETHA', name: 'iShares Ethereum Trust', sourceLabel: 'seed', market: 'US', googleTicker: 'ETHA' },
-      { symbol: 'COIN', name: 'Coinbase Global Inc', sourceLabel: 'seed', market: 'US', googleTicker: 'NASDAQ:COIN' },
-      { symbol: 'MSTR', name: 'MicroStrategy Inc', sourceLabel: 'seed', market: 'US', googleTicker: 'NASDAQ:MSTR' },
+      { symbol: 'IBIT', name: 'iShares Bitcoin Trust', sourceLabel: 'seed', market: 'US', googleTicker: 'IBIT', assetType: 'ETF', role: 'core_etf' },
+      { symbol: 'FBTC', name: 'Fidelity Wise Origin Bitcoin Fund', sourceLabel: 'seed', market: 'US', googleTicker: 'FBTC', assetType: 'ETF', role: 'core_etf' },
+      { symbol: 'ETHA', name: 'iShares Ethereum Trust', sourceLabel: 'seed', market: 'US', googleTicker: 'ETHA', assetType: 'ETF', role: 'theme_etf' },
+      { symbol: 'COIN', name: 'Coinbase Global Inc', sourceLabel: 'seed', market: 'US', googleTicker: 'NASDAQ:COIN', assetType: 'STOCK', role: 'representative_stock' },
+      { symbol: 'MSTR', name: 'MicroStrategy Inc', sourceLabel: 'seed', market: 'US', googleTicker: 'NASDAQ:MSTR', assetType: 'STOCK', role: 'representative_stock' },
     ],
   },
   {
@@ -185,9 +213,27 @@ export const SECTOR_RADAR_CATEGORY_SEEDS: SectorRadarCategorySeed[] = [
   {
     key: 'k_content',
     name: 'K-콘텐츠/미디어',
-    keywords: ['콘텐츠', '미디어', '엔터', 'media', 'entertainment'],
+    keywords: [
+      '콘텐츠',
+      'k콘텐츠',
+      '미디어',
+      '웹툰',
+      '드라마',
+      'k-pop',
+      'kpop',
+      'k컬처',
+      '엔터',
+      'media',
+      'entertainment',
+      'streaming',
+      'webtoon',
+    ],
     anchors: [
+      { symbol: '395150', name: 'KODEX 웹툰&드라마', sourceLabel: 'seed', quoteSymbol: '395150.KS', assetType: 'ETF', role: 'theme_etf', confidence: 93, reason: '웹툰·드라마 직접 테마' },
       { symbol: '228810', name: 'TIGER 미디어컨텐츠', sourceLabel: 'seed', quoteSymbol: '228810.KS', assetType: 'ETF', role: 'core_etf', confidence: 95, reason: '국내 콘텐츠 대표 ETF' },
+      { symbol: '266360', name: 'KODEX K콘텐츠', sourceLabel: 'seed', quoteSymbol: '266360.KS', assetType: 'ETF', role: 'theme_etf', confidence: 93, reason: 'K-콘텐츠' },
+      { symbol: '395290', name: 'HANARO Fn K-POP&미디어', sourceLabel: 'seed', quoteSymbol: '395290.KS', assetType: 'ETF', role: 'theme_etf', confidence: 91, reason: 'K-POP·미디어' },
+      { symbol: '0132D0', name: 'KoAct 글로벌K컬처밸류체인액티브', sourceLabel: 'seed', quoteSymbol: '0132D0.KS', assetType: 'ETF', role: 'theme_etf', confidence: 88, reason: 'K-컬처 밸류체인 액티브' },
       { symbol: 'NFLX', name: 'Netflix', sourceLabel: 'seed', market: 'US', googleTicker: 'NASDAQ:NFLX', quoteSymbol: 'NFLX', assetType: 'STOCK', role: 'representative_stock', confidence: 88, reason: '글로벌 OTT proxy' },
       { symbol: 'DIS', name: 'Walt Disney', sourceLabel: 'seed', market: 'US', googleTicker: 'NYSE:DIS', quoteSymbol: 'DIS', assetType: 'STOCK', role: 'representative_stock', confidence: 84, reason: '글로벌 미디어 proxy' },
       { symbol: '035760', name: 'CJ ENM', sourceLabel: 'seed', quoteSymbol: '035760.KQ', assetType: 'STOCK', role: 'representative_stock', confidence: 85, reason: '국내 미디어 제작사 proxy' },
@@ -288,12 +334,35 @@ export type MergedSectorRadarAnchor = {
   name: string;
   googleTicker: string;
   sourceLabel: 'seed' | 'watchlist';
+  assetType: 'ETF' | 'STOCK';
+  quoteKeySource?: 'manual_override' | 'alias' | 'fallback' | 'watchlist';
 };
 
 function padKrSymbol(symbol: string): string {
   const t = symbol.trim().toUpperCase();
   if (/^\d+$/.test(t)) return t.padStart(6, '0');
   return t;
+}
+
+function inferSeedAssetType(seed: SectorRadarAnchorSeed): 'ETF' | 'STOCK' {
+  if (seed.assetType) return seed.assetType;
+  const role = seed.role ?? '';
+  if (role === 'core_etf' || role === 'theme_etf' || role === 'fallback_proxy') return 'ETF';
+  return 'STOCK';
+}
+
+function inferWatchlistAssetType(row: WebPortfolioWatchlistRow): 'ETF' | 'STOCK' {
+  const blob = `${row.name ?? ''} ${row.sector ?? ''}`;
+  if (/\bETF\b|\bETN\b/i.test(blob)) return 'ETF';
+  if (row.market === 'KR') {
+    const key = `KR:${padKrSymbol(row.symbol)}`;
+    if (ETF_THEME_PROFILES_BY_KEY[key]) return 'ETF';
+  }
+  if (row.market === 'US') {
+    const key = `US:${normalizedSectorSymbol('US', row.symbol)}`;
+    if (ETF_THEME_PROFILES_BY_KEY[key]) return 'ETF';
+  }
+  return 'STOCK';
 }
 
 function defaultGoogleTickerKr(symbol: string): string {
@@ -306,14 +375,26 @@ function inferKrTickerPrefix(seed: SectorRadarAnchorSeed): 'KRX' | 'KOSDAQ' {
   return 'KRX';
 }
 
-function resolveSeedGoogleTicker(seed: SectorRadarAnchorSeed): { market: SectorRadarMarket; ticker: string; symbolNorm: string } {
+function resolveSeedGoogleTicker(seed: SectorRadarAnchorSeed): {
+  market: SectorRadarMarket;
+  ticker: string;
+  symbolNorm: string;
+  quoteKeySource: 'manual_override' | 'alias' | 'fallback';
+} {
   const market: SectorRadarMarket = seed.market ?? 'KR';
   const symbolNorm = normalizedSectorSymbol(market, seed.symbol);
   const fallbackTicker = market === 'KR'
     ? `${inferKrTickerPrefix(seed)}:${padKrSymbol(seed.symbol)}`
     : symbolNorm;
-  const ticker = (seed.googleTicker?.trim() || fallbackTicker).toUpperCase();
-  return { market, ticker, symbolNorm };
+  const profile = seed.assetType === 'ETF' ? lookupEtfThemeProfile(market, symbolNorm) : null;
+  const aliasGoogle = profile ? resolveEtfQuoteKey(profile, 'google') : '';
+  if (seed.googleTicker?.trim()) {
+    return { market, ticker: seed.googleTicker.trim().toUpperCase(), symbolNorm, quoteKeySource: 'manual_override' };
+  }
+  if (aliasGoogle.trim()) {
+    return { market, ticker: aliasGoogle.trim().toUpperCase(), symbolNorm, quoteKeySource: 'alias' };
+  }
+  return { market, ticker: fallbackTicker.toUpperCase(), symbolNorm, quoteKeySource: 'fallback' };
 }
 
 function watchlistTextBlob(row: WebPortfolioWatchlistRow): string {
@@ -413,7 +494,7 @@ export function buildMergedSectorRadarAnchors(watchlist: WebPortfolioWatchlistRo
 
   for (const cat of SECTOR_RADAR_CATEGORY_SEEDS) {
     for (const a of cat.anchors) {
-      const { market, ticker, symbolNorm } = resolveSeedGoogleTicker(a);
+      const { market, ticker, symbolNorm, quoteKeySource } = resolveSeedGoogleTicker(a);
       push({
         categoryKey: cat.key,
         categoryName: cat.name,
@@ -422,6 +503,8 @@ export function buildMergedSectorRadarAnchors(watchlist: WebPortfolioWatchlistRo
         name: a.name,
         googleTicker: ticker,
         sourceLabel: 'seed',
+        assetType: inferSeedAssetType(a),
+        quoteKeySource,
       });
     }
   }
@@ -446,6 +529,8 @@ export function buildMergedSectorRadarAnchors(watchlist: WebPortfolioWatchlistRo
           name: (w.name ?? sym).trim() || sym,
           googleTicker: ticker,
           sourceLabel: 'watchlist',
+          assetType: inferWatchlistAssetType(w),
+          quoteKeySource: 'watchlist',
         });
       }
     } else {
@@ -461,6 +546,8 @@ export function buildMergedSectorRadarAnchors(watchlist: WebPortfolioWatchlistRo
           name: (w.name ?? sym).trim() || sym,
           googleTicker: ticker,
           sourceLabel: 'watchlist',
+          assetType: inferWatchlistAssetType(w),
+          quoteKeySource: 'watchlist',
         });
       }
     }

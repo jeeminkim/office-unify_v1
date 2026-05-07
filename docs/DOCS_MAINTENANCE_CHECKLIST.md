@@ -33,4 +33,11 @@
 - 자동 매매/자동 주문/확정 수익률 표현 금지
 - "추천 종목"보다 "관찰 후보", "관찰 우선순위", "판단 보조" 우선
 - secret/token/API key 실값 문서 기재 금지
-- read-only warning은 qualityMeta 유지 + 개별 DB write 억제 + aggregate degraded 제한 기록 원칙 유지
+- read-only: `qualityMeta` 유지 + 개별 warning DB write 억제 + aggregate는 **화이트리스트 eventCode + isCritical + cooldown + budget + fingerprint**만
+- `isCritical`은 read-only 통과권이 아님(허용 코드와 함께만)
+- Ops aggregate `detail` 스키마·코드 상수 변경 시 `opsAggregateWarnings.ts`·본 체크리스트·`CHANGELOG`·관련 ops 문서 동시 갱신
+- 문서 스모크: `apps/web/lib/docs/systemArchitectureDoc.smoke.test.ts` — `SYSTEM_ARCHITECTURE.md` H1·`### Dashboard Today Candidates` 위치 검증
+- ETF 테마 카탈로그/게이트 변경 시 `docs/ops/sector_radar_score_quality.md`, `docs/ops/today_candidates.md`, `docs/CURRENT_SYSTEM_BASELINE.md`, `docs/SYSTEM_ARCHITECTURE.md`, `docs/CHANGELOG.md`를 함께 갱신
+- ETF 품질 경고 문서화 시 `qualityMeta`(화면)와 `web_ops_events`(운영 누적) 분리, read-only 개별 write 억제 원칙을 명시
+- ETF 표시 그룹(`scored`/`watch_only`/`excluded`) 또는 `quoteAlias`/진단 필드(`etfQualityDiagnostics`) 계약 변경 시 API additive 원칙(기존 필드 유지)을 문서에 명시
+- diagnostics snapshot 정책 문서화 시 read-only route DB write 금지, explicit refresh/admin/scheduled 전용 저장 원칙을 함께 명시
