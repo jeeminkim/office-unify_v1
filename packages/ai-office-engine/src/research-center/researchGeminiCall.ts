@@ -12,6 +12,7 @@ const DEFAULT_GEMINI_RESEARCH_TIMEOUT_MS = 120_000;
 export async function generateGeminiResearchReport(params: {
   apiKey: string;
   model?: string;
+  requestId?: string;
   systemInstruction: string;
   userContent: string;
   /** 기본 120s — Trend finalizer 등에서 환경변수로 덮어쓸 수 있음 */

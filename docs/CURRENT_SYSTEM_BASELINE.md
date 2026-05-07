@@ -45,6 +45,11 @@
   - OpenAI research layer + Gemini finalizer
   - finalizer timeout/retry/fallback
   - degraded structured memory 시 signal upsert skip
+- Research Center
+  - explicit generation action with requestId trace (`/api/research-center/generate`)
+  - failed/degraded stage split (`provider`/`sheets`/`context_cache`/`response_parse`)
+  - client shows `errorCode`/`requestId`/`actionHint` instead of plain `Failed to fetch`
+  - sheets/context cache/memory compare failure stays degraded when report body exists
 - Ops
   - `web_ops_events` fingerprint upsert RPC 우선
   - `opsLogBudget` 기반 write budget/cooldown/read-only 억제

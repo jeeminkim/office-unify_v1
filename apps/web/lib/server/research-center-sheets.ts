@@ -12,7 +12,7 @@ import type {
   ResearchCenterGenerateResponseBody,
   ResearchDeskId,
 } from '@office-unify/shared-types';
-import { sheetsValuesAppend } from '@/lib/server/google-sheets-api';
+import { normalizeSheetsApiError, sheetsValuesAppend } from '@/lib/server/google-sheets-api';
 import { isSheetsSyncConfigured } from '@/lib/server/google-sheets-portfolio-sync';
 
 function spreadsheetId(): string | null {
@@ -27,11 +27,25 @@ export async function appendResearchCenterSheets(params: {
   body: ResearchCenterGenerateRequestBody;
   result: ResearchCenterGenerateResponseBody;
   desks: ResearchDeskId[];
-}): Promise<void> {
+}): Promise<{
+  ok: boolean;
+  requestRowOk: boolean;
+  reportsLogOk: boolean;
+  contextCacheOk: boolean;
+  warnings: string[];
+}> {
   const id = spreadsheetId();
+  const warnings: string[] = [];
   if (!id) {
-    throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID is not set');
+    return {
+      ok: false,
+      requestRowOk: false,
+      reportsLogOk: false,
+      contextCacheOk: false,
+      warnings: ['research_sheets_unconfigured: GOOGLE_SHEETS_SPREADSHEET_ID is not set'],
+    };
   }
+  const spreadsheet = id;
 
   const now = new Date().toISOString();
   const { body, result, desks } = params;
@@ -88,24 +102,44 @@ export async function appendResearchCenterSheets(params: {
     lastSyncedAt: now,
   });
 
-  await sheetsValuesAppend({
-    spreadsheetId: id,
-    rangeA1: `${SHEET_TAB_NAMES.researchRequests}!A:N`,
-    values: [reqRow],
-    valueInputOption: 'USER_ENTERED',
-  });
-  await sheetsValuesAppend({
-    spreadsheetId: id,
-    rangeA1: `${SHEET_TAB_NAMES.researchReportsLog}!A:M`,
-    values: [logRow],
-    valueInputOption: 'USER_ENTERED',
-  });
-  await sheetsValuesAppend({
-    spreadsheetId: id,
-    rangeA1: `${SHEET_TAB_NAMES.researchContextCache}!A:N`,
-    values: [cacheRow],
-    valueInputOption: 'USER_ENTERED',
-  });
+  async function safeAppend(stage: string, rangeA1: string, values: string[][]): Promise<boolean> {
+    try {
+      await sheetsValuesAppend({
+        spreadsheetId: spreadsheet,
+        rangeA1,
+        values,
+        valueInputOption: 'USER_ENTERED',
+      });
+      return true;
+    } catch (e: unknown) {
+      const normalized = normalizeSheetsApiError(e);
+      warnings.push(`${stage}:${normalized.code}`);
+      return false;
+    }
+  }
+
+  const requestRowOk = await safeAppend(
+    'research_requests',
+    `${SHEET_TAB_NAMES.researchRequests}!A:N`,
+    [reqRow],
+  );
+  const reportsLogOk = await safeAppend(
+    'research_reports_log',
+    `${SHEET_TAB_NAMES.researchReportsLog}!A:M`,
+    [logRow],
+  );
+  const contextCacheOk = await safeAppend(
+    'research_context_cache',
+    `${SHEET_TAB_NAMES.researchContextCache}!A:N`,
+    [cacheRow],
+  );
+  return {
+    ok: requestRowOk && reportsLogOk && contextCacheOk,
+    requestRowOk,
+    reportsLogOk,
+    contextCacheOk,
+    warnings,
+  };
 }
 
 export function isResearchSheetsAppendConfigured(): boolean {

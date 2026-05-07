@@ -14,6 +14,10 @@
 - `outputQuality`/`modelUsage`/`fallback` 배지를 통해 결과 상태를 표시합니다.
 - Sheets append 실패 시에도 본문 생성은 유지하고, 실패는 warnings/ops로만 남깁니다.
 - 리포트 전체 본문은 Sheets에 저장하지 않고 요약만 append합니다.
+- 생성 요청은 `requestId`로 추적하며, 실패 시 JSON 응답(`errorCode`/`requestId`/`actionHint`)을 반환합니다.
+- `qualityMeta.researchCenter`는 `ok|degraded|failed`와 `failedStage`(`provider`/`sheets`/`context_cache`/`response_parse` 등)를 additive로 제공합니다.
+- `trend_memory_compare_failed`는 보조 비교 단계 경고로 다루며 본문 생성 성공 시 전체 실패로 전파하지 않습니다.
+- secret/token/API key/prompt 원문은 ops detail에 저장하지 않습니다.
 
 ## API
 

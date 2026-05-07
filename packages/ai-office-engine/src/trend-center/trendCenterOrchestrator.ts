@@ -758,13 +758,16 @@ export async function runTrendAnalysisGeneration(params: {
     });
   }
   if (compareResult) {
+    const compareFailed = compareResult.warnings.some((w) =>
+      w.startsWith("trend_memory_compare_failed"),
+    );
     await trackOps({
       supabase,
       userKey,
       topicKey: structuredMemory.topicKey,
       reportRunId: memoryLayer.reportRunId,
-      severity: compareResult.warnings.length > 0 ? 'warning' : 'info',
-      code: compareResult.warnings.length > 0 ? TREND_WARNING_CODES.MEMORY_COMPARE_FAILED : TREND_WARNING_CODES.MEMORY_COMPARE_SUCCESS,
+      severity: compareFailed ? 'warning' : 'info',
+      code: compareFailed ? TREND_WARNING_CODES.MEMORY_COMPARE_FAILED : TREND_WARNING_CODES.MEMORY_COMPARE_SUCCESS,
       stage: 'memory_compare',
       message: 'Trend memory compare completed',
       detail: {

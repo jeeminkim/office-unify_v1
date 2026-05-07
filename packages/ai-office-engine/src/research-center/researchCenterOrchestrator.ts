@@ -149,6 +149,7 @@ export async function runResearchCenterGeneration(params: {
       const userContent = deskUserPrompt(id, factsOnly, refBlock, userBlock);
       const raw = await generateGeminiResearchReport({
         apiKey: geminiApiKey,
+        requestId: body.requestId,
         systemInstruction: sys,
         userContent,
       });
@@ -172,6 +173,7 @@ export async function runResearchCenterGeneration(params: {
   );
   let editorRaw = await generateGeminiResearchReport({
     apiKey: geminiApiKey,
+    requestId: body.requestId,
     systemInstruction: chiefEditorSystemPrompt(),
     userContent: editorInput,
   });

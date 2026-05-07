@@ -139,6 +139,11 @@
   - `/api/committee-discussion/*`
   - `/api/trend/generate`
   - `/api/research-center/generate`
+  - explicit action route with requestId lifecycle
+  - route returns JSON on failure (`errorCode`/`requestId`/`actionHint`)
+  - stage-split quality meta: provider vs sheets/context_cache/memory_compare
+  - sheets/context_cache failure is degraded, not full-generation fail when body exists
+  - timeout risk exists for long-running generation; job queue migration is a future option
   - `/api/trade-journal/*`
   - `/api/trade-journal/pattern-analysis`
     - 반복 투자 실수 패턴과 현재 위험 매칭을 요약
@@ -174,6 +179,8 @@
 - `structuredMemory`의 signal 배열을 `trend_memory_signals_v2`에 `user_key + topic_key + signal_key` 기준 upsert한다.
 - DB 기반 이전 비교는 `trend_memory_signals_v2`를 조회해 `new/strengthened/repeated/weakened`로 계산한다.
 - Trend 전용 ops logging wrapper가 `web_ops_events`로 warning/error/info를 적재하고, fingerprint로 `occurrence_count`를 누적한다.
+- Research Center는 explicit generation에 한해 제한적 ops logging을 허용하고, requestId와 fingerprint(`research_center:{userKey}:{yyyyMMdd}:{eventCode}`)로 추적한다.
+- `trend_memory_compare_failed`는 보조 비교 단계 degraded 경고로 다루며, 본문 생성 성공 시 전체 실패로 전파하지 않는다.
 - `/api/trend/ops-summary`는 최근 Trend 운영 로그(domain=trend)를 집계해 code/fingerprint/ticker/source-quality/memory/degraded 상태를 요약 반환한다.
 - `/trend`의 `TrendOpsSummaryPanel`은 운영 점검 정보를 접기 영역으로 노출해 본문 읽기 흐름을 방해하지 않게 유지한다.
 - **Gemini finalizer 실패 시:** 환경변수 `TREND_GEMINI_FINALIZER_TIMEOUT_MS`(기본 120s)·`TREND_GEMINI_FINALIZER_RETRY_DELAY_MS`(기본 800ms)로 1차 호출 후 짧은 지연 뒤 1회 재시도한다. 재시도까지 실패하면 OpenAI 리서치 브리프 기반 임시 마크다운(`buildOpenAiResearchFallbackMarkdown` → `formatTrendReport`)으로 리포트를 채우고, `qualityMeta.finalizer`에 `degraded`/`fallbackUsed`/`retryCount`를 기록한다. 구조화 메모리는 최소 객체(`buildDegradedStructuredMemory`)로 채우되 이번 실행만 `trend_memory_signals_v2` upsert를 건너뛰어(signal 반복 강화 계산에 쓰이지 않게) 한다.

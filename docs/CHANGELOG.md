@@ -6,6 +6,12 @@
 
 ### 2026-05 Ops / Today Candidates / Sector Radar stabilization
 
+- **Research Center 운영 안정화:** `POST /api/research-center/generate`에 requestId 기반 추적, JSON 표준 실패 응답(`errorCode`/`actionHint`), `qualityMeta.researchCenter`(status/failedStage/opsLogging) additive 추가.
+- **Research Center degraded 분리:** 리포트 본문 생성과 Sheets/context_cache 단계를 분리해, 부가 단계 실패가 전체 생성 실패로 전파되지 않도록 조정.
+- **Research client fetch 분류 개선:** `Failed to fetch` 단일 문구 대신 `network/http/response_parse/api/timeout` 오류를 구분하고 requestId를 화면에 노출.
+- **Trend memory compare 오탐 수정:** heuristic warning(`trend_signal_compare_heuristic_used`)만으로 `trend_memory_compare_failed`를 기록하지 않도록 ops code 판정 조건을 보정.
+- **Ops 문서 추가:** `docs/ops/research_center.md` 신설(명시적 생성 액션, requestId 추적, degraded 정책, 로그 민감정보 제한, timeout 리스크).
+
 - **Sector Radar ETF 테마 매칭 고도화:** ETF `theme eligibility` 게이트(strict/adjacent/exclude/unknown)를 점수 계산보다 먼저 적용하도록 변경.
 - **AI/전력 인프라 seed 확장:** `487240`, `487230`, `486450`, `491010`을 strict 테마로 반영하고, `SOL 조선TOP3플러스(466920)`를 AI/전력 인프라에서 hard exclude.
 - **미디어/콘텐츠 universe 확장:** `395150`, `228810`, `266360`, `395290`, `0132D0`을 포함해 웹툰/드라마/K콘텐츠/K-POP/K컬처 범위를 확장.

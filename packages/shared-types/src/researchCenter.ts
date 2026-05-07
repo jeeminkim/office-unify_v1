@@ -14,6 +14,8 @@ export type ResearchCenterGenerateRequestBody = {
   market: 'KR' | 'US';
   symbol: string;
   name: string;
+  /** client-generated trace id (optional) */
+  requestId?: string;
   sector?: string;
   /** 비어 있으면 서버에서 `all`과 동일 처리 가능 */
   selectedDesks: ResearchDeskId[] | 'all';
@@ -27,6 +29,48 @@ export type ResearchCenterGenerateRequestBody = {
   saveToSheets?: boolean;
   /** 재생성 시 Chief Editor 비교용 */
   previousEditorVerdict?: string;
+};
+
+export type ResearchCenterFailedStage =
+  | 'input'
+  | 'provider'
+  | 'sheets'
+  | 'memory_compare'
+  | 'context_cache'
+  | 'response_parse'
+  | 'unknown';
+
+export type ResearchCenterQualityMeta = {
+  requestId: string;
+  status: 'ok' | 'degraded' | 'failed';
+  generatedAt: string;
+  failedStage?: ResearchCenterFailedStage;
+  provider?: 'openai' | 'gemini' | 'mixed' | 'unknown';
+  sheetsSave?: {
+    requested: boolean;
+    ok: boolean;
+    warningCode?: string;
+    failedTargets?: Array<'research_requests' | 'research_reports_log' | 'research_context_cache'>;
+  };
+  memoryCompare?: {
+    requested: boolean;
+    ok: boolean;
+    degraded?: boolean;
+    warningCode?: string;
+  };
+  contextCache?: {
+    requested: boolean;
+    ok: boolean;
+    warningCode?: string;
+  };
+  warnings: string[];
+  opsLogging?: {
+    attempted: number;
+    written: number;
+    skippedCooldown: number;
+    skippedBudgetExceeded: number;
+    skippedReadOnly: number;
+  };
 };
 
 export type ResearchCenterGenerateResponseBody = {
@@ -59,5 +103,24 @@ export type ResearchCenterGenerateResponseBody = {
     sheetsAppendAttempted: boolean;
     sheetsAppendSucceeded: boolean;
     noData: boolean;
+  };
+  ok?: boolean;
+  requestId?: string;
+  errorCode?: string;
+  message?: string;
+  actionHint?: string;
+  qualityMeta?: {
+    researchCenter?: ResearchCenterQualityMeta;
+  };
+};
+
+export type ResearchCenterGenerateErrorResponseBody = {
+  ok: false;
+  requestId: string;
+  errorCode: string;
+  message: string;
+  actionHint?: string;
+  qualityMeta?: {
+    researchCenter?: ResearchCenterQualityMeta;
   };
 };

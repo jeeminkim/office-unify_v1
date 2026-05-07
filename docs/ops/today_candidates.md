@@ -1,3 +1,8 @@
+# Cross-feature ops note
+
+- Research Center는 explicit generation action으로 requestId 추적을 사용한다.
+- Today Candidates(read-only)와 달리 Research Center 생성 route는 제한적 ops logging을 허용한다.
+- 공통 원칙은 동일하다: `qualityMeta`는 화면 상태, `web_ops_events`는 제한적 운영 누적이며 secret/token/prompt 원문은 저장하지 않는다.
 # Today Candidates (아침 관찰 후보)
 
 홈 대시보드의 `오늘의 3줄 브리핑`에 개인화 관찰 후보를 추가한다.

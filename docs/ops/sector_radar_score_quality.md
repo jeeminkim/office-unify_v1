@@ -1,5 +1,7 @@
 # Sector Radar Score Quality & Explanation
 
+> Cross-feature note: Research Center도 동일한 운영 원칙(requestId 추적, stage 분리, degraded 우선)을 사용하며, `trend_memory_compare_failed`는 heuristic warning만으로 실패로 판정하지 않습니다.
+
 ## 목적
 
 Sector Radar 점수는 **매수 추천이 아니라 섹터 관찰 신호**입니다. 표본 수·시세 커버리지가 낮을 때 높은 raw 점수가 과신되지 않도록 **보수 보정 점수(`adjustedScore`)**와 **해석 레이어(`scoreExplanation`)**를 두었습니다.

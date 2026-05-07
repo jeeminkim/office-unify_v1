@@ -231,7 +231,10 @@ export type {
 } from './joLedgerPayload';
 export type {
   ResearchCenterGenerateRequestBody,
+  ResearchCenterGenerateErrorResponseBody,
   ResearchCenterGenerateResponseBody,
+  ResearchCenterFailedStage,
+  ResearchCenterQualityMeta,
   ResearchDeskId,
   ResearchToneMode,
 } from './researchCenter';

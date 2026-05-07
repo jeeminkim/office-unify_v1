@@ -7,6 +7,12 @@ import type {
   ResearchDeskId,
   ResearchToneMode,
 } from "@office-unify/shared-types";
+import {
+  createResearchRequestId,
+  formatResearchClientError,
+  parseResearchGenerateResponse,
+  type ResearchCenterClientErrorState,
+} from "./researchCenterClientFetch";
 
 const jsonHeaders: HeadersInit = {
   "Content-Type": "application/json",
@@ -45,7 +51,7 @@ export function ResearchCenterClient() {
   const [previousEditorVerdict, setPreviousEditorVerdict] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ResearchCenterClientErrorState | null>(null);
   const [result, setResult] = useState<ResearchCenterGenerateResponseBody | null>(null);
   const [activeTab, setActiveTab] = useState<ResearchDeskId | "editor">("goldman_buy");
 
@@ -73,11 +79,16 @@ export function ResearchCenterClient() {
     setLoading(true);
     setResult(null);
     try {
+      const requestId = createResearchRequestId();
+      const ac = new AbortController();
+      const timeout = setTimeout(() => ac.abort(), 120_000);
       const res = await fetch("/api/research-center/generate", {
         method: "POST",
-        headers: jsonHeaders,
+        headers: { ...jsonHeaders, "x-request-id": requestId },
         credentials: "same-origin",
+        signal: ac.signal,
         body: JSON.stringify({
+          requestId,
           market,
           symbol: symbol.trim(),
           name: name.trim(),
@@ -92,9 +103,13 @@ export function ResearchCenterClient() {
           saveToSheets,
           previousEditorVerdict: previousEditorVerdict.trim() || undefined,
         }),
-      });
-      const data = (await res.json()) as ResearchCenterGenerateResponseBody & { error?: string };
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      }).finally(() => clearTimeout(timeout));
+      const parsed = await parseResearchGenerateResponse(res);
+      if (!parsed.ok) {
+        setError(parsed.error);
+        return;
+      }
+      const data = parsed.data;
       setResult(data);
       const firstDesk = (
         [
@@ -106,7 +121,22 @@ export function ResearchCenterClient() {
       ).find((id) => data.reports[id]?.trim());
       setActiveTab(firstDesk ?? "editor");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "생성 실패");
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setError({
+          code: "request_timeout",
+          message: "요청 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
+        });
+      } else if (e instanceof TypeError) {
+        setError({
+          code: "network_fetch_failed",
+          message: "네트워크 또는 서버 연결에 실패했습니다. 다시 시도해 주세요.",
+        });
+      } else {
+        setError({
+          code: "api_error",
+          message: e instanceof Error ? e.message : "리포트 생성에 실패했습니다.",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -318,7 +348,10 @@ export function ResearchCenterClient() {
       </section>
 
       {error ? (
-        <p className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">{error}</p>
+        <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+          <p>{formatResearchClientError(error)}</p>
+          <p className="mt-1 text-xs text-red-700">code: {error.code}</p>
+        </div>
       ) : null}
 
       {result ? (
@@ -332,8 +365,16 @@ export function ResearchCenterClient() {
                 {result.holdingWeightApprox ? ` · 추정 비중 약 ${result.holdingWeightApprox}%` : ""}
               </p>
               <p className="mt-1 font-mono text-xs text-slate-500">ref: {result.reportRef}</p>
+              {result.requestId ? (
+                <p className="mt-1 font-mono text-[11px] text-slate-500">requestId: {result.requestId}</p>
+              ) : null}
               {result.sheetsAppended ? (
                 <p className="mt-1 text-xs text-emerald-700">Google Sheets에 요약이 저장되었습니다.</p>
+              ) : null}
+              {result.qualityMeta?.researchCenter?.status === "degraded" ? (
+                <p className="mt-1 text-xs text-amber-700">
+                  생성은 완료됐지만 일부 부가 단계가 실패했습니다. 운영 로그에서 requestId를 확인하세요.
+                </p>
               ) : null}
               <div className="mt-2 flex flex-wrap gap-1">
                 <span className="rounded bg-slate-200 px-2 py-0.5 text-[11px] text-slate-800">
