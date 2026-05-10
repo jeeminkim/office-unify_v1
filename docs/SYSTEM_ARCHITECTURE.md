@@ -147,6 +147,7 @@
   - sheets append wrapped with a bounded timeout (`RESEARCH_CENTER_SHEETS_TIMEOUT_MS`); timeout → degraded JSON, success body preserved
   - timeout risk exists for long-running generation; job queue migration is a future option
   - `/api/research-center/ops-summary` — **read-only** aggregate over `web_ops_events` (domain=`research_center`): SELECT only, no writes; sanitized detail; optional `range=24h|7d`, `requestId`, `limit`
+  - `/api/research-center/ops-trace` — **read-only** single-`requestId` timeline over `web_ops_events` (same domain/user scope); SELECT only; bounded scan + optional JSON filter; complements ops-summary (aggregate vs per-request trace). Same `requestId` usable when migrating to a job queue later.
   - `/api/trade-journal/*`
   - `/api/trade-journal/pattern-analysis`
     - 반복 투자 실수 패턴과 현재 위험 매칭을 요약

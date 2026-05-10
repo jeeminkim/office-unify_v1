@@ -5,6 +5,7 @@
 export type ResearchCenterStage =
   | 'input'
   | 'provider'
+  | 'finalizer'
   | 'timeout'
   | 'sheets'
   | 'memory_compare'

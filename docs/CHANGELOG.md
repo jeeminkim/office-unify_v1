@@ -6,6 +6,7 @@
 
 ### 2026-05 Ops / Today Candidates / Sector Radar stabilization
 
+- **Research Center ops-trace & timeout budget:** `GET /api/research-center/ops-trace?requestId=...`(read-only, 단일 요청 타임라인·`primaryCategory`·`recommendedAction`), `parseResearchCenterTimeoutBudget` / `qualityMeta.researchCenter.timeoutBudget`, Chief Editor 실패 시 데스크 초안 병합(`resultMode`/`fallback_editor_synthesis`), 데스크+에디터 별도 timeout·Sheets vs `context_cache` 단계 timeout 분리, 일시적 provider 오류 시 엔진 1회 재시도, UI requestId 복사·ops-trace 조회. 클라이언트 Generate Abort 타임아웃은 `NEXT_PUBLIC_RESEARCH_CENTER_TOTAL_TIMEOUT_MS`·공유 상수(`shared-types` `researchCenterTimeoutConstants`)로 서버 전체 상한과 정렬.
 - **Research Center ops-summary query fix:** `requestId` 상세 필터(`detail->>requestId`)를 `order`/`limit` 앞에 두어 PostgREST 체인에서 필터가 무시·실패하던 경우를 방지.
 - **Research Center timings:** `appendResearchCenterSheets`가 탭별 소요시간을 반환하고, `qualityMeta.researchCenter.timings.sheetsMs`(요청·리포트 로그)와 `contextCacheMs`(컨텍스트 캐시 행)로 분리 기록. 근접 타임아웃·provider 느림 경고 임계값은 `researchCenterTimings.ts`에서 단일화.
 - **apps/web tsconfig:** `**/*.test.ts`를 `tsc --noEmit`에서 제외해 Vitest 전용 API(`vi` 등)와 테스트 픽스처 타입 드리프트로 인한 불필요한 타입 오류를 방지(런타임·Next 빌드는 동일).

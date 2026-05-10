@@ -14,6 +14,7 @@ import {
   type ResearchFactsPack,
 } from './researchCenterContext';
 import { applyResearchReportGuards, mergeWarnings } from './researchCenterGuards';
+import { buildDeskSynthesisEditor } from './researchDeskSynthesisFallback';
 import { generateGeminiResearchReport } from './researchGeminiCall';
 import {
   blackrockQualitySystemPrompt,
@@ -89,13 +90,26 @@ function buildSheetContextSnapshot(
   };
 }
 
+export type ResearchCenterGenerationTrace = {
+  deskPhaseMs: number;
+  finalizerMs: number;
+  finalizerFallbackUsed: boolean;
+};
+
 export async function runResearchCenterGeneration(params: {
   supabase: SupabaseClient;
   userKey: OfficeUserKey;
   geminiApiKey: string;
   body: ResearchCenterGenerateRequestBody;
-}): Promise<ResearchCenterGenerateResponseBody> {
+  /** Per-call Gemini ceilings (desk calls vs chief editor). */
+  timeouts?: {
+    geminiDeskCallMs?: number;
+    geminiFinalizerMs?: number;
+  };
+}): Promise<{ result: ResearchCenterGenerateResponseBody; trace: ResearchCenterGenerationTrace }> {
   const { body, geminiApiKey } = params;
+  const deskCallTimeout = params.timeouts?.geminiDeskCallMs ?? 120_000;
+  const finalizerTimeout = params.timeouts?.geminiFinalizerMs ?? 120_000;
   const desks = normalizeDesks(body.selectedDesks);
   const tone = body.toneMode;
 
@@ -143,6 +157,7 @@ export async function runResearchCenterGeneration(params: {
   const factsOnly = pack.factsBlock;
   const allWarnings: string[] = [];
 
+  const deskPhaseStart = Date.now();
   const deskResults = await Promise.all(
     desks.map(async (id) => {
       const sys = systemForDesk(id, tone);
@@ -152,12 +167,14 @@ export async function runResearchCenterGeneration(params: {
         requestId: body.requestId,
         systemInstruction: sys,
         userContent,
+        timeoutMs: deskCallTimeout,
       });
       const g = applyResearchReportGuards(raw, guardSlugForDesk(id));
       allWarnings.push(...g.warnings);
       return { id, text: g.text };
     }),
   );
+  const deskPhaseMs = Math.max(0, Date.now() - deskPhaseStart);
 
   const reports: Partial<Record<ResearchDeskId, string>> = {};
   for (const { id, text } of deskResults) {
@@ -171,19 +188,36 @@ export async function runResearchCenterGeneration(params: {
     userBlock,
     body.previousEditorVerdict,
   );
-  let editorRaw = await generateGeminiResearchReport({
-    apiKey: geminiApiKey,
-    requestId: body.requestId,
-    systemInstruction: chiefEditorSystemPrompt(),
-    userContent: editorInput,
-  });
-  const eg = applyResearchReportGuards(editorRaw, 'editor');
-  editorRaw = eg.text;
-  allWarnings.push(...eg.warnings);
+
+  const finalizerStart = Date.now();
+  let editorRaw: string;
+  let finalizerFallbackUsed = false;
+  try {
+    const raw = await generateGeminiResearchReport({
+      apiKey: geminiApiKey,
+      requestId: body.requestId,
+      systemInstruction: chiefEditorSystemPrompt(),
+      userContent: editorInput,
+      timeoutMs: finalizerTimeout,
+    });
+    const eg = applyResearchReportGuards(raw, 'editor');
+    editorRaw = eg.text;
+    allWarnings.push(...eg.warnings);
+  } catch {
+    finalizerFallbackUsed = true;
+    editorRaw = buildDeskSynthesisEditor(reports);
+    const eg = applyResearchReportGuards(editorRaw, 'editor');
+    editorRaw = eg.text;
+    allWarnings.push(
+      'research_editor_fallback_desk_synthesis',
+      ...eg.warnings,
+    );
+  }
+  const finalizerMs = Math.max(0, Date.now() - finalizerStart);
 
   const reportRef = `rc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-  return {
+  const result: ResearchCenterGenerateResponseBody = {
     reports,
     editor: editorRaw,
     contextNote: pack.contextNote,
@@ -194,5 +228,14 @@ export async function runResearchCenterGeneration(params: {
     sheetsAppended: false,
     warnings: mergeWarnings(allWarnings, []),
     reportRef,
+  };
+
+  return {
+    result,
+    trace: {
+      deskPhaseMs,
+      finalizerMs,
+      finalizerFallbackUsed,
+    },
   };
 }

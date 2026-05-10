@@ -34,6 +34,17 @@ export function maskInputPreview(input: string | undefined, maxLen = 160): strin
   return trimmed.slice(0, maxLen);
 }
 
+/** Best-effort: retry once on transient provider/network errors (not parse/validation). */
+export function isTransientResearchProviderError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error ?? "");
+  const m = msg.toLowerCase();
+  if (/invalid json|parse|syntax|unexpected token|400/.test(m) && !/http 5/.test(m)) return false;
+  return (
+    /timeout|aborted|rate|429|503|502|econnreset|fetch failed|network|socket/i.test(m) ||
+    /research_request_timeout/i.test(m)
+  );
+}
+
 /** Shared timeout helper for Research Center provider/sheets best-effort stages. */
 export function runPromiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage?: string): Promise<T> {
   const msg = timeoutMessage ?? `research_request_timeout:${timeoutMs}`;

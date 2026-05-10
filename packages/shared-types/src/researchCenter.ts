@@ -61,6 +61,22 @@ export type ResearchCenterQualityMeta = {
     warningCode?: string;
   };
   warnings: string[];
+  /** Parsed timeout ceilings (no secrets; invalid env → defaults + warnings only). */
+  timeoutBudget?: {
+    totalMs: number;
+    providerPerCallMs: number;
+    finalizerMs: number;
+    sheetsMs: number;
+    contextCacheMs: number;
+    /** Non-empty when env values failed to parse and defaults were used. */
+    invalidEnvKeys?: string[];
+  };
+  /** Desk phase + parallel Gemini calls (excluding chief editor finalizer). */
+  deskPhaseMs?: number;
+  /** Chief editor / finalizer Gemini call only. */
+  finalizerMs?: number;
+  /** Number of full-engine retries after transient provider failures (0–1 typical). */
+  providerRetryCount?: number;
   timings?: {
     totalMs: number;
     inputValidationMs?: number;
@@ -168,6 +184,10 @@ export type ResearchCenterGenerateResponseBody = {
   meta?: {
     providerUsed: 'gemini_only';
     fallbackUsed: boolean;
+    /** full = chief editor OK; fallback_editor_synthesis = desk 요약 병합(분석 보조용, 투자 조언 아님) */
+    resultMode?: 'full' | 'fallback_editor_synthesis';
+    /** Transient provider failures before success (0–1 typical). */
+    providerRetryCount?: number;
     includeSheetContext: boolean;
     sheetsAppendAttempted: boolean;
     sheetsAppendSucceeded: boolean;
@@ -191,5 +211,47 @@ export type ResearchCenterGenerateErrorResponseBody = {
   actionHint?: string;
   qualityMeta?: {
     researchCenter?: ResearchCenterQualityMeta;
+  };
+};
+
+/** Single-request ops trace (read-only SELECT on web_ops_events). */
+export type ResearchCenterOpsTraceTimelineEntry = {
+  at: string;
+  stage: string;
+  severity: 'info' | 'warning' | 'error';
+  code: string;
+  message: string;
+  durationMs?: number;
+  actionHint?: string;
+};
+
+export type ResearchCenterOpsTraceResponse = {
+  requestId: string;
+  found: boolean;
+  range: '24h' | '7d';
+  summary?: {
+    severityMax: 'error' | 'warning' | 'info';
+    statusCounts: Record<string, number>;
+    firstSeenAt?: string;
+    lastSeenAt?: string;
+    durationObservedMs?: number;
+    primaryCategory:
+      | 'provider_timeout'
+      | 'provider_failed'
+      | 'response_parse'
+      | 'sheets_failed'
+      | 'context_cache_failed'
+      | 'degraded'
+      | 'success'
+      | 'unknown';
+  };
+  timeline: ResearchCenterOpsTraceTimelineEntry[];
+  recommendedAction?: string;
+  qualityMeta: {
+    researchCenterOpsTrace: {
+      readOnly: true;
+      source: 'web_ops_events';
+      warnings: string[];
+    };
   };
 };

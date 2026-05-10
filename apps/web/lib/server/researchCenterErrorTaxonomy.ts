@@ -41,6 +41,9 @@ export function classifyResearchCenterError(
   if (msg.includes("memory_compare") || msg.includes("trend_memory_compare_failed")) {
     return "memory_compare";
   }
+  if (msg.includes("chief editor") || msg.includes("finalizer") || msg.includes("editor pass")) {
+    return "finalizer";
+  }
   if (msg.includes("ops_logging")) return "ops_logging";
   return "unknown";
 }
@@ -48,6 +51,7 @@ export function classifyResearchCenterError(
 export function mapStageToResearchErrorCode(stage: ResearchCenterFailedStage): ResearchCenterErrorCode {
   if (stage === "input") return RESEARCH_CENTER_ERROR_CODE.INPUT_INVALID;
   if (stage === "provider") return RESEARCH_CENTER_ERROR_CODE.PROVIDER_CALL_FAILED;
+  if (stage === "finalizer") return RESEARCH_CENTER_ERROR_CODE.PROVIDER_CALL_FAILED;
   if (stage === "timeout") return RESEARCH_CENTER_ERROR_CODE.PROVIDER_TIMEOUT;
   if (stage === "response_parse") return RESEARCH_CENTER_ERROR_CODE.RESPONSE_PARSE_FAILED;
   if (stage === "sheets") return RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED;

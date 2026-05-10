@@ -13,7 +13,8 @@
 
 - 실패 응답은 항상 JSON으로 내려가며 `ok=false`, `requestId`, `errorCode`, `message`, `actionHint`를 포함한다.
 - `qualityMeta.researchCenter`는 additive 메타이며 상태를 `ok | degraded | failed`로 표기한다.
-- `failedStage`는 `input | provider | sheets | memory_compare | context_cache | response_parse | unknown` 중 하나다.
+- `failedStage`는 `input | provider | finalizer | sheets | memory_compare | context_cache | response_parse | unknown` 중 하나다.
+- Chief Editor 실패 시 데스크 초안 병합(`fallback_editor_synthesis`)으로 **degraded** 처리할 수 있다(자동 매매·주문 없음, 분석 보조).
 - `trend_memory_compare_failed`는 보조 단계 경고로 취급하며 본문 생성 전체 실패로 전파하지 않는다.
 
 ## 클라이언트 오류 분류
@@ -29,8 +30,25 @@
 ## Sheets/Timeout 정책
 
 - Sheets 저장 실패는 `degraded`로 반환하고 본문은 유지한다.
-- `research_requests`/`research_reports_log`/`research_context_cache` 단계별 성공 여부를 품질 메타에 기록한다.
+- `research_requests`/`research_reports_log`는 `RESEARCH_CENTER_SHEETS_TIMEOUT_MS` 예산으로, `research_context_cache` 행은 `RESEARCH_CENTER_CONTEXT_CACHE_TIMEOUT_MS` 예산으로 **단계 분리** 시도한다.
+- 전체 생성 상한은 `RESEARCH_CENTER_TOTAL_TIMEOUT_MS`(미설정 시 기존 `RESEARCH_CENTER_ROUTE_TIMEOUT_MS` 호환). 데스크 Gemini 호출 상한 `RESEARCH_CENTER_PROVIDER_TIMEOUT_MS`, Chief Editor `RESEARCH_CENTER_FINALIZER_TIMEOUT_MS`. 파싱 실패 시 안전 기본값 + `qualityMeta.warnings`에 `research_timeout_env_invalid:*`만 남긴다(값 노출 없음).
+- 브라우저에서 Generate 요청을 중단하는 Abort 타임아웃은 **`NEXT_PUBLIC_RESEARCH_CENTER_TOTAL_TIMEOUT_MS`**와 동일 파서·기본값(`packages/shared-types`의 `RESEARCH_CENTER_TOTAL_TIMEOUT_MS_DEFAULT`, 상한 300s)·clamp 규칙을 사용한다. 배포 시 서버 상한을 바꿨다면 동일 값으로 클라이언트 빌드 env도 맞춘다.
 - timeout은 JSON 오류로 반환하며 장기적으로 job queue 전환 후보로 관리한다.
+
+## Stage별 실패·재시도(동기 생성 한계 내)
+
+- **Provider(데스크·엔진 전체)**: 일시적 오류(타임아웃·5xx·네트워크) 시 **엔진 전체 1회 재시도** 가능. 실패 시 taxonomy·`failedStage`·JSON 오류.
+- **Finalizer(Chief Editor)**: Gemini 실패 시 데스크 초안 병합으로 대체, `meta.resultMode=fallback_editor_synthesis`, `qualityMeta.status=degraded`. OpenAI 전용 경로는 없음(Gemini-only 엔진).
+- **response_parse**: 사용자 메시지로 응답 정제 실패 안내, `actionHint`로 재시도 유도.
+- **Sheets / context_cache**: 본문 유지·degraded, 탭·권한·range·`includeSheetContext` 안내.
+
+## fetch failed / 장애 시 점검 순서
+
+1. 응답 JSON의 `requestId`·`errorCode`·`qualityMeta.researchCenter.timeoutBudget`·`timings`
+2. `GET /api/research-center/ops-summary?range=24h` 로 집계
+3. `GET /api/research-center/ops-trace?requestId=...&range=24h` 로 단일 요청 타임라인
+4. `/ops-events?domain=research_center&q=<requestId>` UI 검색
+5. env: `GEMINI_API_KEY`, Supabase, Sheets, **timeout 계열 env**(위 목록)
 
 ## Ops Logging
 
@@ -51,6 +69,12 @@
 - 응답 `qualityMeta.researchCenterOpsSummary.readOnly: true`, domain=`research_center`, user_key는 인증된 단일 사용자 정책과 동일하게 필터.
 - 실패 분류(`failureCategories`), severity/eventCode/stage 집계, `recentFailureEvents`, `recentRequestIds`는 sanitize된 문자열만 포함한다.
 
+## 단일 요청 추적 API (read-only)
+
+- `GET /api/research-center/ops-trace?requestId=...&range=24h|7d` — 동일 사용자·domain=`research_center` 이벤트 중 **해당 requestId**와 매칭되는 행만 모아 타임라인·요약(`primaryCategory`, `recommendedAction`). **SELECT만**, INSERT/UPDATE 없음.
+- **ops-summary와 차이**: summary는 기간 전체 집계·상위 코드·최근 ID 목록; **ops-trace**는 **하나의 requestId**에 대한 시간순 타임라인과 권장 조치 문구.
+- PostgREST `detail->>requestId` 필터가 비면 최근 N건(상한 500)을 읽은 뒤 서버에서 `detail`/`fingerprint`/`message` 기준으로 재필터한다.
+
 ## 오류 코드 공통 모듈
 
 - `@office-unify/shared-types`의 `RESEARCH_CENTER_ERROR_CODE`, `ResearchCenterStage` 및 서버 `researchCenterErrorTaxonomy.ts`의 `classifyResearchCenterError` / `mapStageToResearchErrorCode` / `sanitizeResearchErrorDetail`를 기준으로 분류한다.
@@ -61,4 +85,5 @@
 
 ## 장기 메모
 
-- Provider 호출은 동기 long-running일 수 있으며, 본 단계에서는 timeout 측정·ops-summary·타이밍 메타로 관측 후 job queue 전환을 검토한다.
+- Provider 호출은 동기 long-running일 수 있으며, 본 단계에서는 timeout 측정·ops-summary·ops-trace·타이밍 메타로 관측 후 job queue 전환을 검토한다.
+- **requestId**는 향후 비동기 job queue로 옮겨도 동일 추적 키로 재사용할 수 있게 유지한다.

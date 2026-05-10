@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildResearchOpsFingerprint,
+  isTransientResearchProviderError,
   runPromiseWithTimeout,
   toRequestId,
 } from "./researchCenterRouteUtils";
@@ -18,6 +19,11 @@ describe("researchCenterRouteUtils", () => {
         eventCode: "trend_memory_compare_failed",
       }),
     ).toBe("research_center:u1:20260508:trend_memory_compare_failed");
+  });
+
+  it("detects transient provider errors", () => {
+    expect(isTransientResearchProviderError(new Error("research_request_timeout:120000"))).toBe(true);
+    expect(isTransientResearchProviderError(new Error("Unexpected token"))).toBe(false);
   });
 
   it("runPromiseWithTimeout rejects with bounded message", async () => {

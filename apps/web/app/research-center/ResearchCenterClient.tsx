@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import type {
-  ResearchCenterGenerateResponseBody,
-  ResearchCenterOpsSummaryResponse,
-  ResearchDeskId,
-  ResearchToneMode,
+import {
+  parseResearchCenterTotalTimeoutMs,
+  type ResearchCenterGenerateResponseBody,
+  type ResearchCenterOpsSummaryResponse,
+  type ResearchCenterOpsTraceResponse,
+  type ResearchDeskId,
+  type ResearchToneMode,
 } from "@office-unify/shared-types";
 import {
   createResearchRequestId,
@@ -60,6 +62,35 @@ export function ResearchCenterClient() {
   const [opsSummaryLoading, setOpsSummaryLoading] = useState(false);
   const [opsSummary, setOpsSummary] = useState<ResearchCenterOpsSummaryResponse | null>(null);
   const [opsSummaryErr, setOpsSummaryErr] = useState<string | null>(null);
+  const [traceInput, setTraceInput] = useState("");
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [traceErr, setTraceErr] = useState<string | null>(null);
+  const [traceData, setTraceData] = useState<ResearchCenterOpsTraceResponse | null>(null);
+
+  const fetchOpsTrace = useCallback(async (rid: string) => {
+    const trimmed = rid.trim();
+    if (trimmed.length < 4) {
+      setTraceErr("requestId를 4자 이상 입력하세요.");
+      setTraceData(null);
+      return;
+    }
+    setTraceLoading(true);
+    setTraceErr(null);
+    try {
+      const res = await fetch(
+        `/api/research-center/ops-trace?range=24h&requestId=${encodeURIComponent(trimmed)}`,
+        { credentials: "same-origin" },
+      );
+      const json = (await res.json()) as ResearchCenterOpsTraceResponse;
+      setTraceData(json);
+      if (!json.found) setTraceErr("해당 requestId로 최근 24h 이벤트가 없습니다.");
+    } catch {
+      setTraceErr("ops-trace 요청에 실패했습니다.");
+      setTraceData(null);
+    } finally {
+      setTraceLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!opsDiagOpen) return;
@@ -89,6 +120,17 @@ export function ResearchCenterClient() {
     };
   }, [opsDiagOpen]);
 
+  const traceSlowestStage = useMemo(() => {
+    const tl = traceData?.timeline;
+    if (!tl?.length) return null;
+    let best: { stage: string; ms: number } | null = null;
+    for (const ev of tl) {
+      if (typeof ev.durationMs !== "number") continue;
+      if (!best || ev.durationMs > best.ms) best = { stage: ev.stage, ms: ev.durationMs };
+    }
+    return best;
+  }, [traceData]);
+
   const toggleDesk = (id: ResearchDeskId) => {
     setSelectedDesks((prev) => {
       const next = new Set(prev);
@@ -115,7 +157,10 @@ export function ResearchCenterClient() {
     try {
       const requestId = createResearchRequestId();
       const ac = new AbortController();
-      const timeout = setTimeout(() => ac.abort(), 120_000);
+      const fetchTimeoutMs = parseResearchCenterTotalTimeoutMs(
+        process.env.NEXT_PUBLIC_RESEARCH_CENTER_TOTAL_TIMEOUT_MS,
+      );
+      const timeout = setTimeout(() => ac.abort(), fetchTimeoutMs);
       const res = await fetch("/api/research-center/generate", {
         method: "POST",
         headers: { ...jsonHeaders, "x-request-id": requestId },
@@ -400,7 +445,29 @@ export function ResearchCenterClient() {
               </p>
               <p className="mt-1 font-mono text-xs text-slate-500">ref: {result.reportRef}</p>
               {result.requestId ? (
-                <p className="mt-1 font-mono text-[11px] text-slate-500">requestId: {result.requestId}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-slate-500">
+                  <span>requestId: {result.requestId}</span>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-800"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(result.requestId ?? "");
+                    }}
+                  >
+                    복사
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-800"
+                    onClick={() => {
+                      setTraceInput(result.requestId ?? "");
+                      void fetchOpsTrace(result.requestId ?? "");
+                      setOpsDiagOpen(true);
+                    }}
+                  >
+                    운영 추적 보기
+                  </button>
+                </div>
               ) : null}
               {result.sheetsAppended ? (
                 <p className="mt-1 text-xs text-emerald-700">Google Sheets에 요약이 저장되었습니다.</p>
@@ -513,7 +580,57 @@ export function ResearchCenterClient() {
                 <p className="font-mono text-[11px] text-slate-600">
                   최근 requestId: {opsSummary.summary.recentRequestIds.join(", ") || "—"}
                 </p>
-                <div className="flex flex-wrap gap-2 pt-1">
+                <div className="mt-2 flex flex-wrap items-end gap-2">
+                  <label className="flex flex-col gap-0.5 text-[11px] text-slate-600">
+                    requestId로 상세 확인 (ops-trace)
+                    <input
+                      value={traceInput}
+                      onChange={(e) => setTraceInput(e.target.value)}
+                      className="w-52 max-w-full rounded border border-slate-300 px-2 py-1 font-mono text-[11px]"
+                      placeholder="rc_…"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-800"
+                    disabled={traceLoading}
+                    onClick={() => void fetchOpsTrace(traceInput)}
+                  >
+                    {traceLoading ? "조회…" : "조회"}
+                  </button>
+                </div>
+                {traceErr ? <p className="mt-1 text-[11px] text-amber-800">{traceErr}</p> : null}
+                {traceData?.found && traceData.summary ? (
+                  <div className="mt-2 rounded border border-slate-200 bg-white p-2 text-[11px] text-slate-700">
+                    <p className="font-medium text-slate-800">추적 요약</p>
+                    <p>
+                      유형: {traceData.summary.primaryCategory} · 최고 심각도: {traceData.summary.severityMax}
+                    </p>
+                    <p>
+                      구간: {traceData.summary.firstSeenAt ?? "—"} → {traceData.summary.lastSeenAt ?? "—"}
+                      {typeof traceData.summary.durationObservedMs === "number"
+                        ? ` · 관측 간격 ${Math.round(traceData.summary.durationObservedMs / 1000)}s`
+                        : ""}
+                    </p>
+                    <p>
+                      가장 오래 걸린 단계:{" "}
+                      {traceSlowestStage
+                        ? `${traceSlowestStage.stage} (${traceSlowestStage.ms}ms)`
+                        : "측정 없음"}
+                    </p>
+                    <p className="mt-1 text-slate-600">{traceData.recommendedAction}</p>
+                    <p className="mt-2 font-medium text-slate-800">최근 이벤트</p>
+                    <ul className="mt-1 list-inside list-disc space-y-1 text-slate-600">
+                      {traceData.timeline.slice(-5).map((ev) => (
+                        <li key={`${ev.at}-${ev.code}`}>
+                          [{ev.severity}] {ev.stage}: {ev.code} — {ev.message.slice(0, 120)}
+                          {typeof ev.durationMs === "number" ? ` (${ev.durationMs}ms)` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-2 pt-2">
                   <Link
                     href="/ops-events?domain=research_center"
                     className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-800 underline-offset-2 hover:underline"

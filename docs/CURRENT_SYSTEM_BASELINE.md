@@ -47,11 +47,13 @@
   - degraded structured memory 시 signal upsert skip
 - Research Center
   - explicit generation action with requestId trace (`/api/research-center/generate`)
-  - failed/degraded stage split (`provider`/`sheets`/`context_cache`/`response_parse`)
+  - failed/degraded stage split (`provider`/`finalizer`/`sheets`/`context_cache`/`response_parse`); Chief Editor 실패 시 데스크 초안 병합 fallback(`fallback_editor_synthesis`), 자동 매매 없음
+  - transient provider errors: 엔진 전체 최대 1회 재시도; timeout env: `RESEARCH_CENTER_TOTAL_TIMEOUT_MS`(호환 `RESEARCH_CENTER_ROUTE_TIMEOUT_MS`), `RESEARCH_CENTER_PROVIDER_TIMEOUT_MS`, `RESEARCH_CENTER_FINALIZER_TIMEOUT_MS`, `RESEARCH_CENTER_SHEETS_TIMEOUT_MS`, `RESEARCH_CENTER_CONTEXT_CACHE_TIMEOUT_MS`
   - client shows `errorCode`/`requestId`/`actionHint` instead of plain `Failed to fetch`
   - sheets/context cache/memory compare failure stays degraded when report body exists
-  - `GET /api/research-center/ops-summary` — read-only ops 집계(SELECT만, DB write 없음), 실패 유형·stage·최근 requestId 요약
-  - `qualityMeta.researchCenter.timings`로 단계별 소요(`sheetsMs`=요청·리포트 로그 append, `contextCacheMs`=컨텍스트 캐시 행)·timeout budget·근접 경고 관측; provider 동기 long-running은 job queue 후보
+  - `GET /api/research-center/ops-summary` — read-only **집계**(SELECT만)
+  - `GET /api/research-center/ops-trace` — read-only **단일 requestId 타임라인**(SELECT만)
+  - `qualityMeta.researchCenter.timings`·`timeoutBudget`으로 단계별 소요·예산·근접 경고 관측; provider 동기 long-running은 job queue 후보; **requestId는 큐 전환 후에도 동일 추적 키로 재사용 가능**
 - Ops
   - `web_ops_events` fingerprint upsert RPC 우선
   - `opsLogBudget` 기반 write budget/cooldown/read-only 억제

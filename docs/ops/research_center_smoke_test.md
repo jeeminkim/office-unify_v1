@@ -40,9 +40,11 @@
 
 ### 6. 운영 추적
 
-- 성공/실패 응답의 `requestId`를 복사
-- `/ops-events?domain=research_center&q=<requestId>`에서 동일 ID 검색
-- (선택) `GET /api/research-center/ops-summary?range=24h` — read-only, **DB write 없음**, 집계·최근 실패 목록만 확인
+- 성공/실패 응답의 `requestId`를 복사(UI **복사** 버튼 또는 수동)
+- `GET /api/research-center/ops-trace?requestId=<id>&range=24h` — **단일 요청** 타임라인(read-only, DB write 없음)
+- `GET /api/research-center/ops-summary?range=24h` — 기간 **집계**(read-only, DB write 없음) — trace와 구분: summary=전체 통계, trace=한 requestId
+- `/ops-events?domain=research_center&q=<requestId>` UI 검색
+- `qualityMeta.researchCenter.timeoutBudget` / `timings` / `meta.resultMode` / `providerRetryCount` 확인
 
 ### 7. 장기 리스크(참고)
 
@@ -50,7 +52,7 @@
 
 ## 자동 스크립트
 
-- `apps/web/scripts/research-center-smoke.ts` — 기본 **dry-run**(환경 변수 이름 수준만 점검). 실제 호출은 `LIVE=1` 및 배포 URL·세션 쿠키가 필요하므로 운영에서만 신중히 사용.
+- `apps/web/scripts/research-center-smoke.ts` — 기본 **dry-run**(timeout 계열 env·ops-trace 절차 출력). 실제 호출은 `LIVE=1` 및 배포 URL·세션 쿠키가 필요.
 
 ```bash
 npm run research-center-smoke --workspace=apps/web

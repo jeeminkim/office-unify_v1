@@ -8,8 +8,12 @@ const envHints = [
   "GEMINI_API_KEY",
   "SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
+  "RESEARCH_CENTER_TOTAL_TIMEOUT_MS",
   "RESEARCH_CENTER_ROUTE_TIMEOUT_MS",
+  "RESEARCH_CENTER_PROVIDER_TIMEOUT_MS",
+  "RESEARCH_CENTER_FINALIZER_TIMEOUT_MS",
   "RESEARCH_CENTER_SHEETS_TIMEOUT_MS",
+  "RESEARCH_CENTER_CONTEXT_CACHE_TIMEOUT_MS",
   "GOOGLE_SHEETS_SPREADSHEET_ID",
 ] as const;
 
@@ -25,22 +29,24 @@ async function dryRun(): Promise<void> {
     console.log(maskPresent(k));
   }
   console.log("\nManual checklist (no secrets):");
-  console.log("- saveToSheets=false happy path · saveToSheets=true · invalid input · GEMINI missing");
-  console.log("- Client: network vs HTTP vs JSON parse vs api_error classification");
-  console.log("- Response: requestId, qualityMeta.researchCenter, failedStage/warnings");
-  console.log("- Trace: ops-events with requestId; ops-summary read-only (no INSERT)");
+  console.log("- POST generate → 응답 requestId·qualityMeta.researchCenter.timeoutBudget·timings·meta.resultMode");
+  console.log("- saveToSheets=false / saveToSheets=true");
+  console.log("- includeSheetContext=false vs true (프롬프트 맥락; Sheets 탭과 별개)");
+  console.log("- GET ops-summary?requestId=... (집계) vs GET ops-trace?requestId=... (단일 타임라인)");
+  console.log("- 실패 시: docs/ops/research_center.md 의 점검 순서·timeout env 목록");
   console.log("\nAPI paths when deployed:");
-  console.log("- POST /api/research-center/generate  (explicit action, JSON error on failure)");
-  console.log("- GET  /api/research-center/ops-summary?range=24h|7d  (read-only SELECT on web_ops_events)");
-  console.log("- GET  /ops-events?domain=research_center  (UI)");
+  console.log("- POST /api/research-center/generate");
+  console.log("- GET  /api/research-center/ops-summary?range=24h|7d&requestId=...");
+  console.log("- GET  /api/research-center/ops-trace?range=24h|7d&requestId=...");
+  console.log("- GET  /ops-events?domain=research_center");
   console.log("\nFull steps: docs/ops/research_center_smoke_test.md");
 }
 
 async function liveProbe(base: string): Promise<void> {
   const origin = base.replace(/\/$/, "");
-  const url = `${origin}/api/research-center/ops-summary?range=24h`;
-  console.log(`Fetching (no cookie): ${url}`);
-  const res = await fetch(url, { method: "GET" });
+  const summaryUrl = `${origin}/api/research-center/ops-summary?range=24h`;
+  console.log(`Fetching (no cookie): ${summaryUrl}`);
+  const res = await fetch(summaryUrl, { method: "GET" });
   console.log(`status: ${res.status}, content-type: ${res.headers.get("content-type")}`);
   const text = await res.text();
   console.log(`body prefix: ${text.slice(0, 200)}`);

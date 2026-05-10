@@ -15,15 +15,17 @@
 - Sheets append 실패 시에도 본문 생성은 유지하고, 실패는 warnings/ops로만 남깁니다.
 - 리포트 전체 본문은 Sheets에 저장하지 않고 요약만 append합니다.
 - 생성 요청은 `requestId`로 추적하며, 실패 시 JSON 응답(`errorCode`/`requestId`/`actionHint`)을 반환합니다.
-- `qualityMeta.researchCenter`는 `ok|degraded|failed`와 `failedStage`(`provider`/`sheets`/`context_cache`/`response_parse` 등)를 additive로 제공합니다.
+- `qualityMeta.researchCenter`는 `ok|degraded|failed`와 `failedStage`(`provider`/`finalizer`/`sheets`/`context_cache`/`response_parse` 등)를 additive로 제공합니다.
+- `qualityMeta.researchCenter.timeoutBudget`에 전체·데스크·Chief Editor·Sheets·컨텍스트 캐시 상한(ms)이 요약되며, 잘못된 env는 기본값 + `research_timeout_env_invalid:*` 경고만 남깁니다.
 - `qualityMeta.researchCenter.timings`에 단계별 ms·`timeoutBudgetMs`·`nearTimeout` 및 `research_provider_slow`/`research_generation_near_timeout` 경고가 포함될 수 있습니다. 현재 본문 생성 경로에 별도 memory compare 단계가 없으면 `memoryCompareMs`는 생략될 수 있습니다.
 - `trend_memory_compare_failed`는 보조 비교 단계 경고로 다루며 본문 생성 성공 시 전체 실패로 전파하지 않습니다.
 - secret/token/API key/prompt 원문은 ops detail에 저장하지 않습니다.
 
 ## API
 
-- `POST /api/research-center/generate` — 본문은 `ResearchCenterGenerateRequestBody` / `ResearchCenterGenerateResponseBody` (`@office-unify/shared-types`). 실패 시에도 JSON(`ok:false`, `errorCode`, `requestId`, `actionHint`, `qualityMeta.researchCenter`).
-- `GET /api/research-center/ops-summary` — 최근 Research Center 운영 이벤트 집계(**read-only**, `web_ops_events` 조회만, 응답에 secret/token/prompt 전문 없음). 쿼리: `range=24h|7d`, `requestId`, `limit`.
+- `POST /api/research-center/generate` — 본문은 `ResearchCenterGenerateRequestBody` / `ResearchCenterGenerateResponseBody` (`@office-unify/shared-types`). 실패 시에도 JSON(`ok:false`, `errorCode`, `requestId`, `actionHint`, `qualityMeta.researchCenter`). 성공 응답 `meta`에 `resultMode`(`full`|`fallback_editor_synthesis`), `providerRetryCount` 등 additive 필드.
+- `GET /api/research-center/ops-summary` — 기간·코드·stage **집계**(**read-only**). 쿼리: `range=24h|7d`, `requestId`, `limit`.
+- `GET /api/research-center/ops-trace` — **단일 requestId** 타임라인·권장 조치(**read-only**). 쿼리: `requestId`, `range=24h|7d`. ops-summary와 달리 한 요청의 시간순 이벤트에 초점.
 
 ## UI
 

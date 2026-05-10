@@ -233,6 +233,8 @@ export type {
   ResearchCenterOpsSummaryResponse,
   ResearchCenterOpsSummaryRecentEvent,
   ResearchCenterOpsFailureCategories,
+  ResearchCenterOpsTraceResponse,
+  ResearchCenterOpsTraceTimelineEntry,
   ResearchCenterGenerateRequestBody,
   ResearchCenterGenerateErrorResponseBody,
   ResearchCenterGenerateResponseBody,
@@ -244,6 +246,13 @@ export type {
 } from './researchCenter';
 export { RESEARCH_CENTER_ERROR_CODE } from './researchCenterErrors';
 export type { ResearchCenterErrorCode } from './researchCenterErrors';
+export {
+  RESEARCH_CENTER_TOTAL_TIMEOUT_MS_DEFAULT,
+  RESEARCH_CENTER_TOTAL_TIMEOUT_MS_MAX,
+  RESEARCH_CENTER_TOTAL_TIMEOUT_MS_MIN,
+  clampResearchCenterTotalTimeoutMs,
+  parseResearchCenterTotalTimeoutMs,
+} from './researchCenterTimeoutConstants';
 export type {
   TrendAnalysisGenerateRequestBody,
   TrendAnalysisGenerateResponseBody,

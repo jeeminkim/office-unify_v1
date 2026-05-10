@@ -26,7 +26,7 @@ export * from './committee/committeeFollowupReanalysis';
 export * from './infographic/infographicPrompt';
 export * from './infographic/infographicExtractor';
 export * from './sheets/portfolioSheetsModel';
-export { runResearchCenterGeneration } from './research-center/researchCenterOrchestrator';
+export { runResearchCenterGeneration, type ResearchCenterGenerationTrace } from './research-center/researchCenterOrchestrator';
 export {
   buildResearchContextCacheRow,
   buildResearchRequestRow,

@@ -3,6 +3,7 @@ import type {
   ResearchCenterFailedStage,
   ResearchCenterGenerateErrorResponseBody,
   ResearchCenterGenerateRequestBody,
+  ResearchCenterGenerateResponseBody,
   ResearchCenterQualityMeta,
   ResearchDeskId,
   ResearchToneMode,
@@ -11,14 +12,20 @@ import { RESEARCH_CENTER_ERROR_CODE } from "@office-unify/shared-types";
 import { runResearchCenterGeneration } from "@office-unify/ai-office-engine";
 import { OPS_LOG_MAX_WRITES_PER_REQUEST, shouldWriteOpsEvent } from "@/lib/server/opsLogBudget";
 import { requirePersonaChatAuth } from "@/lib/server/persona-chat-auth";
-import { appendResearchCenterSheets, isResearchSheetsAppendConfigured } from "@/lib/server/research-center-sheets";
+import {
+  appendResearchContextCacheRow,
+  appendResearchSheetsRequestAndReportsLog,
+  isResearchSheetsAppendConfigured,
+} from "@/lib/server/research-center-sheets";
 import {
   buildResearchOpsFingerprint,
+  isTransientResearchProviderError,
   maskInputPreview,
   runPromiseWithTimeout,
   toRequestId,
   todayYmdKst,
 } from "@/lib/server/researchCenterRouteUtils";
+import { applyTimeoutBudgetToQualityMeta, parseResearchCenterTimeoutBudget } from "@/lib/server/researchCenterTimeoutBudget";
 import {
   classifyResearchCenterError,
   mapStageToResearchErrorCode,
@@ -96,6 +103,26 @@ function normalizeDesksList(
 
 function elapsedMs(start: number): number {
   return Math.max(0, Date.now() - start);
+}
+
+function buildGenerateMeta(input: {
+  body: ResearchCenterGenerateRequestBody;
+  fallbackUsed: boolean;
+  providerRetryCount: number;
+  resultMode: "full" | "fallback_editor_synthesis";
+  sheetsAppendAttempted: boolean;
+  sheetsAppendSucceeded: boolean;
+}): NonNullable<ResearchCenterGenerateResponseBody["meta"]> {
+  return {
+    providerUsed: "gemini_only",
+    fallbackUsed: input.fallbackUsed,
+    resultMode: input.resultMode,
+    providerRetryCount: input.providerRetryCount,
+    includeSheetContext: input.body.includeSheetContext === true,
+    sheetsAppendAttempted: input.sheetsAppendAttempted,
+    sheetsAppendSucceeded: input.sheetsAppendSucceeded,
+    noData: false,
+  };
 }
 
 export async function POST(req: Request) {
@@ -309,26 +336,59 @@ export async function POST(req: Request) {
 
   let providerPhaseStartedAt: number | undefined;
   try {
-    const routeTimeoutMs = Math.min(
-      300_000,
-      Math.max(10_000, Number(process.env.RESEARCH_CENTER_ROUTE_TIMEOUT_MS ?? 120_000) || 120_000),
-    );
-    qualityMeta.timings!.timeoutBudgetMs = routeTimeoutMs;
-    providerPhaseStartedAt = Date.now();
-    const result = await runPromiseWithTimeout(
-      runResearchCenterGeneration({
-        supabase,
-        userKey,
-        geminiApiKey,
-        body,
-      }),
-      routeTimeoutMs,
-      `research_request_timeout:${routeTimeoutMs}`,
-    );
-    qualityMeta.timings!.providerMs = elapsedMs(providerPhaseStartedAt);
+    const budget = parseResearchCenterTimeoutBudget();
+    applyTimeoutBudgetToQualityMeta(qualityMeta, budget);
 
-    qualityMeta.status = "ok";
-    qualityMeta.warnings = [];
+    let engineOut: Awaited<ReturnType<typeof runResearchCenterGeneration>> | null = null;
+    let lastEngineErr: unknown;
+    let retriesDone = 0;
+    providerPhaseStartedAt = Date.now();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        engineOut = await runPromiseWithTimeout(
+          runResearchCenterGeneration({
+            supabase,
+            userKey,
+            geminiApiKey,
+            body,
+            timeouts: {
+              geminiDeskCallMs: budget.providerPerCallMs,
+              geminiFinalizerMs: budget.finalizerMs,
+            },
+          }),
+          budget.totalMs,
+          `research_request_timeout:${budget.totalMs}`,
+        );
+        retriesDone = attempt;
+        break;
+      } catch (e) {
+        lastEngineErr = e;
+        if (attempt === 0 && isTransientResearchProviderError(e)) {
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (!engineOut) {
+      throw lastEngineErr ?? new Error("research_engine_failed");
+    }
+
+    const { result, trace } = engineOut;
+    qualityMeta.providerRetryCount = retriesDone;
+    qualityMeta.deskPhaseMs = trace.deskPhaseMs;
+    qualityMeta.finalizerMs = trace.finalizerMs;
+    qualityMeta.timings!.providerMs = trace.deskPhaseMs + trace.finalizerMs;
+
+    const editorFallback = trace.finalizerFallbackUsed;
+    const resultMode = editorFallback ? "fallback_editor_synthesis" : "full";
+    qualityMeta.status = editorFallback ? "degraded" : "ok";
+    qualityMeta.failedStage = editorFallback ? "finalizer" : undefined;
+    qualityMeta.warnings = [...result.warnings];
+    if (editorFallback) {
+      qualityMeta.warnings = Array.from(
+        new Set([...qualityMeta.warnings, "research_editor_fallback_desk_synthesis"]),
+      );
+    }
 
     if (body.saveToSheets) {
       qualityMeta.sheetsSave = { requested: true, ok: false };
@@ -338,10 +398,13 @@ export async function POST(req: Request) {
         qualityMeta.failedStage = "sheets";
         qualityMeta.sheetsSave.warningCode = RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED;
         qualityMeta.contextCache.warningCode = RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED;
-        qualityMeta.warnings = [
-          RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED,
-          RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED,
-        ];
+        qualityMeta.warnings = Array.from(
+          new Set([
+            ...qualityMeta.warnings,
+            RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED,
+            RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED,
+          ]),
+        );
         await logEvent({
           eventCode: "research_report_degraded",
           severity: "warning",
@@ -356,14 +419,14 @@ export async function POST(req: Request) {
             requestId: qualityMeta.requestId,
             sheetsAppended: false,
             actionHint: "GOOGLE_SERVICE_ACCOUNT_JSON / GOOGLE_SHEETS_SPREADSHEET_ID를 확인하세요.",
-            meta: {
-              providerUsed: "gemini_only",
-              fallbackUsed: false,
-              includeSheetContext: body.includeSheetContext === true,
+            meta: buildGenerateMeta({
+              body,
+              fallbackUsed: editorFallback,
+              providerRetryCount: retriesDone,
+              resultMode,
               sheetsAppendAttempted: true,
               sheetsAppendSucceeded: false,
-              noData: false,
-            },
+            }),
             warnings: [
               ...result.warnings,
               "리포트는 생성됐지만 Google Sheets 설정이 없어 저장하지 못했습니다.",
@@ -373,21 +436,18 @@ export async function POST(req: Request) {
           { status: 200 },
         );
       }
-      const sheetsStartMs = Date.now();
-      const sheetsTimeoutMs = Math.min(
-        120_000,
-        Math.max(5_000, Number(process.env.RESEARCH_CENTER_SHEETS_TIMEOUT_MS ?? 45_000) || 45_000),
-      );
-      let sheets: Awaited<ReturnType<typeof appendResearchCenterSheets>>;
+
+      const sheetsWallStart = Date.now();
+      let rowsPart: Awaited<ReturnType<typeof appendResearchSheetsRequestAndReportsLog>>;
       try {
-        sheets = await runPromiseWithTimeout(
-          appendResearchCenterSheets({ body, result, desks }),
-          sheetsTimeoutMs,
-          `research_sheets_timeout:${sheetsTimeoutMs}`,
+        rowsPart = await runPromiseWithTimeout(
+          appendResearchSheetsRequestAndReportsLog({ body, result, desks }),
+          budget.sheetsMs,
+          `research_sheets_rows_timeout:${budget.sheetsMs}`,
         );
       } catch {
-        qualityMeta.timings!.sheetsMs = elapsedMs(sheetsStartMs);
-        qualityMeta.timings!.contextCacheMs = qualityMeta.timings!.sheetsMs;
+        qualityMeta.timings!.sheetsMs = elapsedMs(sheetsWallStart);
+        qualityMeta.timings!.contextCacheMs = 0;
         qualityMeta.status = "degraded";
         qualityMeta.failedStage = "sheets";
         qualityMeta.sheetsSave = {
@@ -404,15 +464,15 @@ export async function POST(req: Request) {
           new Set([
             ...qualityMeta.warnings,
             RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED,
-            "research_sheets_stage_timeout",
+            "research_sheets_rows_timeout",
           ]),
         );
         await logEvent({
           eventCode: "research_report_degraded",
           severity: "warning",
           stage: "sheets",
-          message: "Research sheets append timed out",
-          detail: { sheetsTimeoutMs },
+          message: "Research sheets rows phase timed out",
+          detail: { sheetsBudgetMs: budget.sheetsMs },
         });
         finalizeQualityTiming();
         return NextResponse.json({
@@ -422,19 +482,90 @@ export async function POST(req: Request) {
           sheetsAppended: false,
           warnings: [
             ...result.warnings,
-            "리포트는 생성됐지만 Google Sheets 저장 단계가 시간 초과로 중단되었습니다.",
+            "리포트는 생성됐지만 Google Sheets 요청·로그 행 단계가 시간 초과로 중단되었습니다.",
           ],
           qualityMeta: { researchCenter: qualityMeta },
-          meta: {
-            providerUsed: "gemini_only",
-            fallbackUsed: false,
-            includeSheetContext: body.includeSheetContext === true,
+          meta: buildGenerateMeta({
+            body,
+            fallbackUsed: editorFallback,
+            providerRetryCount: retriesDone,
+            resultMode,
             sheetsAppendAttempted: true,
             sheetsAppendSucceeded: false,
-            noData: false,
-          },
+          }),
         });
       }
+
+      const ctxStart = Date.now();
+      let ctxPart: Awaited<ReturnType<typeof appendResearchContextCacheRow>>;
+      try {
+        ctxPart = await runPromiseWithTimeout(
+          appendResearchContextCacheRow({ body, result, desks }),
+          budget.contextCacheMs,
+          `research_context_cache_timeout:${budget.contextCacheMs}`,
+        );
+      } catch {
+        qualityMeta.timings!.sheetsMs =
+          rowsPart.timings.researchRequestsMs + rowsPart.timings.researchReportsLogMs;
+        qualityMeta.timings!.contextCacheMs = elapsedMs(ctxStart);
+        qualityMeta.status = "degraded";
+        qualityMeta.failedStage = "context_cache";
+        qualityMeta.sheetsSave.ok = rowsPart.requestRowOk && rowsPart.reportsLogOk;
+        qualityMeta.contextCache.ok = false;
+        qualityMeta.contextCache.warningCode = RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED;
+        if (!qualityMeta.sheetsSave.ok) {
+          qualityMeta.sheetsSave.warningCode = RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED;
+        }
+        qualityMeta.warnings = Array.from(
+          new Set([
+            ...qualityMeta.warnings,
+            RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED,
+            "research_context_cache_timeout",
+          ]),
+        );
+        await logEvent({
+          eventCode: "research_report_degraded",
+          severity: "warning",
+          stage: "context_cache",
+          message: "Research context cache append timed out",
+          detail: { contextCacheBudgetMs: budget.contextCacheMs },
+        });
+        finalizeQualityTiming();
+        return NextResponse.json({
+          ...result,
+          ok: true,
+          requestId: qualityMeta.requestId,
+          sheetsAppended: false,
+          warnings: [
+            ...result.warnings,
+            ...rowsPart.warnings.map((w) => `sheets:${w}`),
+            "리포트는 생성됐지만 research_context_cache 행 저장이 시간 초과로 중단되었습니다. includeSheetContext·탭·권한을 확인하세요.",
+          ],
+          qualityMeta: { researchCenter: qualityMeta },
+          meta: buildGenerateMeta({
+            body,
+            fallbackUsed: editorFallback,
+            providerRetryCount: retriesDone,
+            resultMode,
+            sheetsAppendAttempted: true,
+            sheetsAppendSucceeded: rowsPart.ok,
+          }),
+        });
+      }
+
+      const sheets = {
+        ok: rowsPart.ok && ctxPart.ok,
+        requestRowOk: rowsPart.requestRowOk,
+        reportsLogOk: rowsPart.reportsLogOk,
+        contextCacheOk: ctxPart.contextCacheOk,
+        warnings: [...rowsPart.warnings, ...ctxPart.warnings],
+        timings: {
+          researchRequestsMs: rowsPart.timings.researchRequestsMs,
+          researchReportsLogMs: rowsPart.timings.researchReportsLogMs,
+          researchContextCacheMs: ctxPart.timings.researchContextCacheMs,
+        },
+      };
+
       qualityMeta.timings!.sheetsMs =
         sheets.timings.researchRequestsMs + sheets.timings.researchReportsLogMs;
       qualityMeta.timings!.contextCacheMs = sheets.timings.researchContextCacheMs;
@@ -487,14 +618,14 @@ export async function POST(req: Request) {
           ...(!sheets.ok ? ["리포트는 생성됐지만 Google Sheets 일부 저장에 실패했습니다."] : []),
         ],
         qualityMeta: { researchCenter: qualityMeta },
-        meta: {
-          providerUsed: "gemini_only",
-          fallbackUsed: false,
-          includeSheetContext: body.includeSheetContext === true,
+        meta: buildGenerateMeta({
+          body,
+          fallbackUsed: editorFallback,
+          providerRetryCount: retriesDone,
+          resultMode,
           sheetsAppendAttempted: true,
           sheetsAppendSucceeded: sheets.ok,
-          noData: false,
-        },
+        }),
       });
     }
 
@@ -511,14 +642,14 @@ export async function POST(req: Request) {
       ok: true,
       requestId: qualityMeta.requestId,
       qualityMeta: { researchCenter: qualityMeta },
-      meta: {
-        providerUsed: "gemini_only",
-        fallbackUsed: false,
-        includeSheetContext: body.includeSheetContext === true,
+      meta: buildGenerateMeta({
+        body,
+        fallbackUsed: editorFallback,
+        providerRetryCount: retriesDone,
+        resultMode,
         sheetsAppendAttempted: false,
         sheetsAppendSucceeded: false,
-        noData: false,
-      },
+      }),
     });
   } catch (e: unknown) {
     if (providerPhaseStartedAt !== undefined && qualityMeta.timings!.providerMs === undefined) {
@@ -532,15 +663,22 @@ export async function POST(req: Request) {
         ? 400
         : stage === "timeout" || rawMessage.includes("timeout") || rawMessage.includes("aborted")
           ? 504
-          : stage === "provider"
+          : stage === "provider" || stage === "finalizer"
             ? 502
             : 500;
+    const msg =
+      stage === "response_parse"
+        ? "LLM 응답 정제에 실패했습니다. 잠시 후 다시 시도해 주세요."
+        : "리포트 생성 중 오류가 발생했습니다.";
     return fail({
       status,
       stage,
       errorCode,
-      message: "리포트 생성 중 오류가 발생했습니다.",
-      actionHint: toResearchActionHint(errorCode),
+      message: msg,
+      actionHint:
+        stage === "response_parse"
+          ? toResearchActionHint(RESEARCH_CENTER_ERROR_CODE.RESPONSE_PARSE_FAILED)
+          : toResearchActionHint(errorCode),
       detail: sanitizeResearchErrorDetail({
         originalError: rawMessage.slice(0, 500),
       }),
