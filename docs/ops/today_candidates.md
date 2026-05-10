@@ -21,6 +21,13 @@
 - 응답 구조: `today-brief`의 optional `candidates.userContext` / `candidates.usMarketKr`
 - 모든 후보는 `isBuyRecommendation=false`
 
+### 메인 3카드 덱 (additive)
+
+- **`primaryCandidateDeck`**: 관심사 후보 상위 **2** + Sector Radar에서 고른 **대표 ETF 1** (ETF 없으면 관심 후보 **top 3** fallback, `qualityMeta.todayCandidates.composition.fallbackReason`).
+- 카드 표시는 내부 raw `score` 대신 **`displayMetrics`**(`관찰 점수 n/100`, 신뢰도·데이터 품질 등). 원본 배열 `candidates.*`는 유지.
+- 미국 신호→한국 후보가 비면 **`usKrSignalDiagnostics`**·`usMarketSummary.diagnostics`로 원인 코드를 노출; ops **`us_signal_candidates_empty`**(budget/cooldown·fingerprint).
+
+
 ## 관심종목 추가
 
 - API: `POST /api/portfolio/watchlist/add-candidate`
@@ -34,6 +41,7 @@
 
 ## Ops 이벤트 코드
 
+- `us_signal_candidates_empty` (미국 신호 경로에서 한국 후보 0건; detail에 `primaryReason` 등)
 - `today_candidates_generated`
 - `today_candidates_us_market_no_data`
 - `today_candidate_detail_opened`

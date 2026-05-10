@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vitest";
+import type { SectorRadarSummaryResponse } from "@/lib/sectorRadarContract";
+import type { TodayStockCandidate, UsMarketMorningSummary } from "@/lib/todayCandidatesContract";
+import { composeTodayBriefCandidates, buildSectorRadarEtfCandidate } from "./todayBriefCandidateComposer";
+import { buildTodayCandidateDisplayMetrics } from "./todayBriefCandidateDisplay";
+
+const usSum = (available: boolean): UsMarketMorningSummary => ({
+  asOfKst: new Date().toISOString(),
+  available,
+  conclusion: available ? "risk_on" : "no_data",
+  summary: "t",
+  signals: [],
+  warnings: available ? [] : ["us_market_quote_unavailable"],
+});
+
+function interest(id: string, score: number): TodayStockCandidate {
+  return {
+    candidateId: id,
+    name: "A",
+    market: "KOSPI",
+    country: "KR",
+    source: "user_context",
+    score,
+    confidence: "medium",
+    riskLevel: "medium",
+    reasonSummary: "r",
+    reasonDetails: [],
+    positiveSignals: [],
+    cautionNotes: [],
+    relatedUserContext: [],
+    relatedWatchlistSymbols: ["KR:000"],
+    isBuyRecommendation: false,
+  };
+}
+
+describe("composeTodayBriefCandidates", () => {
+  it("picks top2 interest and one sector ETF with display metrics", () => {
+    const radar: SectorRadarSummaryResponse = {
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      sectors: [
+        {
+          key: "s1",
+          name: "AI/전력",
+          score: 80,
+          adjustedScore: 80,
+          zone: "greed",
+          actionHint: "hold",
+          narrativeHint: "n",
+          warnings: [],
+          anchors: [
+            {
+              symbol: "SOXX",
+              name: "SOXX ETF",
+              googleTicker: "NASDAQ:SOXX",
+              sourceLabel: "seed",
+              dataStatus: "ok",
+              etfDisplayGroup: "scored",
+              etfQuoteQualityStatus: "ok",
+              changePct: 1.2,
+            },
+          ],
+          components: {},
+        },
+      ],
+      warnings: [],
+      fearCandidatesTop3: [],
+      greedCandidatesTop3: [],
+    };
+    const out = composeTodayBriefCandidates({
+      userContextCandidates: [interest("a", 50), interest("b", 60), interest("c", 40)],
+      sectorRadarSummary: radar,
+      usMarketSummary: usSum(true),
+      usMarketKrCandidates: [],
+    });
+    expect(out.deck).toHaveLength(3);
+    expect(out.deck.filter((x) => x.briefDeckSlot === "interest_stock")).toHaveLength(2);
+    expect(out.deck.find((x) => x.briefDeckSlot === "sector_etf")).toBeTruthy();
+    const dm = buildTodayCandidateDisplayMetrics(out.deck[0], { briefDeckSlot: "interest_stock" });
+    expect(dm.observationScore).toBeGreaterThanOrEqual(0);
+    expect(dm.scoreExplanation).not.toMatch(/우선순위/);
+  });
+
+  it("falls back to interest top3 when no ETF", () => {
+    const out = composeTodayBriefCandidates({
+      userContextCandidates: [interest("a", 55), interest("b", 54), interest("c", 53)],
+      sectorRadarSummary: { ok: true, generatedAt: "", sectors: [], warnings: [], fearCandidatesTop3: [], greedCandidatesTop3: [] },
+      usMarketSummary: usSum(true),
+      usMarketKrCandidates: [],
+    });
+    expect(out.deck).toHaveLength(3);
+    expect(out.qualityMeta.fallbackReason).toBeDefined();
+  });
+});
+
+describe("buildSectorRadarEtfCandidate", () => {
+  it("marks sector etf slot", () => {
+    const c = buildSectorRadarEtfCandidate({
+      sector: {
+        key: "k",
+        name: "T",
+        zone: "neutral",
+        actionHint: "hold",
+        narrativeHint: "n",
+        score: 70,
+        warnings: [],
+        anchors: [],
+        components: {},
+      },
+      anchor: {
+        symbol: "X",
+        name: "X ETF",
+        googleTicker: "US:X",
+        sourceLabel: "seed",
+        dataStatus: "ok",
+        etfQuoteQualityStatus: "ok",
+      },
+    });
+    expect(c.source).toBe("sector_radar");
+    expect(c.briefDeckSlot).toBe("sector_etf");
+  });
+});

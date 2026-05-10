@@ -11,6 +11,9 @@ import {
 import { loadHoldingQuotes } from '@/lib/server/marketQuoteService';
 import { analyzeThesisHealth } from '@/lib/server/thesisHealthAnalyzer';
 import { buildTodayStockCandidates } from '@/lib/server/todayStockCandidateService';
+import { composeTodayBriefCandidates } from '@/lib/server/todayBriefCandidateComposer';
+import { buildTodayCandidateDisplayMetrics } from '@/lib/server/todayBriefCandidateDisplay';
+import { diagnoseUsKrSignalCandidates } from '@/lib/server/usSignalCandidateDiagnostics';
 import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
 import {
   appendQualityMetaOpsEventTrace,
@@ -27,7 +30,15 @@ import {
   OPS_TODAY_CANDIDATES_EVENT_CODES,
   shouldLogTodayCandidatesSummaryBatchDegraded,
 } from '@/lib/server/opsAggregateWarnings';
-import type { TodayBriefWithCandidatesResponse } from '@/lib/todayCandidatesContract';
+import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from '@/lib/todayCandidatesContract';
+
+function withTodayCandidateDisplayMetrics(c: TodayStockCandidate): TodayStockCandidate {
+  if (c.displayMetrics) return c;
+  return {
+    ...c,
+    displayMetrics: buildTodayCandidateDisplayMetrics(c, { briefDeckSlot: c.briefDeckSlot }),
+  };
+}
 
 function toNum(v: number | string | null | undefined): number {
   const n = Number(v ?? 0);
@@ -238,7 +249,19 @@ export async function GET() {
     const todayCandidates = await buildTodayStockCandidates({
       supabase,
       userKey: auth.userKey,
-      limitPerSection: 3,
+      limitPerSection: 5,
+    });
+
+    const composedDeck = composeTodayBriefCandidates({
+      userContextCandidates: todayCandidates.userContextCandidates,
+      sectorRadarSummary: todayCandidates.sectorRadarSummary,
+      usMarketSummary: todayCandidates.usMarketSummary,
+      usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
+    });
+
+    const usKrSignalDiagnostics = diagnoseUsKrSignalCandidates({
+      usMarketSummary: todayCandidates.usMarketSummary,
+      usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
     });
     const ymd = ymdKst();
     const opsLogging: {
@@ -381,6 +404,60 @@ export async function GET() {
         else if (opsLogging.warnings.length < 10) opsLogging.warnings.push(write.warning ?? 'today_candidates_summary_batch_degraded_log_failed');
       }
     }
+
+    if (usKrSignalDiagnostics && todayCandidates.usMarketKrCandidates.length === 0) {
+      const fingerprint = `today_candidates:${auth.userKey}:${ymd}:us_signal_empty:${usKrSignalDiagnostics.primaryReason}`;
+      const { data: existingUs } = await supabase
+        .from('web_ops_events')
+        .select('last_seen_at')
+        .eq('fingerprint', fingerprint)
+        .maybeSingle<{ last_seen_at: string }>();
+      const decisionUs = shouldWriteOpsEvent({
+        domain: 'today_candidates',
+        code: OPS_TODAY_CANDIDATES_EVENT_CODES.US_SIGNAL_CANDIDATES_EMPTY,
+        severity: 'warning',
+        fingerprint,
+        isReadOnlyRoute: true,
+        isCritical: true,
+        lastSeenAt: existingUs?.last_seen_at ?? null,
+        cooldownMinutes: 60 * 6,
+        writesUsed: opsLogging.written,
+        maxWritesPerRequest: OPS_LOG_MAX_WRITES_PER_REQUEST,
+      });
+      opsLogging.attempted += 1;
+      appendQualityMetaOpsEventTrace(opsLogging, {
+        code: OPS_TODAY_CANDIDATES_EVENT_CODES.US_SIGNAL_CANDIDATES_EMPTY,
+        shouldWrite: decisionUs.shouldWrite,
+        reason: decisionUs.reason,
+      });
+      if (!decisionUs.shouldWrite) {
+        if (decisionUs.reason === 'skipped_read_only') opsLogging.skippedReadOnly += 1;
+        if (decisionUs.reason === 'skipped_cooldown') opsLogging.skippedCooldown += 1;
+        if (decisionUs.reason === 'skipped_budget_exceeded') opsLogging.skippedBudgetExceeded += 1;
+      } else {
+        const writeUs = await upsertOpsEventByFingerprint({
+          userKey: String(auth.userKey),
+          domain: 'today_candidates',
+          eventType: 'warning',
+          severity: 'warning',
+          code: OPS_TODAY_CANDIDATES_EVENT_CODES.US_SIGNAL_CANDIDATES_EMPTY,
+          message: 'US signal KR mapping produced zero candidates',
+          detail: {
+            primaryReason: usKrSignalDiagnostics.primaryReason,
+            reasonCodes: usKrSignalDiagnostics.reasonCodes,
+            krCandidateCount: 0,
+          },
+          fingerprint,
+          status: 'open',
+          route: '/api/dashboard/today-brief',
+          component: 'today-brief',
+        });
+        if (writeUs.ok) opsLogging.written += 1;
+        else if (opsLogging.warnings.length < 10)
+          opsLogging.warnings.push(writeUs.warning ?? 'us_signal_candidates_empty_log_failed');
+      }
+    }
+
     const { data: ppRows, error: ppErr } = await supabase
       .from('web_ops_events')
       .select('code,detail,last_seen_at')
@@ -420,9 +497,11 @@ export async function GET() {
       degraded: warnings.length > 0 || !quote.quoteAvailable || !analytics,
       warnings,
       candidates: {
-        userContext: todayCandidates.userContextCandidates,
-        usMarketKr: todayCandidates.usMarketKrCandidates,
+        userContext: todayCandidates.userContextCandidates.map(withTodayCandidateDisplayMetrics),
+        usMarketKr: todayCandidates.usMarketKrCandidates.map(withTodayCandidateDisplayMetrics),
       },
+      primaryCandidateDeck: composedDeck.deck,
+      usKrSignalDiagnostics: usKrSignalDiagnostics ?? undefined,
       usMarketSummary: todayCandidates.usMarketSummary,
       disclaimer:
         '이 후보는 매수 권유가 아니라, 내 관심종목·대화 이력·섹터 흐름·미국시장 신호를 바탕으로 만든 관찰 목록입니다. 실제 매수 전에는 실적, 뉴스, 가격 위치, 손절 기준을 별도로 확인하세요.',
@@ -444,6 +523,11 @@ export async function GET() {
           },
           opsLogging,
           warnings: todayCandidates.warnings,
+          composition: composedDeck.qualityMeta,
+          usKrEmptyReasonHistogram: usKrSignalDiagnostics
+            ? { [usKrSignalDiagnostics.primaryReason]: 1 }
+            : undefined,
+          sectorEtfFallbackCount: composedDeck.qualityMeta.fallbackReason ? 1 : 0,
         },
       },
     };

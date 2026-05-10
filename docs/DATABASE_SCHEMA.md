@@ -4,6 +4,14 @@ SQL 적용 상태/우선순위는 `docs/ops/sql-application-status.md`를 함께
 
 웹 앱이 Supabase(Postgres)에 기대는 **문서화된 DDL 조각**과의 대응 관계를 정리한다. 전체 레거시(Discord 등) 스키마는 이 저장소 범위를 넘을 수 있다.
 
+## Research Center follow-up items (additive)
+
+**파일:** `docs/sql/append_research_followup_items.sql`
+
+| 테이블 | 역할 |
+|--------|------|
+| `web_research_followup_items` | Research Center에서 추출한 후속 확인 항목·PB 전송 메타(`user_key` 스코프). |
+
 ## Trend Analysis Center — Phase 4 SQL memory
 
 **파일:** `docs/sql/append_web_trend_memory_phase1.sql`

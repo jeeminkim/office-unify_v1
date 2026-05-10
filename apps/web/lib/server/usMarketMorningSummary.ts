@@ -52,6 +52,16 @@ export async function buildUsMarketMorningSummary(): Promise<UsMarketMorningSumm
         summary: '미국시장 데이터가 아직 충분하지 않습니다.',
         signals: [],
         warnings: ['us_market_quote_unavailable'],
+        diagnostics: {
+          yahooQuoteResultCount: 0,
+          anchorSymbolsRequested: US_MARKET_MORNING_ANCHORS.length,
+          fetchFailed: false,
+          representativeAnchors: US_MARKET_MORNING_ANCHORS.slice(0, 4).map((a) => ({
+            key: a.key,
+            label: a.label,
+            quoteSymbol: a.quoteSymbol,
+          })),
+        },
       };
     }
     const spx = pctChange(map.get('SPY'));
@@ -81,6 +91,16 @@ export async function buildUsMarketMorningSummary(): Promise<UsMarketMorningSumm
       summary: `미국장은 ${conclusion} 흐름으로 관측됩니다. 한국장은 추격보다 확인 중심 접근이 필요합니다.`,
       signals,
       warnings: [],
+      diagnostics: {
+        yahooQuoteResultCount: map.size,
+        anchorSymbolsRequested: symbols.length,
+        fetchFailed: false,
+        representativeAnchors: US_MARKET_MORNING_ANCHORS.slice(0, 6).map((a) => ({
+          key: a.key,
+          label: a.label,
+          quoteSymbol: a.quoteSymbol,
+        })),
+      },
     };
   } catch {
     return {
@@ -90,6 +110,16 @@ export async function buildUsMarketMorningSummary(): Promise<UsMarketMorningSumm
       summary: '미국시장 데이터 조회에 실패해 제한적으로 표시합니다.',
       signals: [],
       warnings: ['us_market_quote_fetch_failed'],
+      diagnostics: {
+        yahooQuoteResultCount: 0,
+        anchorSymbolsRequested: US_MARKET_MORNING_ANCHORS.length,
+        fetchFailed: true,
+        representativeAnchors: US_MARKET_MORNING_ANCHORS.slice(0, 4).map((a) => ({
+          key: a.key,
+          label: a.label,
+          quoteSymbol: a.quoteSymbol,
+        })),
+      },
     };
   }
 }

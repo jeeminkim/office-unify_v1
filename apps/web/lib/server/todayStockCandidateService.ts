@@ -55,6 +55,7 @@ export async function buildTodayStockCandidates(input: {
   userContextCandidates: TodayStockCandidate[];
   usMarketKrCandidates: TodayStockCandidate[];
   usMarketSummary: UsMarketMorningSummary;
+  sectorRadarSummary: import('@/lib/sectorRadarContract').SectorRadarSummaryResponse | null;
   warnings: string[];
   confidenceCounts: {
     high: number;
@@ -187,6 +188,7 @@ export async function buildTodayStockCandidates(input: {
     userContextCandidates,
     usMarketKrCandidates,
     usMarketSummary: usSummary,
+    sectorRadarSummary: sectorRadar,
     warnings,
     confidenceCounts,
   };

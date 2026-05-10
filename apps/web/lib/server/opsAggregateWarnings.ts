@@ -8,6 +8,8 @@ export const OPS_AGGREGATE_WARNING_CODES = {
 /** Today Candidates domain codes used by read-only critical whitelist. */
 export const OPS_TODAY_CANDIDATES_EVENT_CODES = {
   US_MARKET_NO_DATA: "today_candidates_us_market_no_data",
+  /** 미국 신호 기반 한국 후보가 0건일 때(진단 코드만 detail). */
+  US_SIGNAL_CANDIDATES_EMPTY: "us_signal_candidates_empty",
 } as const;
 
 /** Event codes that may bypass read-only suppression when `isCritical` is true (still subject to budget/cooldown/fingerprint). */
@@ -15,6 +17,7 @@ export const OPS_READ_ONLY_CRITICAL_WHITELIST_CODES: readonly string[] = [
   OPS_AGGREGATE_WARNING_CODES.SECTOR_RADAR_SUMMARY_BATCH_DEGRADED,
   OPS_AGGREGATE_WARNING_CODES.TODAY_CANDIDATES_SUMMARY_BATCH_DEGRADED,
   OPS_TODAY_CANDIDATES_EVENT_CODES.US_MARKET_NO_DATA,
+  OPS_TODAY_CANDIDATES_EVENT_CODES.US_SIGNAL_CANDIDATES_EMPTY,
 ];
 
 const READ_ONLY_CRITICAL_WHITELIST_SET = new Set<string>(OPS_READ_ONLY_CRITICAL_WHITELIST_CODES);

@@ -254,6 +254,20 @@ export {
   parseResearchCenterTotalTimeoutMs,
 } from './researchCenterTimeoutConstants';
 export type {
+  TodayCandidateConfidenceLabel,
+  TodayCandidateDisplayMetrics,
+  TodayCandidateScoreLabel,
+  TodayBriefDeckSlot,
+  UsKrSignalEmptyReasonCode,
+} from './todayBriefDisplay';
+export type {
+  ResearchFollowupCategory,
+  ResearchFollowupItem,
+  ResearchFollowupPriority,
+  ResearchFollowupRowDto,
+  ResearchFollowupStatus,
+} from './researchFollowups';
+export type {
   TrendAnalysisGenerateRequestBody,
   TrendAnalysisGenerateResponseBody,
   TrendAnalysisMeta,

@@ -23,8 +23,9 @@
 ## 현재 핵심 기능
 
 - Today Candidates
-  - `today-brief` optional `candidates`(`userContext`/`usMarketKr`)
-  - `isBuyRecommendation=false`, 관찰 우선순위 중심 UX
+  - `today-brief` optional `candidates`(`userContext`/`usMarketKr`) + **`primaryCandidateDeck`**(관심 top2 + Sector Radar 대표 ETF 1; ETF 없으면 관심 top3 fallback)
+  - 사용자 표시: **`displayMetrics`**(관찰 점수/신뢰도 등); 미국 신호→KR 후보 없을 때 **`usKrSignalDiagnostics`**
+  - `isBuyRecommendation=false`, 관찰·판단 보조 UX
   - `dataQuality.summary/reasonItems/primaryRisk`(additive)
   - add-candidate + best-effort postprocess
 - Sector Radar
@@ -47,6 +48,7 @@
   - degraded structured memory 시 signal upsert skip
 - Research Center
   - explicit generation action with requestId trace (`/api/research-center/generate`)
+  - “다음에 확인할 것” 섹션 추출 + PB 연계 API(`followups/*`); DB `web_research_followup_items` (SQL `append_research_followup_items.sql`)
   - failed/degraded stage split (`provider`/`finalizer`/`sheets`/`context_cache`/`response_parse`); Chief Editor 실패 시 데스크 초안 병합 fallback(`fallback_editor_synthesis`), 자동 매매 없음
   - transient provider errors: 엔진 전체 최대 1회 재시도; timeout env: `RESEARCH_CENTER_TOTAL_TIMEOUT_MS`(호환 `RESEARCH_CENTER_ROUTE_TIMEOUT_MS`), `RESEARCH_CENTER_PROVIDER_TIMEOUT_MS`, `RESEARCH_CENTER_FINALIZER_TIMEOUT_MS`, `RESEARCH_CENTER_SHEETS_TIMEOUT_MS`, `RESEARCH_CENTER_CONTEXT_CACHE_TIMEOUT_MS`
   - client shows `errorCode`/`requestId`/`actionHint` instead of plain `Failed to fetch`

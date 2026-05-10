@@ -68,6 +68,7 @@
   - 오늘의 3줄 브리핑(리스크/성과/행동) 생성
   - 사실 데이터와 제안 문장을 분리하고 confidence/경고를 함께 반환
   - optional `candidates` 블록(`userContext`/`usMarketKr`) 지원
+  - additive: `primaryCandidateDeck`, `displayMetrics`, `usKrSignalDiagnostics`, `usMarketSummary.diagnostics`
   - 후보별 `dataQuality.summary`, `reasonItems`, `primaryRisk`(additive)
   - 데이터 부족 시 NO_DATA 문구로 degrade
   - read-only 경로에서는 warning을 `qualityMeta.todayCandidates.warnings`에 유지하고 `web_ops_events` write는 제한(하루 1회/no_data, cooldown, budget 정책)

@@ -12,6 +12,8 @@ export interface TodayCandidatesOpsSummaryResponse {
     occurrenceTotal: number;
     generated: number;
     usMarketNoData: number;
+    /**미국 신호→한국 후보 empty ops 건수 */
+    usSignalCandidatesEmpty: number;
     detailOpened: number;
     watchlistAdded: number;
     alreadyExists: number;
@@ -36,6 +38,7 @@ export function summarizeTodayCandidateOps(rows: WebOpsEventRow[], days: number)
     occurrenceTotal: inRange.reduce((acc, x) => acc + Number(x.occurrence_count ?? 1), 0),
     generated: 0,
     usMarketNoData: 0,
+    usSignalCandidatesEmpty: 0,
     detailOpened: 0,
     watchlistAdded: 0,
     alreadyExists: 0,
@@ -44,6 +47,7 @@ export function summarizeTodayCandidateOps(rows: WebOpsEventRow[], days: number)
   for (const row of inRange) {
     if (row.code === 'today_candidates_generated') totals.generated += 1;
     if (row.code === 'today_candidates_us_market_no_data') totals.usMarketNoData += 1;
+    if (row.code === 'us_signal_candidates_empty') totals.usSignalCandidatesEmpty += 1;
     if (row.code === 'today_candidate_detail_opened') totals.detailOpened += 1;
     if (row.code === 'today_candidate_watchlist_add_success') totals.watchlistAdded += 1;
     if (row.code === 'today_candidate_watchlist_already_exists') totals.alreadyExists += 1;

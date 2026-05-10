@@ -1,3 +1,5 @@
+import type { TodayCandidateDisplayMetrics, TodayBriefDeckSlot, UsKrSignalEmptyReasonCode } from '@office-unify/shared-types';
+
 export type TodayCandidateSource =
   | 'user_context'
   | 'watchlist'
@@ -83,6 +85,12 @@ export interface TodayStockCandidate {
   alreadyInWatchlist?: boolean;
   watchlistItemId?: string;
   dataQuality?: TodayCandidateDataQuality;
+  /** Additive: 메인 3카드(관심 2 + Sector ETF 1) 슬롯. */
+  briefDeckSlot?: TodayBriefDeckSlot;
+  /** Additive: 카드 표시용 해석 지표(내부 raw score 대신). */
+  displayMetrics?: TodayCandidateDisplayMetrics;
+  /** Additive: Sector ETF 카드 부제·테마 안내. */
+  sectorEtfThemeHint?: string;
 }
 
 export interface UsMarketMorningSummary {
@@ -98,6 +106,13 @@ export interface UsMarketMorningSummary {
     evidence: string[];
   }>;
   warnings: string[];
+  /** Additive: 빈 화면/운영 진단용(민감정보 없음). */
+  diagnostics?: {
+    yahooQuoteResultCount: number;
+    anchorSymbolsRequested: number;
+    fetchFailed: boolean;
+    representativeAnchors?: Array<{ key: string; label: string; quoteSymbol: string }>;
+  };
 }
 
 export interface TodayBriefWithCandidatesResponse {
@@ -115,6 +130,15 @@ export interface TodayBriefWithCandidatesResponse {
   candidates?: {
     userContext: TodayStockCandidate[];
     usMarketKr: TodayStockCandidate[];
+  };
+  /** Additive: 관심사 상위 2 + Sector 대표 ETF 1 구성의 메인 덱(최대 3). */
+  primaryCandidateDeck?: TodayStockCandidate[];
+  /** Additive: 미국 신호 → 한국 매핑 후보가 비었을 때 사용자/운영용 진단. */
+  usKrSignalDiagnostics?: {
+    primaryReason: UsKrSignalEmptyReasonCode;
+    userMessage: string;
+    reasonCodes: UsKrSignalEmptyReasonCode[];
+    debugHints?: string[];
   };
   usMarketSummary?: UsMarketMorningSummary;
   disclaimer?: string;
@@ -145,6 +169,20 @@ export interface TodayBriefWithCandidatesResponse {
         eventTrace?: Array<{ code: string; shouldWrite: boolean; reason: string }>;
       };
       warnings: string[];
+      /** Additive: primaryCandidateDeck 구성 메타. */
+      composition?: {
+        interestCandidateCount: number;
+        sectorRadarEtfCandidateCount: number;
+        usSignalCandidateCount: number;
+        selectedInterestCount: number;
+        selectedSectorEtfCount: number;
+        selectionPolicy: string;
+        fallbackReason?: string;
+        droppedReasons: string[];
+      };
+      /** Additive: 7일 요약용 — 최근 empty reason 분포(코드 → 건수). */
+      usKrEmptyReasonHistogram?: Partial<Record<UsKrSignalEmptyReasonCode, number>>;
+      sectorEtfFallbackCount?: number;
     };
   };
 }

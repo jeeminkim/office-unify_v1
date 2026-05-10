@@ -8,6 +8,7 @@ import {
   type ResearchCenterOpsSummaryResponse,
   type ResearchCenterOpsTraceResponse,
   type ResearchDeskId,
+  type ResearchFollowupItem,
   type ResearchToneMode,
 } from "@office-unify/shared-types";
 import {
@@ -66,6 +67,12 @@ export function ResearchCenterClient() {
   const [traceLoading, setTraceLoading] = useState(false);
   const [traceErr, setTraceErr] = useState<string | null>(null);
   const [traceData, setTraceData] = useState<ResearchCenterOpsTraceResponse | null>(null);
+
+  const [followupItems, setFollowupItems] = useState<ResearchFollowupItem[]>([]);
+  const [followupLoading, setFollowupLoading] = useState(false);
+  const [followupErr, setFollowupErr] = useState<string | null>(null);
+  const [followupPbPreview, setFollowupPbPreview] = useState<string | null>(null);
+  const [followupSelectedIds, setFollowupSelectedIds] = useState<Set<string>>(() => new Set());
 
   const fetchOpsTrace = useCallback(async (rid: string) => {
     const trimmed = rid.trim();
@@ -240,6 +247,112 @@ export function ResearchCenterClient() {
     if (activeTab === "editor") return result.editor;
     return result.reports[activeTab] ?? "";
   }, [result, activeTab]);
+
+  const combinedReportMarkdown = useMemo(() => {
+    if (!result) return "";
+    const parts: string[] = [];
+    for (const d of DESKS) {
+      const t = result.reports[d.id];
+      if (t?.trim()) parts.push(t);
+    }
+    if (result.editor?.trim()) parts.push(result.editor);
+    return parts.join("\n\n");
+  }, [result]);
+
+  const extractFollowups = useCallback(async () => {
+    if (!combinedReportMarkdown.trim()) {
+      setFollowupErr("추출할 본문이 없습니다.");
+      return;
+    }
+    setFollowupLoading(true);
+    setFollowupErr(null);
+    try {
+      const res = await fetch("/api/research-center/followups/extract", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          markdown: combinedReportMarkdown,
+          symbol: symbol.trim() || undefined,
+          companyName: name.trim() || undefined,
+          researchRequestId: result?.requestId,
+        }),
+      });
+      const json = (await res.json()) as { followupItems?: ResearchFollowupItem[]; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "추출 실패");
+      setFollowupItems(json.followupItems ?? []);
+      setFollowupSelectedIds(new Set((json.followupItems ?? []).map((x) => x.id)));
+    } catch (e: unknown) {
+      setFollowupErr(e instanceof Error ? e.message : "추출 실패");
+      setFollowupItems([]);
+    } finally {
+      setFollowupLoading(false);
+    }
+  }, [combinedReportMarkdown, symbol, name, result?.requestId]);
+
+  const toggleFollowupSelected = useCallback((id: string) => {
+    setFollowupSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const sendFollowupsToPb = useCallback(async () => {
+    const selected = followupItems.filter((x) => followupSelectedIds.has(x.id));
+    if (selected.length === 0) {
+      setFollowupErr("PB로 보낼 항목을 선택하세요.");
+      return;
+    }
+    setFollowupLoading(true);
+    setFollowupErr(null);
+    setFollowupPbPreview(null);
+    try {
+      const mergedTitle =
+        selected.length === 1
+          ? selected[0].title
+          : `${selected[0].title} 외 ${selected.length - 1}건 후속 확인`;
+      const saveRes = await fetch("/api/research-center/followups", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          title: mergedTitle.slice(0, 500),
+          category: selected[0].category,
+          priority: selected[0].priority,
+          researchRequestId: result?.requestId,
+          symbol: symbol.trim() || undefined,
+          companyName: name.trim() || undefined,
+          detailJson: {
+            merged: true,
+            items: selected,
+          },
+        }),
+      });
+      const saved = (await saveRes.json()) as { item?: { id: string }; error?: string };
+      if (!saveRes.ok || !saved.item?.id) throw new Error(saved.error ?? "저장 실패");
+      const pbRes = await fetch(`/api/research-center/followups/${saved.item.id}/send-to-pb`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          idempotencyKey: crypto.randomUUID(),
+          conclusionSummaryLines: [
+            `Research Center 요약 — ${name.trim() || symbol.trim() || "종목"}`,
+            ...(result?.warnings?.slice(0, 5) ?? []),
+          ],
+        }),
+      });
+      const pbJson = (await pbRes.json()) as { pb?: { assistantPreview?: string }; error?: string };
+      if (!pbRes.ok) throw new Error(pbJson.error ?? "PB 전송 실패");
+      setFollowupPbPreview(pbJson.pb?.assistantPreview ?? "(응답 없음)");
+    } catch (e: unknown) {
+      setFollowupErr(e instanceof Error ? e.message : "PB 전송 실패");
+    } finally {
+      setFollowupLoading(false);
+    }
+  }, [followupItems, followupSelectedIds, result?.requestId, result?.warnings, name, symbol]);
 
   const copyActive = async () => {
     if (!activeBody) return;
@@ -534,6 +647,74 @@ export function ResearchCenterClient() {
           <article className="prose prose-slate mt-3 max-w-none text-sm">
             <pre className="whitespace-pre-wrap break-words font-sans text-slate-800">{activeBody}</pre>
           </article>
+
+          <div className="mt-6 rounded border border-slate-200 bg-white p-3 text-xs text-slate-800">
+            <p className="font-semibold text-slate-900">다음에 확인할 것 (추출 · PB 고찰)</p>
+            <p className="mt-1 text-slate-600">
+              Research Center 본문에서 &quot;다음에 확인할 것&quot; 섹션을 찾아 목록으로 만듭니다. 매수 권유·자동 주문 없음.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] font-medium"
+                disabled={followupLoading || !combinedReportMarkdown.trim()}
+                onClick={() => void extractFollowups()}
+              >
+                {followupLoading ? "처리 중…" : "섹션 추출"}
+              </button>
+              <Link href="/private-banker" className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] text-violet-900 underline-offset-2 hover:underline">
+                Private Banker 채팅
+              </Link>
+            </div>
+            {followupErr ? <p className="mt-2 text-amber-800">{followupErr}</p> : null}
+            {followupItems.length > 0 ? (
+              <ul className="mt-3 space-y-2">
+                {followupItems.map((it) => (
+                  <li key={it.id} className="rounded border border-slate-100 bg-slate-50/80 px-2 py-1.5">
+                    <label className="flex cursor-pointer gap-2">
+                      <input
+                        type="checkbox"
+                        checked={followupSelectedIds.has(it.id)}
+                        onChange={() => toggleFollowupSelected(it.id)}
+                      />
+                      <span>
+                        <span className="font-medium">{it.title}</span>
+                        <span className="ml-2 text-[10px] text-slate-500">
+                          {it.category} · {it.priority}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {followupItems.length > 0 ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  className="rounded bg-violet-900 px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+                  disabled={followupLoading || followupSelectedIds.size === 0}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "선택한 항목을 PB(Private Banker)로 전송합니다. 매수 권유가 아닌 판단 보조 목적입니다. 계속할까요?",
+                      )
+                    )
+                      return;
+                    void sendFollowupsToPb();
+                  }}
+                >
+                  선택 항목 PB와 이어서 고찰
+                </button>
+              </div>
+            ) : null}
+            {followupPbPreview ? (
+              <div className="mt-3 rounded border border-violet-100 bg-violet-50/80 p-2 text-[11px] text-violet-950">
+                <p className="font-medium">PB 응답 미리보기</p>
+                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap">{followupPbPreview}</pre>
+              </div>
+            ) : null}
+          </div>
         </section>
       ) : null}
 

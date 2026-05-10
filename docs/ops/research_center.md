@@ -83,6 +83,12 @@
 
 - 절차: `docs/ops/research_center_smoke_test.md`, 스크립트: `npm run research-center-smoke --workspace=apps/web`(기본 dry-run).
 
+## 후속 확인 항목 · PB 고찰
+
+- 마크다운 헤딩(`다음에 확인할 것` 등) 기반 추출: `POST /api/research-center/followups/extract`.
+- 저장 테이블: `web_research_followup_items`(SQL `docs/sql/append_research_followup_items.sql` 적용 필요).
+- PB 전송: `POST /api/research-center/followups/[id]/send-to-pb` → OpenAI Private Banker 경로; 매수 강요·자동 주문 없음.
+
 ## 장기 메모
 
 - Provider 호출은 동기 long-running일 수 있으며, 본 단계에서는 timeout 측정·ops-summary·ops-trace·타이밍 메타로 관측 후 job queue 전환을 검토한다.

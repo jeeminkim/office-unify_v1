@@ -79,6 +79,7 @@ type TodayCandidatesOpsSummaryResponse = {
   totals?: {
     generated: number;
     usMarketNoData: number;
+    usSignalCandidatesEmpty?: number;
     detailOpened: number;
     watchlistAdded: number;
     alreadyExists: number;
@@ -237,9 +238,11 @@ export function DashboardClient() {
   }, []);
 
   const allTodayCandidates = useMemo(() => {
+    const deck = todayBrief?.primaryCandidateDeck ?? [];
     const user = todayBrief?.candidates?.userContext ?? [];
     const us = todayBrief?.candidates?.usMarketKr ?? [];
-    return [...user, ...us];
+    const merged = [...deck, ...user, ...us];
+    return merged.filter((c, i, arr) => arr.findIndex((x) => x.candidateId === c.candidateId) === i);
   }, [todayBrief]);
 
   const filteredTodayCandidates = useMemo(() => {
@@ -395,16 +398,75 @@ export function DashboardClient() {
         {!showLowConfidenceCandidates && lowConfidenceOnly ? (
           <p className="mt-1 text-[11px] text-amber-800">데이터 신뢰도가 낮은 후보만 있습니다. 필요 시 토글을 켜서 확인하세요.</p>
         ) : null}
+        {(todayBrief?.primaryCandidateDeck?.length ?? 0) > 0 ? (
+          <div className="mt-3">
+            <p className="text-xs font-semibold text-violet-950">오늘의 관찰 후보 (관심 상위 2 · 섹터 대표 ETF 1)</p>
+            <p className="mt-0.5 text-[10px] text-violet-800/90">매수 권유 아님 · 관찰 후보입니다.</p>
+            <ul className="mt-2 grid gap-2 md:grid-cols-3">
+              {(todayBrief?.primaryCandidateDeck ?? []).map((c) => (
+                <li key={c.candidateId} className="rounded border border-violet-100 bg-white p-2">
+                  <p className="text-xs font-medium text-slate-900">
+                    {c.briefDeckSlot === "sector_etf" ? (
+                      <>대표 ETF · {c.sectorEtfThemeHint ?? c.sector ?? "섹터"}</>
+                    ) : (
+                      <>{c.name} · {c.sector ?? "NO_DATA"}</>
+                    )}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-800">
+                    관찰 점수 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-700">{c.reasonSummary}</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {(c.dataQuality?.badges ?? []).map((b) => (
+                      <span key={`deck-${c.candidateId}-${b}`} className={`rounded px-1.5 py-0.5 text-[10px] ${badgeTone(b)}`}>{b}</span>
+                    ))}
+                  </div>
+                  {c.displayMetrics?.primaryRiskLabel ? (
+                    <p className="mt-1 text-[10px] text-amber-900">주요 리스크: {c.displayMetrics.primaryRiskLabel}</p>
+                  ) : null}
+                  <div className="mt-1 flex gap-2 text-[11px]">
+                    <button type="button" className="rounded border border-slate-300 px-2 py-0.5" onClick={() => void onOpenReason(c)}>사유 보기</button>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 px-2 py-0.5"
+                      onClick={() => void onAddWatchlist(c)}
+                      disabled={
+                        watchlistAddState[c.candidateId] === "loading" ||
+                        c.alreadyInWatchlist ||
+                        c.briefDeckSlot === "sector_etf"
+                      }
+                    >
+                      {c.briefDeckSlot === "sector_etf"
+                        ? "ETF는 원장 종목 대신 섹터 확인"
+                        : c.alreadyInWatchlist
+                          ? "이미 등록된 종목"
+                          : watchlistAddState[c.candidateId] === "loading"
+                            ? "추가 중..."
+                            : "관심종목에 추가"}
+                    </button>
+                  </div>
+                  {watchlistAddState[c.candidateId] ? <p className="mt-1 text-[10px] text-slate-600">{watchlistAddState[c.candidateId]}</p> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="rounded border border-violet-100 bg-white p-2">
-            <p className="text-xs font-semibold text-violet-950">내 관심사 기반 관찰 후보</p>
+            <p className="text-xs font-semibold text-violet-950">내 관심사 기반 관찰 후보 (원본 목록)</p>
             {(filteredTodayCandidates.userContext ?? []).length === 0 ? (
-              <p className="mt-1 text-[11px] text-slate-600">데이터가 부족해 일부 후보를 생략했습니다.</p>
+              <p className="mt-1 text-[11px] text-slate-600">관심종목(KR) 데이터가 없거나 생략되었습니다.</p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {(filteredTodayCandidates.userContext ?? []).map((c) => (
                   <li key={c.candidateId} className="rounded border border-violet-100 p-2">
-                    <p className="text-xs font-medium text-slate-900">{c.name} · {c.sector ?? "NO_DATA"} · 관찰 우선순위 {c.score}</p>
+                    <p className="text-xs font-medium text-slate-900">{c.name} · {c.sector ?? "NO_DATA"}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-700">
+                      {c.displayMetrics
+                        ? <>관찰 점수 {c.displayMetrics.observationScore}/100 · 신뢰도 {c.displayMetrics.confidenceLabel}</>
+                        : <>내부 정렬 점수 {c.score} (표시용 관찰 점수는 상단 덱 참고)</>}
+                    </p>
                     <p className="mt-1 text-[11px] text-slate-700">{c.reasonSummary}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {(c.dataQuality?.badges ?? []).map((b) => (
@@ -439,13 +501,23 @@ export function DashboardClient() {
           <div className="rounded border border-violet-100 bg-white p-2">
             <p className="text-xs font-semibold text-violet-950">미국시장 신호 기반 한국주식 후보</p>
             <p className="mt-1 text-[11px] text-slate-700">{todayBrief?.usMarketSummary?.summary ?? "미국시장 데이터가 충분하지 않아 제한적으로 표시합니다."}</p>
+            {todayBrief?.usKrSignalDiagnostics?.userMessage ? (
+              <p className="mt-1 rounded border border-amber-100 bg-amber-50/80 p-2 text-[11px] text-amber-950">
+                진단: {todayBrief.usKrSignalDiagnostics.userMessage}
+              </p>
+            ) : null}
             {(filteredTodayCandidates.usMarketKr ?? []).length === 0 ? (
-              <p className="mt-1 text-[11px] text-slate-600">데이터가 부족해 일부 후보를 생략했습니다.</p>
+              <p className="mt-1 text-[11px] text-slate-600">
+                미국 장 신호에서 한국 상장 관찰 후보로 연결된 종목이 없습니다. 매수 추천이 아니라 관찰 후보 생성 단계입니다.
+              </p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {(filteredTodayCandidates.usMarketKr ?? []).map((c) => (
                   <li key={c.candidateId} className="rounded border border-violet-100 p-2">
-                    <p className="text-xs font-medium text-slate-900">{c.name} · {c.sector ?? "NO_DATA"} · 관찰 우선순위 {c.score}</p>
+                    <p className="text-xs font-medium text-slate-900">{c.name} · {c.sector ?? "NO_DATA"}</p>
+                    <p className="mt-0.5 text-[11px] text-slate-700">
+                      관찰 점수 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
+                    </p>
                     <p className="mt-1 text-[11px] text-slate-700">{c.reasonSummary}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {(c.dataQuality?.badges ?? []).map((b) => (
@@ -558,7 +630,8 @@ export function DashboardClient() {
         <h2 className="text-sm font-semibold text-violet-900">후보 운영 상태 · 최근 7일</h2>
         {todayOpsSummary?.totals ? (
           <p className="mt-2 text-xs text-violet-900">
-            생성 {todayOpsSummary.totals.generated}회 · 사유 보기 {todayOpsSummary.totals.detailOpened}회 · 관심추가 {todayOpsSummary.totals.watchlistAdded}회 · 중복 {todayOpsSummary.totals.alreadyExists}회 · 미국장 no_data {todayOpsSummary.totals.usMarketNoData}회 · 추가 실패 {todayOpsSummary.totals.addFailed}회
+            생성 {todayOpsSummary.totals.generated}회 · 사유 보기 {todayOpsSummary.totals.detailOpened}회 · 관심추가 {todayOpsSummary.totals.watchlistAdded}회 · 중복 {todayOpsSummary.totals.alreadyExists}회 · 미국장 no_data {todayOpsSummary.totals.usMarketNoData}회 · 미국신호→KR후보 empty{" "}
+            {todayOpsSummary.totals.usSignalCandidatesEmpty ?? 0}회 · 추가 실패 {todayOpsSummary.totals.addFailed}회
           </p>
         ) : (
           <p className="mt-2 text-xs text-amber-800">후보 운영 상태를 불러오지 못했습니다.</p>
