@@ -10,6 +10,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "selfcheck": "node scripts/self-check.mjs",
+    "research-center-smoke": "tsx scripts/research-center-smoke.ts",
     "clean:win": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (Test-Path .next) { Remove-Item .next -Recurse -Force }; if (Test-Path node_modules) { Remove-Item node_modules -Recurse -Force }\""
   },
   "dependencies": {
@@ -35,6 +36,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "tsx": "^4.19.2"
   }
 }

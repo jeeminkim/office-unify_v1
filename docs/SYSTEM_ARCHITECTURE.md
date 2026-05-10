@@ -142,8 +142,11 @@
   - explicit action route with requestId lifecycle
   - route returns JSON on failure (`errorCode`/`requestId`/`actionHint`)
   - stage-split quality meta: provider vs sheets/context_cache/memory_compare
+  - additive `qualityMeta.researchCenter.timings` (per-stage ms including split `sheetsMs` vs `contextCacheMs` for Google tabs, `timeoutBudgetMs`, `nearTimeout`, warnings such as `research_provider_slow` / `research_generation_near_timeout`)
   - sheets/context_cache failure is degraded, not full-generation fail when body exists
+  - sheets append wrapped with a bounded timeout (`RESEARCH_CENTER_SHEETS_TIMEOUT_MS`); timeout → degraded JSON, success body preserved
   - timeout risk exists for long-running generation; job queue migration is a future option
+  - `/api/research-center/ops-summary` — **read-only** aggregate over `web_ops_events` (domain=`research_center`): SELECT only, no writes; sanitized detail; optional `range=24h|7d`, `requestId`, `limit`
   - `/api/trade-journal/*`
   - `/api/trade-journal/pattern-analysis`
     - 반복 투자 실수 패턴과 현재 위험 매칭을 요약

@@ -2,6 +2,10 @@
  * Research Center — 단일 종목 심층 리포트 (투자위원회·조일현·원장과 분리)
  */
 
+import type { ResearchCenterStage } from './researchCenterErrors';
+
+export type { ResearchCenterStage };
+
 export type ResearchDeskId =
   | 'goldman_buy'
   | 'blackrock_quality'
@@ -31,14 +35,7 @@ export type ResearchCenterGenerateRequestBody = {
   previousEditorVerdict?: string;
 };
 
-export type ResearchCenterFailedStage =
-  | 'input'
-  | 'provider'
-  | 'sheets'
-  | 'memory_compare'
-  | 'context_cache'
-  | 'response_parse'
-  | 'unknown';
+export type ResearchCenterFailedStage = ResearchCenterStage;
 
 export type ResearchCenterQualityMeta = {
   requestId: string;
@@ -64,12 +61,84 @@ export type ResearchCenterQualityMeta = {
     warningCode?: string;
   };
   warnings: string[];
+  timings?: {
+    totalMs: number;
+    inputValidationMs?: number;
+    providerMs?: number;
+    /** research_requests + research_reports_log append duration (excludes context_cache row). */
+    sheetsMs?: number;
+    /** research_context_cache row append duration. */
+    contextCacheMs?: number;
+    /** Reserved when a compare stage exists (e.g. Trend-adjacent); Research Center body path may omit. */
+    memoryCompareMs?: number;
+    timeoutBudgetMs: number;
+    nearTimeout: boolean;
+  };
   opsLogging?: {
     attempted: number;
     written: number;
     skippedCooldown: number;
     skippedBudgetExceeded: number;
     skippedReadOnly: number;
+  };
+};
+
+export type ResearchCenterOpsSummaryRecentEvent = {
+  code: string;
+  severity: 'info' | 'warning' | 'error';
+  stage?: string;
+  requestId?: string;
+  message: string;
+  lastSeenAt: string;
+  occurrenceCount: number;
+};
+
+export type ResearchCenterOpsFailureCategories = {
+  providerTimeout: number;
+  providerCallFailed: number;
+  responseParseFailed: number;
+  sheetsRelated: number;
+  contextCacheRelated: number;
+  memoryCompareRelated: number;
+  inputInvalid: number;
+  other: number;
+};
+
+export type ResearchCenterOpsSummaryResponse = {
+  ok: boolean;
+  range: '24h' | '7d';
+  generatedAt: string;
+  summary: {
+    totalEvents: number;
+    /** Sum of `occurrence_count` across returned rows (weighted volume). */
+    totalOccurrences: number;
+    /** Occurrence-weighted volume for `research_report_degraded`. */
+    degradedCount: number;
+    /** Occurrence-weighted volume for rows with error severity. */
+    errorCount: number;
+    /** 0–1, `degradedCount / totalOccurrences`. */
+    degradedRatio: number;
+    /** 0–1, `errorCount / totalOccurrences`. */
+    errorRatio: number;
+    topEventCodes: Array<{ code: string; count: number }>;
+    severityCounts: Record<'info' | 'warning' | 'error', number>;
+    failedStageCounts: Record<string, number>;
+    failureCategories: ResearchCenterOpsFailureCategories;
+    /** Recent distinct requestIds seen on warning/error paths (newest first). */
+    recentRequestIds: string[];
+    requestIdHit?: {
+      requestId: string;
+      count: number;
+    };
+  };
+  recentEvents: ResearchCenterOpsSummaryRecentEvent[];
+  recentFailureEvents: ResearchCenterOpsSummaryRecentEvent[];
+  qualityMeta: {
+    researchCenterOpsSummary: {
+      readOnly: true;
+      source: 'web_ops_events';
+      warnings: string[];
+    };
   };
 };
 

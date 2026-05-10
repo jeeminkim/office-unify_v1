@@ -33,9 +33,20 @@ export async function appendResearchCenterSheets(params: {
   reportsLogOk: boolean;
   contextCacheOk: boolean;
   warnings: string[];
+  timings: {
+    researchRequestsMs: number;
+    researchReportsLogMs: number;
+    researchContextCacheMs: number;
+  };
 }> {
   const id = spreadsheetId();
   const warnings: string[] = [];
+  const zeroTimings = {
+    researchRequestsMs: 0,
+    researchReportsLogMs: 0,
+    researchContextCacheMs: 0,
+  };
+
   if (!id) {
     return {
       ok: false,
@@ -43,6 +54,7 @@ export async function appendResearchCenterSheets(params: {
       reportsLogOk: false,
       contextCacheOk: false,
       warnings: ['research_sheets_unconfigured: GOOGLE_SHEETS_SPREADSHEET_ID is not set'],
+      timings: zeroTimings,
     };
   }
   const spreadsheet = id;
@@ -118,27 +130,41 @@ export async function appendResearchCenterSheets(params: {
     }
   }
 
+  const t0 = Date.now();
   const requestRowOk = await safeAppend(
     'research_requests',
     `${SHEET_TAB_NAMES.researchRequests}!A:N`,
     [reqRow],
   );
+  const researchRequestsMs = Math.max(0, Date.now() - t0);
+
+  const t1 = Date.now();
   const reportsLogOk = await safeAppend(
     'research_reports_log',
     `${SHEET_TAB_NAMES.researchReportsLog}!A:M`,
     [logRow],
   );
+  const researchReportsLogMs = Math.max(0, Date.now() - t1);
+
+  const t2 = Date.now();
   const contextCacheOk = await safeAppend(
     'research_context_cache',
     `${SHEET_TAB_NAMES.researchContextCache}!A:N`,
     [cacheRow],
   );
+  const researchContextCacheMs = Math.max(0, Date.now() - t2);
+
   return {
     ok: requestRowOk && reportsLogOk && contextCacheOk,
     requestRowOk,
     reportsLogOk,
     contextCacheOk,
     warnings,
+    timings: {
+      researchRequestsMs,
+      researchReportsLogMs,
+      researchContextCacheMs,
+    },
   };
 }
 

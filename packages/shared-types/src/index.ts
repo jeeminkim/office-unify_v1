@@ -230,14 +230,20 @@ export type {
   JoLedgerPriority,
 } from './joLedgerPayload';
 export type {
+  ResearchCenterOpsSummaryResponse,
+  ResearchCenterOpsSummaryRecentEvent,
+  ResearchCenterOpsFailureCategories,
   ResearchCenterGenerateRequestBody,
   ResearchCenterGenerateErrorResponseBody,
   ResearchCenterGenerateResponseBody,
   ResearchCenterFailedStage,
+  ResearchCenterStage,
   ResearchCenterQualityMeta,
   ResearchDeskId,
   ResearchToneMode,
 } from './researchCenter';
+export { RESEARCH_CENTER_ERROR_CODE } from './researchCenterErrors';
+export type { ResearchCenterErrorCode } from './researchCenterErrors';
 export type {
   TrendAnalysisGenerateRequestBody,
   TrendAnalysisGenerateResponseBody,

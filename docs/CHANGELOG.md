@@ -6,6 +6,10 @@
 
 ### 2026-05 Ops / Today Candidates / Sector Radar stabilization
 
+- **Research Center ops-summary query fix:** `requestId` 상세 필터(`detail->>requestId`)를 `order`/`limit` 앞에 두어 PostgREST 체인에서 필터가 무시·실패하던 경우를 방지.
+- **Research Center timings:** `appendResearchCenterSheets`가 탭별 소요시간을 반환하고, `qualityMeta.researchCenter.timings.sheetsMs`(요청·리포트 로그)와 `contextCacheMs`(컨텍스트 캐시 행)로 분리 기록. 근접 타임아웃·provider 느림 경고 임계값은 `researchCenterTimings.ts`에서 단일화.
+- **apps/web tsconfig:** `**/*.test.ts`를 `tsc --noEmit`에서 제외해 Vitest 전용 API(`vi` 등)와 테스트 픽스처 타입 드리프트로 인한 불필요한 타입 오류를 방지(런타임·Next 빌드는 동일).
+- **Research Center ops-summary & 스모크:** `GET /api/research-center/ops-summary`(read-only SELECT, 실패 분류·비율·최근 requestId), 배포 스모크 문서·`research-center-smoke` 스크립트, `/research-center` 하단 접기형 운영 진단 UI, 오류 코드 상수 `@office-unify/shared-types` 공통화, 단계별 `timings`/sheets 단계 timeout degrade 보강.
 - **Research Center 운영 안정화:** `POST /api/research-center/generate`에 requestId 기반 추적, JSON 표준 실패 응답(`errorCode`/`actionHint`), `qualityMeta.researchCenter`(status/failedStage/opsLogging) additive 추가.
 - **Research Center degraded 분리:** 리포트 본문 생성과 Sheets/context_cache 단계를 분리해, 부가 단계 실패가 전체 생성 실패로 전파되지 않도록 조정.
 - **Research client fetch 분류 개선:** `Failed to fetch` 단일 문구 대신 `network/http/response_parse/api/timeout` 오류를 구분하고 requestId를 화면에 노출.

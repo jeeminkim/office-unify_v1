@@ -7,19 +7,25 @@ import type {
   ResearchDeskId,
   ResearchToneMode,
 } from "@office-unify/shared-types";
+import { RESEARCH_CENTER_ERROR_CODE } from "@office-unify/shared-types";
 import { runResearchCenterGeneration } from "@office-unify/ai-office-engine";
 import { OPS_LOG_MAX_WRITES_PER_REQUEST, shouldWriteOpsEvent } from "@/lib/server/opsLogBudget";
 import { requirePersonaChatAuth } from "@/lib/server/persona-chat-auth";
 import { appendResearchCenterSheets, isResearchSheetsAppendConfigured } from "@/lib/server/research-center-sheets";
 import {
   buildResearchOpsFingerprint,
-  classifyResearchFailureStage,
   maskInputPreview,
-  RESEARCH_CENTER_ERROR_CODES,
+  runPromiseWithTimeout,
   toRequestId,
-  toResearchErrorCode,
   todayYmdKst,
 } from "@/lib/server/researchCenterRouteUtils";
+import {
+  classifyResearchCenterError,
+  mapStageToResearchErrorCode,
+  sanitizeResearchErrorDetail,
+  toResearchActionHint,
+} from "@/lib/server/researchCenterErrorTaxonomy";
+import { mergeResearchTimingWarnings, shouldWarnNearTimeout } from "@/lib/server/researchCenterTimings";
 import { getServiceSupabase } from "@/lib/server/supabase-service";
 import { upsertOpsEventByFingerprint } from "@/lib/server/upsertOpsEventByFingerprint";
 
@@ -88,23 +94,13 @@ function normalizeDesksList(
   return d.length ? d : ALL;
 }
 
-function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`research_request_timeout:${timeoutMs}`)), timeoutMs);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
+function elapsedMs(start: number): number {
+  return Math.max(0, Date.now() - start);
 }
 
 export async function POST(req: Request) {
+  const totalStartMs = Date.now();
+  const inputStartMs = Date.now();
   const auth = await requirePersonaChatAuth();
   if (!auth.ok) return auth.response;
   const { userKey } = auth;
@@ -120,6 +116,11 @@ export async function POST(req: Request) {
     memoryCompare: { requested: false, ok: true },
     contextCache: { requested: false, ok: true },
     warnings: [],
+    timings: {
+      totalMs: 0,
+      timeoutBudgetMs: 0,
+      nearTimeout: false,
+    },
     opsLogging: {
       attempted: 0,
       written: 0,
@@ -205,6 +206,7 @@ export async function POST(req: Request) {
     actionHint?: string;
     detail?: Record<string, unknown>;
   }) => {
+    finalizeQualityTiming();
     qualityMeta.status = "failed";
     qualityMeta.failedStage = input.stage;
     qualityMeta.warnings = Array.from(new Set([...qualityMeta.warnings, input.errorCode]));
@@ -221,12 +223,25 @@ export async function POST(req: Request) {
       errorCode: input.errorCode,
       message: input.message,
       actionHint:
-        input.actionHint ?? "운영 로그에서 requestId를 검색해 실패 단계(provider/sheets/parse)를 확인하세요.",
+        input.actionHint ?? "운영 로그에서 requestId를 검색해 실패 단계를 확인하세요.",
       qualityMeta: {
         researchCenter: qualityMeta,
       },
     };
     return NextResponse.json(body, { status: input.status });
+  };
+
+  const finalizeQualityTiming = () => {
+    qualityMeta.timings!.totalMs = elapsedMs(totalStartMs);
+    qualityMeta.timings!.nearTimeout = shouldWarnNearTimeout(
+      qualityMeta.timings!.totalMs,
+      qualityMeta.timings!.timeoutBudgetMs,
+    );
+    qualityMeta.warnings = mergeResearchTimingWarnings(qualityMeta.warnings, {
+      providerMs: qualityMeta.timings!.providerMs,
+      totalMs: qualityMeta.timings!.totalMs,
+      timeoutBudgetMs: qualityMeta.timings!.timeoutBudgetMs,
+    });
   };
 
   let raw: unknown;
@@ -236,7 +251,7 @@ export async function POST(req: Request) {
     return fail({
       status: 400,
       stage: "input",
-      errorCode: RESEARCH_CENTER_ERROR_CODES.INVALID_INPUT,
+      errorCode: RESEARCH_CENTER_ERROR_CODE.INPUT_INVALID,
       message: "요청 본문(JSON) 형식이 올바르지 않습니다.",
     });
   }
@@ -246,10 +261,11 @@ export async function POST(req: Request) {
     return fail({
       status: 400,
       stage: "input",
-      errorCode: RESEARCH_CENTER_ERROR_CODES.INVALID_INPUT,
+      errorCode: RESEARCH_CENTER_ERROR_CODE.INPUT_INVALID,
       message: "입력값이 올바르지 않습니다. market/symbol/name 필드를 확인하세요.",
     });
   }
+  qualityMeta.timings!.inputValidationMs = elapsedMs(inputStartMs);
   qualityMeta.requestId = toRequestId(body.requestId ?? requestIdFromHeader);
   body.requestId = qualityMeta.requestId;
 
@@ -258,9 +274,9 @@ export async function POST(req: Request) {
     return fail({
       status: 503,
       stage: "provider",
-      errorCode: RESEARCH_CENTER_ERROR_CODES.PROVIDER_FAILED,
+      errorCode: RESEARCH_CENTER_ERROR_CODE.PROVIDER_CALL_FAILED,
       message: "리포트 provider 설정이 누락되었습니다.",
-      actionHint: "환경변수 GEMINI_API_KEY를 확인하세요.",
+      actionHint: toResearchActionHint(RESEARCH_CENTER_ERROR_CODE.PROVIDER_CALL_FAILED),
     });
   }
 
@@ -268,7 +284,7 @@ export async function POST(req: Request) {
     return fail({
       status: 503,
       stage: "unknown",
-      errorCode: RESEARCH_CENTER_ERROR_CODES.GENERATION_FAILED,
+      errorCode: RESEARCH_CENTER_ERROR_CODE.GENERATION_FAILED,
       message: "서버 저장소 설정이 누락되었습니다.",
       actionHint: "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 환경변수를 확인하세요.",
     });
@@ -291,12 +307,15 @@ export async function POST(req: Request) {
     },
   });
 
+  let providerPhaseStartedAt: number | undefined;
   try {
     const routeTimeoutMs = Math.min(
       300_000,
       Math.max(10_000, Number(process.env.RESEARCH_CENTER_ROUTE_TIMEOUT_MS ?? 120_000) || 120_000),
     );
-    const result = await runWithTimeout(
+    qualityMeta.timings!.timeoutBudgetMs = routeTimeoutMs;
+    providerPhaseStartedAt = Date.now();
+    const result = await runPromiseWithTimeout(
       runResearchCenterGeneration({
         supabase,
         userKey,
@@ -304,7 +323,9 @@ export async function POST(req: Request) {
         body,
       }),
       routeTimeoutMs,
+      `research_request_timeout:${routeTimeoutMs}`,
     );
+    qualityMeta.timings!.providerMs = elapsedMs(providerPhaseStartedAt);
 
     qualityMeta.status = "ok";
     qualityMeta.warnings = [];
@@ -315,11 +336,11 @@ export async function POST(req: Request) {
       if (!isResearchSheetsAppendConfigured()) {
         qualityMeta.status = "degraded";
         qualityMeta.failedStage = "sheets";
-        qualityMeta.sheetsSave.warningCode = RESEARCH_CENTER_ERROR_CODES.SHEETS_SAVE_FAILED;
-        qualityMeta.contextCache.warningCode = RESEARCH_CENTER_ERROR_CODES.CONTEXT_CACHE_SAVE_FAILED;
+        qualityMeta.sheetsSave.warningCode = RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED;
+        qualityMeta.contextCache.warningCode = RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED;
         qualityMeta.warnings = [
-          RESEARCH_CENTER_ERROR_CODES.SHEETS_SAVE_FAILED,
-          RESEARCH_CENTER_ERROR_CODES.CONTEXT_CACHE_SAVE_FAILED,
+          RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED,
+          RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED,
         ];
         await logEvent({
           eventCode: "research_report_degraded",
@@ -327,6 +348,7 @@ export async function POST(req: Request) {
           stage: "sheets",
           message: "Research report generated but sheets config missing",
         });
+        finalizeQualityTiming();
         return NextResponse.json(
           {
             ...result,
@@ -351,14 +373,78 @@ export async function POST(req: Request) {
           { status: 200 },
         );
       }
-      const sheets = await appendResearchCenterSheets({ body, result, desks });
+      const sheetsStartMs = Date.now();
+      const sheetsTimeoutMs = Math.min(
+        120_000,
+        Math.max(5_000, Number(process.env.RESEARCH_CENTER_SHEETS_TIMEOUT_MS ?? 45_000) || 45_000),
+      );
+      let sheets: Awaited<ReturnType<typeof appendResearchCenterSheets>>;
+      try {
+        sheets = await runPromiseWithTimeout(
+          appendResearchCenterSheets({ body, result, desks }),
+          sheetsTimeoutMs,
+          `research_sheets_timeout:${sheetsTimeoutMs}`,
+        );
+      } catch {
+        qualityMeta.timings!.sheetsMs = elapsedMs(sheetsStartMs);
+        qualityMeta.timings!.contextCacheMs = qualityMeta.timings!.sheetsMs;
+        qualityMeta.status = "degraded";
+        qualityMeta.failedStage = "sheets";
+        qualityMeta.sheetsSave = {
+          requested: true,
+          ok: false,
+          warningCode: RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED,
+        };
+        qualityMeta.contextCache = {
+          requested: true,
+          ok: false,
+          warningCode: RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED,
+        };
+        qualityMeta.warnings = Array.from(
+          new Set([
+            ...qualityMeta.warnings,
+            RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED,
+            "research_sheets_stage_timeout",
+          ]),
+        );
+        await logEvent({
+          eventCode: "research_report_degraded",
+          severity: "warning",
+          stage: "sheets",
+          message: "Research sheets append timed out",
+          detail: { sheetsTimeoutMs },
+        });
+        finalizeQualityTiming();
+        return NextResponse.json({
+          ...result,
+          ok: true,
+          requestId: qualityMeta.requestId,
+          sheetsAppended: false,
+          warnings: [
+            ...result.warnings,
+            "리포트는 생성됐지만 Google Sheets 저장 단계가 시간 초과로 중단되었습니다.",
+          ],
+          qualityMeta: { researchCenter: qualityMeta },
+          meta: {
+            providerUsed: "gemini_only",
+            fallbackUsed: false,
+            includeSheetContext: body.includeSheetContext === true,
+            sheetsAppendAttempted: true,
+            sheetsAppendSucceeded: false,
+            noData: false,
+          },
+        });
+      }
+      qualityMeta.timings!.sheetsMs =
+        sheets.timings.researchRequestsMs + sheets.timings.researchReportsLogMs;
+      qualityMeta.timings!.contextCacheMs = sheets.timings.researchContextCacheMs;
       qualityMeta.sheetsSave.ok = sheets.requestRowOk && sheets.reportsLogOk;
       qualityMeta.contextCache.ok = sheets.contextCacheOk;
       if (!qualityMeta.sheetsSave.ok) {
-        qualityMeta.sheetsSave.warningCode = RESEARCH_CENTER_ERROR_CODES.SHEETS_SAVE_FAILED;
+        qualityMeta.sheetsSave.warningCode = RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED;
       }
       if (!qualityMeta.contextCache.ok) {
-        qualityMeta.contextCache.warningCode = RESEARCH_CENTER_ERROR_CODES.CONTEXT_CACHE_SAVE_FAILED;
+        qualityMeta.contextCache.warningCode = RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED;
       }
       if (!sheets.ok) {
         qualityMeta.status = "degraded";
@@ -366,8 +452,8 @@ export async function POST(req: Request) {
         qualityMeta.warnings = Array.from(
           new Set([
             ...qualityMeta.warnings,
-            ...(qualityMeta.sheetsSave.ok ? [] : [RESEARCH_CENTER_ERROR_CODES.SHEETS_SAVE_FAILED]),
-            ...(qualityMeta.contextCache.ok ? [] : [RESEARCH_CENTER_ERROR_CODES.CONTEXT_CACHE_SAVE_FAILED]),
+            ...(qualityMeta.sheetsSave.ok ? [] : [RESEARCH_CENTER_ERROR_CODE.SHEETS_SAVE_FAILED]),
+            ...(qualityMeta.contextCache.ok ? [] : [RESEARCH_CENTER_ERROR_CODE.CONTEXT_CACHE_SAVE_FAILED]),
           ]),
         );
         await logEvent({
@@ -390,6 +476,7 @@ export async function POST(req: Request) {
           message: "Research report generation completed",
         });
       }
+      finalizeQualityTiming();
       return NextResponse.json({
         ...result,
         ok: true,
@@ -418,6 +505,7 @@ export async function POST(req: Request) {
       message: "Research report generation completed",
     });
 
+    finalizeQualityTiming();
     return NextResponse.json({
       ...result,
       ok: true,
@@ -433,13 +521,16 @@ export async function POST(req: Request) {
       },
     });
   } catch (e: unknown) {
-    const stage = classifyResearchFailureStage(e);
-    const errorCode = toResearchErrorCode(stage);
+    if (providerPhaseStartedAt !== undefined && qualityMeta.timings!.providerMs === undefined) {
+      qualityMeta.timings!.providerMs = elapsedMs(providerPhaseStartedAt);
+    }
+    const stage = classifyResearchCenterError(e);
+    const errorCode = mapStageToResearchErrorCode(stage);
     const rawMessage = e instanceof Error ? e.message : "unknown";
     const status =
       stage === "input"
         ? 400
-        : rawMessage.includes("timeout") || rawMessage.includes("aborted")
+        : stage === "timeout" || rawMessage.includes("timeout") || rawMessage.includes("aborted")
           ? 504
           : stage === "provider"
             ? 502
@@ -449,13 +540,10 @@ export async function POST(req: Request) {
       stage,
       errorCode,
       message: "리포트 생성 중 오류가 발생했습니다.",
-      actionHint:
-        stage === "provider"
-          ? "LLM provider 상태와 timeout 설정을 확인하세요."
-          : "운영 로그에서 requestId를 검색해 실패 단계를 확인하세요.",
-      detail: {
+      actionHint: toResearchActionHint(errorCode),
+      detail: sanitizeResearchErrorDetail({
         originalError: rawMessage.slice(0, 500),
-      },
+      }),
     });
   }
 }

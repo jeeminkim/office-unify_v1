@@ -41,5 +41,5 @@
 - ETF 품질 경고 문서화 시 `qualityMeta`(화면)와 `web_ops_events`(운영 누적) 분리, read-only 개별 write 억제 원칙을 명시
 - ETF 표시 그룹(`scored`/`watch_only`/`excluded`) 또는 `quoteAlias`/진단 필드(`etfQualityDiagnostics`) 계약 변경 시 API additive 원칙(기존 필드 유지)을 문서에 명시
 - diagnostics snapshot 정책 문서화 시 read-only route DB write 금지, explicit refresh/admin/scheduled 전용 저장 원칙을 함께 명시
-- Research Center 오류 계약 변경 시 `docs/research-center.md`, `docs/ops/research_center.md`, `SYSTEM_ARCHITECTURE`, `CURRENT_SYSTEM_BASELINE`, `CHANGELOG`를 함께 갱신
+- Research Center 오류 계약 변경 시 `docs/research-center.md`, `docs/ops/research_center.md`, `docs/ops/research_center_smoke_test.md`(배포 검증), `SYSTEM_ARCHITECTURE`, `CURRENT_SYSTEM_BASELINE`, `CHANGELOG`를 함께 갱신
 - `requestId`/`failedStage`/`qualityMeta.researchCenter` 추가 시 기존 응답 필드 삭제 금지(additive only) 원칙을 문서에 명시

@@ -50,6 +50,8 @@
   - failed/degraded stage split (`provider`/`sheets`/`context_cache`/`response_parse`)
   - client shows `errorCode`/`requestId`/`actionHint` instead of plain `Failed to fetch`
   - sheets/context cache/memory compare failure stays degraded when report body exists
+  - `GET /api/research-center/ops-summary` — read-only ops 집계(SELECT만, DB write 없음), 실패 유형·stage·최근 requestId 요약
+  - `qualityMeta.researchCenter.timings`로 단계별 소요(`sheetsMs`=요청·리포트 로그 append, `contextCacheMs`=컨텍스트 캐시 행)·timeout budget·근접 경고 관측; provider 동기 long-running은 job queue 후보
 - Ops
   - `web_ops_events` fingerprint upsert RPC 우선
   - `opsLogBudget` 기반 write budget/cooldown/read-only 억제

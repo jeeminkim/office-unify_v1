@@ -74,6 +74,8 @@ const DOMAIN_OPTS = [
   "portfolio_quotes",
   "google_sheets",
   "sector_radar",
+  "research_center",
+  "trend",
   "ticker_resolver",
   "private_banker",
   "committee",

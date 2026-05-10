@@ -43,3 +43,22 @@
   - `trend_memory_compare_failed`
 - fingerprint: `research_center:{userKey}:{yyyyMMdd}:{eventCode}`
 - write는 budget/cooldown 정책을 따른다.
+
+## 운영 요약 API (read-only)
+
+- `GET /api/research-center/ops-summary` — `web_ops_events`에서 **SELECT만** 수행하며 호출 자체가 새 행을 쓰지 않는다.
+- `requestId` 쿼리 파라미터는 JSON 경로 `detail.requestId`에 대한 필터로, 정렬·`limit` 적용 전에 결합된다.
+- 응답 `qualityMeta.researchCenterOpsSummary.readOnly: true`, domain=`research_center`, user_key는 인증된 단일 사용자 정책과 동일하게 필터.
+- 실패 분류(`failureCategories`), severity/eventCode/stage 집계, `recentFailureEvents`, `recentRequestIds`는 sanitize된 문자열만 포함한다.
+
+## 오류 코드 공통 모듈
+
+- `@office-unify/shared-types`의 `RESEARCH_CENTER_ERROR_CODE`, `ResearchCenterStage` 및 서버 `researchCenterErrorTaxonomy.ts`의 `classifyResearchCenterError` / `mapStageToResearchErrorCode` / `sanitizeResearchErrorDetail`를 기준으로 분류한다.
+
+## 배포 스모크
+
+- 절차: `docs/ops/research_center_smoke_test.md`, 스크립트: `npm run research-center-smoke --workspace=apps/web`(기본 dry-run).
+
+## 장기 메모
+
+- Provider 호출은 동기 long-running일 수 있으며, 본 단계에서는 timeout 측정·ops-summary·타이밍 메타로 관측 후 job queue 전환을 검토한다.

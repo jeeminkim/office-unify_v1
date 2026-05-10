@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type {
   ResearchCenterGenerateResponseBody,
+  ResearchCenterOpsSummaryResponse,
   ResearchDeskId,
   ResearchToneMode,
 } from "@office-unify/shared-types";
@@ -54,6 +55,39 @@ export function ResearchCenterClient() {
   const [error, setError] = useState<ResearchCenterClientErrorState | null>(null);
   const [result, setResult] = useState<ResearchCenterGenerateResponseBody | null>(null);
   const [activeTab, setActiveTab] = useState<ResearchDeskId | "editor">("goldman_buy");
+
+  const [opsDiagOpen, setOpsDiagOpen] = useState(false);
+  const [opsSummaryLoading, setOpsSummaryLoading] = useState(false);
+  const [opsSummary, setOpsSummary] = useState<ResearchCenterOpsSummaryResponse | null>(null);
+  const [opsSummaryErr, setOpsSummaryErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!opsDiagOpen) return;
+    let cancelled = false;
+    setOpsSummaryLoading(true);
+    setOpsSummaryErr(null);
+    void (async () => {
+      try {
+        const res = await fetch("/api/research-center/ops-summary?range=24h", {
+          credentials: "same-origin",
+        });
+        const json = (await res.json()) as ResearchCenterOpsSummaryResponse;
+        if (!cancelled) {
+          setOpsSummary(json);
+          if (!json.ok && json.qualityMeta?.researchCenterOpsSummary?.warnings?.length) {
+            setOpsSummaryErr(json.qualityMeta.researchCenterOpsSummary.warnings.join("; "));
+          }
+        }
+      } catch {
+        if (!cancelled) setOpsSummaryErr("ops-summary 요청에 실패했습니다.");
+      } finally {
+        if (!cancelled) setOpsSummaryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [opsDiagOpen]);
 
   const toggleDesk = (id: ResearchDeskId) => {
     setSelectedDesks((prev) => {
@@ -435,6 +469,73 @@ export function ResearchCenterClient() {
           </article>
         </section>
       ) : null}
+
+      <section className="mt-10 rounded-lg border border-dashed border-slate-200 bg-slate-50/50">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-slate-600"
+          onClick={() => setOpsDiagOpen((o) => !o)}
+          aria-expanded={opsDiagOpen}
+        >
+          <span>운영 진단 (최근 24h · research_center)</span>
+          <span className="text-slate-400">{opsDiagOpen ? "접기" : "펼치기"}</span>
+        </button>
+        {opsDiagOpen ? (
+          <div className="border-t border-slate-200 px-3 pb-3 pt-1">
+            {opsSummaryLoading ? (
+              <p className="text-xs text-slate-500">불러오는 중…</p>
+            ) : opsSummaryErr ? (
+              <p className="text-xs text-amber-800">{opsSummaryErr}</p>
+            ) : opsSummary?.ok ? (
+              <div className="space-y-2 text-xs text-slate-700">
+                <p>
+                  최근 24h · degraded(가중) {opsSummary.summary.degradedCount} · error(가중){" "}
+                  {opsSummary.summary.errorCount} · 비율 degraded{" "}
+                  {(opsSummary.summary.degradedRatio * 100).toFixed(1)}% / error{" "}
+                  {(opsSummary.summary.errorRatio * 100).toFixed(1)}% · 이벤트 행 {opsSummary.summary.totalEvents}건
+                  (가중 {opsSummary.summary.totalOccurrences})
+                </p>
+                <p>
+                  상위 코드:{" "}
+                  {opsSummary.summary.topEventCodes
+                    .slice(0, 3)
+                    .map((x) => `${x.code}(${x.count})`)
+                    .join(", ") || "—"}
+                </p>
+                <p>
+                  stage 분포:{" "}
+                  {Object.keys(opsSummary.summary.failedStageCounts).length
+                    ? Object.entries(opsSummary.summary.failedStageCounts)
+                        .map(([k, v]) => `${k}:${v}`)
+                        .join(", ")
+                    : "—"}
+                </p>
+                <p className="font-mono text-[11px] text-slate-600">
+                  최근 requestId: {opsSummary.summary.recentRequestIds.join(", ") || "—"}
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Link
+                    href="/ops-events?domain=research_center"
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-800 underline-offset-2 hover:underline"
+                  >
+                    운영 로그 (research_center)
+                  </Link>
+                  {result?.requestId ? (
+                    <Link
+                      href={`/ops-events?domain=research_center&q=${encodeURIComponent(result.requestId)}`}
+                      className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-800 underline-offset-2 hover:underline"
+                    >
+                      이번 요청 requestId로 검색
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500">요약을 불러오지 못했습니다.</p>
+            )}
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }

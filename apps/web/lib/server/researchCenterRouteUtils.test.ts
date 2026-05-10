@@ -1,21 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildResearchOpsFingerprint,
-  classifyResearchFailureStage,
-  toResearchErrorCode,
+  runPromiseWithTimeout,
+  toRequestId,
 } from "./researchCenterRouteUtils";
 
 describe("researchCenterRouteUtils", () => {
-  it("classifies provider timeout failure", () => {
-    expect(classifyResearchFailureStage(new Error("Gemini timeout aborted"))).toBe("provider");
-  });
-
-  it("classifies response parse failure", () => {
-    expect(classifyResearchFailureStage(new Error("json parse failed"))).toBe("response_parse");
-  });
-
-  it("maps stage to stable error code", () => {
-    expect(toResearchErrorCode("context_cache")).toBe("research_context_cache_save_failed");
+  it("generates stable requestId when missing", () => {
+    expect(toRequestId(undefined)).toContain("rc_");
   });
 
   it("builds stable research fingerprint format", () => {
@@ -26,5 +18,17 @@ describe("researchCenterRouteUtils", () => {
         eventCode: "trend_memory_compare_failed",
       }),
     ).toBe("research_center:u1:20260508:trend_memory_compare_failed");
+  });
+
+  it("runPromiseWithTimeout rejects with bounded message", async () => {
+    await expect(
+      runPromiseWithTimeout(
+        new Promise<string>(() => {
+          /* never */
+        }),
+        20,
+        "research_request_timeout:20",
+      ),
+    ).rejects.toThrow(/research_request_timeout/);
   });
 });

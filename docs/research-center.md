@@ -16,12 +16,14 @@
 - 리포트 전체 본문은 Sheets에 저장하지 않고 요약만 append합니다.
 - 생성 요청은 `requestId`로 추적하며, 실패 시 JSON 응답(`errorCode`/`requestId`/`actionHint`)을 반환합니다.
 - `qualityMeta.researchCenter`는 `ok|degraded|failed`와 `failedStage`(`provider`/`sheets`/`context_cache`/`response_parse` 등)를 additive로 제공합니다.
+- `qualityMeta.researchCenter.timings`에 단계별 ms·`timeoutBudgetMs`·`nearTimeout` 및 `research_provider_slow`/`research_generation_near_timeout` 경고가 포함될 수 있습니다. 현재 본문 생성 경로에 별도 memory compare 단계가 없으면 `memoryCompareMs`는 생략될 수 있습니다.
 - `trend_memory_compare_failed`는 보조 비교 단계 경고로 다루며 본문 생성 성공 시 전체 실패로 전파하지 않습니다.
 - secret/token/API key/prompt 원문은 ops detail에 저장하지 않습니다.
 
 ## API
 
-- `POST /api/research-center/generate` — 본문은 `ResearchCenterGenerateRequestBody` / `ResearchCenterGenerateResponseBody` (`@office-unify/shared-types`).
+- `POST /api/research-center/generate` — 본문은 `ResearchCenterGenerateRequestBody` / `ResearchCenterGenerateResponseBody` (`@office-unify/shared-types`). 실패 시에도 JSON(`ok:false`, `errorCode`, `requestId`, `actionHint`, `qualityMeta.researchCenter`).
+- `GET /api/research-center/ops-summary` — 최근 Research Center 운영 이벤트 집계(**read-only**, `web_ops_events` 조회만, 응답에 secret/token/prompt 전문 없음). 쿼리: `range=24h|7d`, `requestId`, `limit`.
 
 ## UI
 
