@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { ResearchFollowupCategory, ResearchFollowupItem, ResearchFollowupPriority } from '@office-unify/shared-types';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
+import {
+  isResearchFollowupTableMissingError,
+  researchFollowupTableMissingJson,
+} from '@/lib/server/researchFollowupSupabaseErrors';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { buildResearchFollowupPrivateBankerPrompt } from '@/lib/server/researchFollowupPbPrompt';
 import { buildPrivateBankerContentHash, runPrivateBankerMessageWithDbIdempotency } from '@/lib/server/runPrivateBankerMessage';
@@ -48,7 +52,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .eq('id', id)
     .eq('user_key', auth.userKey as string)
     .maybeSingle();
-  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  if (fetchErr) {
+    if (isResearchFollowupTableMissingError(fetchErr)) {
+      return NextResponse.json(researchFollowupTableMissingJson(), { status: 503 });
+    }
+    return NextResponse.json(
+      { ok: false, error: fetchErr.message, actionHint: '잠시 후 다시 시도하거나 운영 로그를 확인하세요.' },
+      { status: 500 },
+    );
+  }
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const openAiKey = process.env.OPENAI_API_KEY?.trim();
@@ -102,7 +114,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const assistantId = result.body.assistantMessage?.id ?? null;
   const userMsgId = result.body.userMessage?.id ?? null;
 
-  await supabase
+  const { error: upErr } = await supabase
     .from('web_research_followup_items')
     .update({
       selected_for_pb: true,
@@ -113,6 +125,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     })
     .eq('id', id)
     .eq('user_key', userKeyStr);
+  if (upErr) {
+    if (isResearchFollowupTableMissingError(upErr)) {
+      return NextResponse.json(researchFollowupTableMissingJson(), { status: 503 });
+    }
+    return NextResponse.json(
+      { ok: false, error: upErr.message, actionHint: 'PB 전송은 완료되었을 수 있으나 후속 항목 상태 갱신에 실패했습니다. 잠시 후 다시 시도하세요.' },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({
     ok: true,

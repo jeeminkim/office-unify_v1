@@ -79,6 +79,11 @@ describe("composeTodayBriefCandidates", () => {
     const dm = buildTodayCandidateDisplayMetrics(out.deck[0], { briefDeckSlot: "interest_stock" });
     expect(dm.observationScore).toBeGreaterThanOrEqual(0);
     expect(dm.scoreExplanation).not.toMatch(/우선순위/);
+    expect(dm.scoreExplanation).not.toMatch(/priority/i);
+    expect(out.deck.length).toBeLessThanOrEqual(3);
+    const deckJson = JSON.stringify(out.deck);
+    expect(deckJson).not.toMatch(/우선순위\s*60/);
+    expect(deckJson).not.toMatch(/priority\s*60/i);
   });
 
   it("falls back to interest top3 when no ETF", () => {

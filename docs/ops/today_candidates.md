@@ -27,6 +27,17 @@
 - 카드 표시는 내부 raw `score` 대신 **`displayMetrics`**(`관찰 점수 n/100`, 신뢰도·데이터 품질 등). 원본 배열 `candidates.*`는 유지.
 - 미국 신호→한국 후보가 비면 **`usKrSignalDiagnostics`**·`usMarketSummary.diagnostics`로 원인 코드를 노출; ops **`us_signal_candidates_empty`**(budget/cooldown·fingerprint).
 
+### 대시보드 UI (중복 완화)
+
+- 기본 화면은 **`primaryCandidateDeck`(최대 3카드)** 중심.
+- 동일 후보의 원본 배열(`candidates.userContext` / `candidates.usMarketKr`)은 **접기(`<details>`)** 로 이동; 데이터/API 필드는 유지.
+- **미국시장 신호 요약·empty 진단**(`usMarketSummary`·`usKrSignalDiagnostics`)은 접기 밖에서 항상 노출(진단 가시성 유지).
+
+### 7일 운영 요약: 미국 empty 사유 히스토그램
+
+- `GET /api/dashboard/today-candidates/ops-summary` 응답의 **`usKrEmptyReasonHistogram`**: 최근 N일(쿼리 `days`, 기본 7) 동안 domain=`today_candidates` 이벤트 중 **`us_signal_candidates_empty`**만 모아 `detail.primaryReason`별로 `occurrence_count`를 합산한다.
+- `primaryReason`이 없거나 구형 payload면 **`unknown`** 으로 집계.
+- **read-only** 경로에서 별도 DB write 없음.
 
 ## 관심종목 추가
 

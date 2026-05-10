@@ -26,6 +26,8 @@ export interface TodayCandidatesOpsSummaryResponse {
     occurrenceCount: number;
     lastSeenAt?: string;
   }>;
+  /** 최근 N일 `us_signal_candidates_empty` ops의 detail.primaryReason별 가중 집계(구버전·누락은 unknown). */
+  usKrEmptyReasonHistogram: Array<{ reason: string; count: number }>;
   warnings: string[];
 }
 
@@ -53,6 +55,21 @@ export function summarizeTodayCandidateOps(rows: WebOpsEventRow[], days: number)
     if (row.code === 'today_candidate_watchlist_already_exists') totals.alreadyExists += 1;
     if (row.code === 'today_candidate_watchlist_add_failed') totals.addFailed += 1;
   }
+
+  const emptyReasonHist = new Map<string, number>();
+  for (const row of inRange) {
+    if (row.code !== 'us_signal_candidates_empty') continue;
+    const detail = (row.detail ?? {}) as Record<string, unknown>;
+    const raw = detail.primaryReason;
+    const reason = typeof raw === 'string' && raw.trim() ? raw.trim() : 'unknown';
+    const n = Number(row.occurrence_count ?? 1);
+    if (!Number.isFinite(n) || n < 0) continue;
+    emptyReasonHist.set(reason, (emptyReasonHist.get(reason) ?? 0) + n);
+  }
+  const usKrEmptyReasonHistogram = [...emptyReasonHist.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count);
+
   const topCandidates = inRange
     .map((r) => {
       const detail = (r.detail ?? {}) as Record<string, unknown>;
@@ -76,6 +93,7 @@ export function summarizeTodayCandidateOps(rows: WebOpsEventRow[], days: number)
     },
     totals,
     topCandidates,
+    usKrEmptyReasonHistogram,
     warnings: [],
   };
 }

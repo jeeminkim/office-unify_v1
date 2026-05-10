@@ -26,9 +26,9 @@
 - `POST /api/research-center/generate` — 본문은 `ResearchCenterGenerateRequestBody` / `ResearchCenterGenerateResponseBody` (`@office-unify/shared-types`). 실패 시에도 JSON(`ok:false`, `errorCode`, `requestId`, `actionHint`, `qualityMeta.researchCenter`). 성공 응답 `meta`에 `resultMode`(`full`|`fallback_editor_synthesis`), `providerRetryCount` 등 additive 필드.
 - `GET /api/research-center/ops-summary` — 기간·코드·stage **집계**(**read-only**). 쿼리: `range=24h|7d`, `requestId`, `limit`.
 - `GET /api/research-center/ops-trace` — **단일 requestId** 타임라인·권장 조치(**read-only**). 쿼리: `requestId`, `range=24h|7d`. ops-summary와 달리 한 요청의 시간순 이벤트에 초점.
-- `POST /api/research-center/followups/extract` — 마크다운에서「다음에 확인할 것」류 섹션 추출(preview; `save:true` 시 DB insert). 매수·자동주문 없음.
-- `GET|POST /api/research-center/followups` — 저장된 추적 항목 목록/단건 생성 (`web_research_followup_items`, SQL 미적용 시 500).
-- `POST /api/research-center/followups/[id]/send-to-pb` — Private Banker(OpenAI)로 후속 고찰 프롬프트 전송; 응답 미리보기는 additive.
+- `POST /api/research-center/followups/extract` — 마크다운에서「다음에 확인할 것」류 섹션 추출(preview; `save:true` 시 DB insert). 매수·자동주문 없음. 추출 결과가 없으면 **`extractEmptyHint`**(additive 안내) 가능.
+- `GET|POST /api/research-center/followups` — 저장된 추적 항목 목록/단건 생성 (`web_research_followup_items`). **SQL 미적용 시 503**·`code: research_followup_table_missing`·`actionHint`(적용할 DDL 파일 안내).
+- `POST /api/research-center/followups/[id]/send-to-pb` — Private Banker(OpenAI)로 후속 고찰 프롬프트 전송; 응답 미리보기는 additive. 테이블 미적용 시 동일 **503** 계약.
 
 ## UI
 

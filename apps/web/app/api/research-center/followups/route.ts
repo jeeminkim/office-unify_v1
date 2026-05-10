@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { ResearchFollowupRowDto } from '@office-unify/shared-types';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
+import {
+  isResearchFollowupTableMissingError,
+  researchFollowupTableMissingJson,
+} from '@/lib/server/researchFollowupSupabaseErrors';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 
 export async function GET(req: Request) {
@@ -11,16 +15,19 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const status = url.searchParams.get('status') ?? undefined;
   const symbol = url.searchParams.get('symbol') ?? undefined;
-  let q = supabase
-    .from('web_research_followup_items')
-    .select('*')
-    .eq('user_key', auth.userKey as string)
-    .order('created_at', { ascending: false })
-    .limit(200);
+  let q = supabase.from('web_research_followup_items').select('*').eq('user_key', auth.userKey as string);
   if (status) q = q.eq('status', status);
   if (symbol) q = q.eq('symbol', symbol);
-  const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { data, error } = await q.order('created_at', { ascending: false }).limit(200);
+  if (error) {
+    if (isResearchFollowupTableMissingError(error)) {
+      return NextResponse.json(researchFollowupTableMissingJson(), { status: 503 });
+    }
+    return NextResponse.json(
+      { ok: false, error: error.message, actionHint: '잠시 후 다시 시도하거나 운영 로그를 확인하세요.' },
+      { status: 500 },
+    );
+  }
   return NextResponse.json({ ok: true, items: (data ?? []) as ResearchFollowupRowDto[] });
 }
 
@@ -60,6 +67,14 @@ export async function POST(req: Request) {
     })
     .select('*')
     .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (isResearchFollowupTableMissingError(error)) {
+      return NextResponse.json(researchFollowupTableMissingJson(), { status: 503 });
+    }
+    return NextResponse.json(
+      { ok: false, error: error.message, actionHint: '잠시 후 다시 시도하거나 운영 로그를 확인하세요.' },
+      { status: 500 },
+    );
+  }
   return NextResponse.json({ ok: true, item: data });
 }

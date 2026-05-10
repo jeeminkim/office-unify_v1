@@ -85,6 +85,7 @@ type TodayCandidatesOpsSummaryResponse = {
     alreadyExists: number;
     addFailed: number;
   };
+  usKrEmptyReasonHistogram?: Array<{ reason: string; count: number }>;
 };
 
 type ProfitGoalSummaryResponse = {
@@ -452,7 +453,26 @@ export function DashboardClient() {
           </div>
         ) : null}
 
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="mt-3 rounded border border-violet-100 bg-white p-3">
+          <p className="text-xs font-semibold text-violet-950">미국시장 신호 요약·진단</p>
+          <p className="mt-1 text-[11px] text-slate-700">
+            {todayBrief?.usMarketSummary?.summary ?? "미국시장 데이터가 충분하지 않아 제한적으로 표시합니다."}
+          </p>
+          {todayBrief?.usKrSignalDiagnostics?.userMessage ? (
+            <p className="mt-2 rounded border border-amber-100 bg-amber-50/80 p-2 text-[11px] text-amber-950">
+              진단: {todayBrief.usKrSignalDiagnostics.userMessage}
+            </p>
+          ) : null}
+        </div>
+
+        <details className="mt-3 rounded-lg border border-violet-200 bg-violet-50/50 p-2 open:bg-violet-50">
+          <summary className="cursor-pointer select-none text-xs font-semibold text-violet-950">
+            상세 후보 보기 (원본 목록 · 미국 신호 연결 종목)
+          </summary>
+          <p className="mt-1 text-[10px] text-violet-800/90">
+            상단의 오늘의 관찰 후보 3카드가 요약입니다. 아래는 동일 데이터의 원본 목록·연결 종목입니다.
+          </p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="rounded border border-violet-100 bg-white p-2">
             <p className="text-xs font-semibold text-violet-950">내 관심사 기반 관찰 후보 (원본 목록)</p>
             {(filteredTodayCandidates.userContext ?? []).length === 0 ? (
@@ -500,12 +520,6 @@ export function DashboardClient() {
           </div>
           <div className="rounded border border-violet-100 bg-white p-2">
             <p className="text-xs font-semibold text-violet-950">미국시장 신호 기반 한국주식 후보</p>
-            <p className="mt-1 text-[11px] text-slate-700">{todayBrief?.usMarketSummary?.summary ?? "미국시장 데이터가 충분하지 않아 제한적으로 표시합니다."}</p>
-            {todayBrief?.usKrSignalDiagnostics?.userMessage ? (
-              <p className="mt-1 rounded border border-amber-100 bg-amber-50/80 p-2 text-[11px] text-amber-950">
-                진단: {todayBrief.usKrSignalDiagnostics.userMessage}
-              </p>
-            ) : null}
             {(filteredTodayCandidates.usMarketKr ?? []).length === 0 ? (
               <p className="mt-1 text-[11px] text-slate-600">
                 미국 장 신호에서 한국 상장 관찰 후보로 연결된 종목이 없습니다. 매수 추천이 아니라 관찰 후보 생성 단계입니다.
@@ -549,7 +563,9 @@ export function DashboardClient() {
               </ul>
             )}
           </div>
-        </div>
+          </div>
+        </details>
+
         {openedCandidateId ? (
           <div className="mt-3 rounded border border-violet-200 bg-violet-50 p-3 text-xs">
             <p className="font-semibold text-violet-950">선정 사유</p>
@@ -629,10 +645,18 @@ export function DashboardClient() {
       <section className="mb-5 rounded-xl border border-violet-200 bg-white p-4">
         <h2 className="text-sm font-semibold text-violet-900">후보 운영 상태 · 최근 7일</h2>
         {todayOpsSummary?.totals ? (
-          <p className="mt-2 text-xs text-violet-900">
-            생성 {todayOpsSummary.totals.generated}회 · 사유 보기 {todayOpsSummary.totals.detailOpened}회 · 관심추가 {todayOpsSummary.totals.watchlistAdded}회 · 중복 {todayOpsSummary.totals.alreadyExists}회 · 미국장 no_data {todayOpsSummary.totals.usMarketNoData}회 · 미국신호→KR후보 empty{" "}
-            {todayOpsSummary.totals.usSignalCandidatesEmpty ?? 0}회 · 추가 실패 {todayOpsSummary.totals.addFailed}회
-          </p>
+          <>
+            <p className="mt-2 text-xs text-violet-900">
+              생성 {todayOpsSummary.totals.generated}회 · 사유 보기 {todayOpsSummary.totals.detailOpened}회 · 관심추가 {todayOpsSummary.totals.watchlistAdded}회 · 중복 {todayOpsSummary.totals.alreadyExists}회 · 미국장 no_data {todayOpsSummary.totals.usMarketNoData}회 · 미국신호→KR후보 empty{" "}
+              {todayOpsSummary.totals.usSignalCandidatesEmpty ?? 0}회 · 추가 실패 {todayOpsSummary.totals.addFailed}회
+            </p>
+            {(todayOpsSummary.usKrEmptyReasonHistogram ?? []).length > 0 ? (
+              <p className="mt-1 text-[11px] text-violet-800/95">
+                미국신호→KR empty 사유(최근 구간):{" "}
+                {(todayOpsSummary.usKrEmptyReasonHistogram ?? []).map((h) => `${h.reason} ${h.count}회`).join(" · ")}
+              </p>
+            ) : null}
+          </>
         ) : (
           <p className="mt-2 text-xs text-amber-800">후보 운영 상태를 불러오지 못했습니다.</p>
         )}

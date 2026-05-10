@@ -89,6 +89,19 @@
 - 저장 테이블: `web_research_followup_items`(SQL `docs/sql/append_research_followup_items.sql` 적용 필요).
 - PB 전송: `POST /api/research-center/followups/[id]/send-to-pb` → OpenAI Private Banker 경로; 매수 강요·자동 주문 없음.
 
+### SQL 미적용 시 예상 응답
+
+- 테이블이 없으면 관련 API는 **503**과 함께 JSON: `ok: false`, **`code: research_followup_table_missing`**, **`actionHint`**(위 SQL 파일을 Supabase에 적용하라는 안내). 일반 DB 오류는 `actionHint`만 포함할 수 있다.
+- 운영 로그 남발 방지를 위해 **GET 목록 실패만으로는 ops를 자동 증가시키지 않는 것**을 권장(현재 구현은 JSON 안내 중심).
+
+### 배포 후 점검 순서 (follow-up → PB)
+
+1. Supabase에서 `docs/sql/append_research_followup_items.sql` 적용 여부 확인.
+2. `POST /api/research-center/followups/extract` — `save:false`로 추출만 확인 → `save:true`로 1건 저장 smoke.
+3. `GET /api/research-center/followups?status=open` 로 사용자 스코프 목록 확인.
+4. `POST /api/research-center/followups/[id]/send-to-pb` — PB 멱등·`pb_turn_id`/`pb_session_id` 갱신 확인(실제 발송은 환경 키 필요).
+5. 문제 시 `/ops-events`에서 동일 사용자·route별 오류 확인(secret 미포함).
+
 ## 장기 메모
 
 - Provider 호출은 동기 long-running일 수 있으며, 본 단계에서는 timeout 측정·ops-summary·ops-trace·타이밍 메타로 관측 후 job queue 전환을 검토한다.

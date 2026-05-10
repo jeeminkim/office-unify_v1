@@ -12,6 +12,8 @@ SQL 적용 상태/우선순위는 `docs/ops/sql-application-status.md`를 함께
 |--------|------|
 | `web_research_followup_items` | Research Center에서 추출한 후속 확인 항목·PB 전송 메타(`user_key` 스코프). |
 
+**미적용 시 API 동작:** 해당 테이블이 없으면 `GET|POST /api/research-center/followups*`, `POST .../extract`(저장 시), `POST .../send-to-pb`는 PostgreSQL/PostgREST 오류 대신 **503**과 함께 `code: research_followup_table_missing`, `actionHint`(위 SQL 파일 적용 안내)를 반환한다. 민감정보는 포함하지 않는다.
+
 ## Trend Analysis Center — Phase 4 SQL memory
 
 **파일:** `docs/sql/append_web_trend_memory_phase1.sql`
