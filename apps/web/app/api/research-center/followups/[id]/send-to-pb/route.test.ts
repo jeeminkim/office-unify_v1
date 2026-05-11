@@ -18,6 +18,18 @@ vi.mock("@/lib/server/runPrivateBankerMessage", () => ({
   runPrivateBankerMessageWithDbIdempotency: hoisted.runPb,
 }));
 
+vi.mock("@/lib/server/investorProfile", () => ({
+  getInvestorProfileForUser: vi.fn(async () => ({
+    ok: true as const,
+    profile: null,
+    profileStatus: "missing" as const,
+  })),
+}));
+
+vi.mock("@/lib/server/researchFollowupOps", () => ({
+  logResearchFollowupOpsEvent: vi.fn(async () => {}),
+}));
+
 describe("POST /api/research-center/followups/[id]/send-to-pb", () => {
   beforeEach(() => {
     hoisted.getServiceSupabase.mockReset();
@@ -85,6 +97,17 @@ describe("POST /api/research-center/followups/[id]/send-to-pb", () => {
             update: updateMock,
           };
         }
+        if (table === "web_portfolio_holdings") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn(() => ({
+                  order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+                })),
+              })),
+            })),
+          };
+        }
         return {};
       }),
     });
@@ -110,6 +133,7 @@ describe("POST /api/research-center/followups/[id]/send-to-pb", () => {
     const pbArg = hoisted.runPb.mock.calls[0]?.[0] as { content: string };
     expect(pbArg.content).toContain("Follow A");
     expect(pbArg.content).toContain("삼성");
+    expect(pbArg.content).toContain("[보유 집중도");
     expect(updateMock).toHaveBeenCalled();
     const upPayload = updateMock.mock.calls[0]?.[0] as {
       selected_for_pb: boolean;
@@ -121,9 +145,126 @@ describe("POST /api/research-center/followups/[id]/send-to-pb", () => {
     expect(upPayload.status).toBe("discussed");
     expect(upPayload.pb_turn_id).toBe("asst-9");
     expect(upPayload.pb_session_id).toBe("usr-8");
-    const json = (await res.json()) as { ok: boolean; pb?: { deduplicated: boolean } };
+    const json = (await res.json()) as { ok: boolean; pb?: { deduplicated: boolean }; followup?: { status?: string } };
     expect(json.ok).toBe(true);
     expect(json.pb?.deduplicated).toBe(false);
+    expect(json.followup?.status).toBe("discussed");
+  });
+
+  it("sets status tracking when PB reply was deduplicated", async () => {
+    const row = {
+      id: "fu-2",
+      title: "Follow B",
+      detail_json: { bullets: [] },
+      symbol: null,
+      company_name: null,
+      category: "other",
+      priority: "medium",
+      created_at: new Date().toISOString(),
+    };
+    const updateMock = vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) })) }));
+    hoisted.getServiceSupabase.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "web_research_followup_items") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(() => Promise.resolve({ data: row, error: null })),
+                })),
+              })),
+            })),
+            update: updateMock,
+          };
+        }
+        if (table === "web_portfolio_holdings") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn(() => ({
+                  order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+                })),
+              })),
+            })),
+          };
+        }
+        return {};
+      }),
+    });
+    hoisted.runPb.mockResolvedValue({
+      kind: "ok",
+      deduplicated: true,
+      body: {
+        assistantMessage: { id: "asst-d", content: "cached" },
+        userMessage: { id: "usr-d" },
+      },
+    });
+    const { POST } = await import("./route");
+    const res = await POST(
+      new Request("http://local/x", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idempotencyKey: "idem-dup" }),
+      }),
+      { params: Promise.resolve({ id: "fu-2" }) },
+    );
+    expect(res.ok).toBe(true);
+    const upPayload = updateMock.mock.calls[0]?.[0] as { status: string };
+    expect(upPayload.status).toBe("tracking");
+  });
+
+  it("does not update row when PB run fails", async () => {
+    const row = {
+      id: "fu-3",
+      title: "Follow C",
+      detail_json: {},
+      symbol: null,
+      company_name: null,
+      category: "other",
+      priority: "medium",
+      created_at: new Date().toISOString(),
+    };
+    const updateMock = vi.fn();
+    hoisted.getServiceSupabase.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === "web_research_followup_items") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(() => Promise.resolve({ data: row, error: null })),
+                })),
+              })),
+            })),
+            update: updateMock,
+          };
+        }
+        if (table === "web_portfolio_holdings") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                order: vi.fn(() => ({
+                  order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+                })),
+              })),
+            })),
+          };
+        }
+        return {};
+      }),
+    });
+    hoisted.runPb.mockResolvedValue({
+      kind: "error",
+      status: 429,
+      message: "rate limited",
+      code: "RATE",
+    });
+    const { POST } = await import("./route");
+    const res = await POST(new Request("http://local/x", { method: "POST", body: "{}" }), {
+      params: Promise.resolve({ id: "fu-3" }),
+    });
+    expect(res.status).toBe(429);
+    expect(updateMock).not.toHaveBeenCalled();
   });
 
   it("returns table missing when select fails with undefined_table", async () => {

@@ -31,3 +31,8 @@ export function researchFollowupTableMissingJson(): ResearchFollowupTableMissing
     actionHint: RESEARCH_FOLLOWUP_TABLE_ACTION_HINT,
   };
 }
+
+/** Postgres unique_violation — dedupe unique index 충돌 등 */
+export function isPostgresUniqueViolationError(err: { code?: string } | null | undefined): boolean {
+  return String(err?.code ?? "") === "23505";
+}

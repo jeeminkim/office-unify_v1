@@ -13,7 +13,18 @@ import { analyzeThesisHealth } from '@/lib/server/thesisHealthAnalyzer';
 import { buildTodayStockCandidates } from '@/lib/server/todayStockCandidateService';
 import { composeTodayBriefCandidates } from '@/lib/server/todayBriefCandidateComposer';
 import { buildTodayCandidateDisplayMetrics } from '@/lib/server/todayBriefCandidateDisplay';
+import { getInvestorProfileForUser } from '@/lib/server/investorProfile';
+import {
+  applyConcentrationRiskToPrimaryDeck,
+  buildPortfolioExposureSnapshotFromHoldingsRows,
+  buildTodayBriefConcentrationRiskSummary,
+} from '@/lib/server/concentrationRisk';
+import { applySuitabilityToPrimaryDeck } from '@/lib/server/suitabilityAssessment';
 import { diagnoseUsKrSignalCandidates } from '@/lib/server/usSignalCandidateDiagnostics';
+import {
+  buildTodayBriefScoreExplanationSummary,
+  enrichPrimaryCandidateDeckScoreExplanations,
+} from '@/lib/server/todayBriefScoreExplanation';
 import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
 import {
   appendQualityMetaOpsEventTrace,
@@ -30,6 +41,7 @@ import {
   OPS_TODAY_CANDIDATES_EVENT_CODES,
   shouldLogTodayCandidatesSummaryBatchDegraded,
 } from '@/lib/server/opsAggregateWarnings';
+import type { InvestorProfile } from '@office-unify/shared-types';
 import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from '@/lib/todayCandidatesContract';
 
 function withTodayCandidateDisplayMetrics(c: TodayStockCandidate): TodayStockCandidate {
@@ -119,18 +131,21 @@ export async function GET() {
       const qty = toNum(h.qty);
       const avg = toNum(h.avg_price);
       const current = q?.currentPrice;
-      const value = current != null ? qty * current : qty * avg;
-      const pnlRate = current != null && avg > 0 ? ((current - avg) / avg) * 100 : undefined;
+      const curNum = current != null ? Number(current) : NaN;
+      const hasQuote = current != null && Number.isFinite(curNum);
+      const value = hasQuote ? qty * curNum : qty * avg;
+      const pnlRate = hasQuote && avg > 0 ? ((curNum - avg) / avg) * 100 : undefined;
       const thesis = analyzeThesisHealth({
         symbol: h.symbol,
         market: h.market,
-        currentPrice: current,
+        currentPrice: hasQuote ? curNum : undefined,
         pnlRate,
         targetPrice: toNum(h.target_price) || undefined,
         holdingMemo: h.investment_memo,
         judgmentMemo: h.judgment_memo,
       });
-      return { h, value, pnlRate, thesis };
+      const valueSource = hasQuote ? ('market_value' as const) : ('cost_basis' as const);
+      return { h, value, pnlRate, thesis, valueSource };
     });
     const total = rows.reduce((acc, r) => acc + r.value, 0);
     const top = [...rows]
@@ -259,10 +274,60 @@ export async function GET() {
       usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
     });
 
+    const exposureSnapshot = buildPortfolioExposureSnapshotFromHoldingsRows(
+      rows.map((r) => ({ h: r.h, value: r.value, valueSource: r.valueSource })),
+      total,
+      quote.quoteAvailable,
+    );
+
+    let primaryCandidateDeck = composedDeck.deck;
+    let profileForConcentration: InvestorProfile | null = null;
+    let suitabilitySummary:
+      | {
+          profileStatus: 'missing' | 'partial' | 'complete';
+          warningCounts: Partial<Record<string, number>>;
+        }
+      | { skipped: true; reason: string }
+      | undefined;
+
+    try {
+      const ipRes = await getInvestorProfileForUser(supabase, auth.userKey as string);
+      if (!ipRes.ok && ipRes.code === 'table_missing') {
+        suitabilitySummary = { skipped: true, reason: 'investor_profile_table_missing' };
+      } else if (ipRes.ok) {
+        const profileForSuit = ipRes.profileStatus === 'missing' ? null : ipRes.profile;
+        profileForConcentration = profileForSuit;
+        const applied = applySuitabilityToPrimaryDeck(composedDeck.deck, profileForSuit);
+        primaryCandidateDeck = applied.deck;
+        suitabilitySummary = {
+          profileStatus: ipRes.profileStatus,
+          warningCounts: applied.warningCounts as Partial<Record<string, number>>,
+        };
+      }
+    } catch {
+      primaryCandidateDeck = composedDeck.deck;
+      suitabilitySummary = undefined;
+    }
+
+    primaryCandidateDeck = applyConcentrationRiskToPrimaryDeck(primaryCandidateDeck, profileForConcentration, exposureSnapshot);
+    const concentrationRiskSummary = buildTodayBriefConcentrationRiskSummary(primaryCandidateDeck, exposureSnapshot);
+
+    const profileStatusForScoreExplanation: 'missing' | 'partial' | 'complete' =
+      suitabilitySummary && 'profileStatus' in suitabilitySummary ? suitabilitySummary.profileStatus : 'missing';
+
     const usKrSignalDiagnostics = diagnoseUsKrSignalCandidates({
       usMarketSummary: todayCandidates.usMarketSummary,
       usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
     });
+
+    primaryCandidateDeck = enrichPrimaryCandidateDeckScoreExplanations(primaryCandidateDeck, {
+      usKrSignalDiagnostics,
+      usMarketKrCount: todayCandidates.usMarketKrCandidates.length,
+    });
+    const scoreExplanationSummary = buildTodayBriefScoreExplanationSummary(
+      primaryCandidateDeck,
+      profileStatusForScoreExplanation,
+    );
     const ymd = ymdKst();
     const opsLogging: {
       attempted: number;
@@ -500,7 +565,7 @@ export async function GET() {
         userContext: todayCandidates.userContextCandidates.map(withTodayCandidateDisplayMetrics),
         usMarketKr: todayCandidates.usMarketKrCandidates.map(withTodayCandidateDisplayMetrics),
       },
-      primaryCandidateDeck: composedDeck.deck,
+      primaryCandidateDeck,
       usKrSignalDiagnostics: usKrSignalDiagnostics ?? undefined,
       usMarketSummary: todayCandidates.usMarketSummary,
       disclaimer:
@@ -528,6 +593,9 @@ export async function GET() {
             ? { [usKrSignalDiagnostics.primaryReason]: 1 }
             : undefined,
           sectorEtfFallbackCount: composedDeck.qualityMeta.fallbackReason ? 1 : 0,
+          ...(suitabilitySummary ? { suitability: suitabilitySummary } : {}),
+          scoreExplanationSummary,
+          concentrationRiskSummary,
         },
       },
     };

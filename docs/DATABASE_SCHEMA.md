@@ -6,13 +6,24 @@ SQL 적용 상태/우선순위는 `docs/ops/sql-application-status.md`를 함께
 
 ## Research Center follow-up items (additive)
 
-**파일:** `docs/sql/append_research_followup_items.sql`
+**파일:** `docs/sql/append_research_followup_items.sql`  
+**선택(중복 DB 강제):** `docs/sql/append_research_followup_items_dedupe_index.sql` — `(user_key, coalesce(research_request_id,''), lower(regexp_replace(trim(title), E'\\s+', ' ', 'g')), coalesce(symbol,''))` **unique index**. 기존 행에 동일 키가 있으면 인덱스 생성이 실패하므로 파일 내 사전 점검 `SELECT … GROUP BY … HAVING count(*)>1`으로 정리 후 적용한다. 앱 중복 판별은 `normalizeResearchFollowupDedupeTitle`(`@office-unify/shared-types`)과 동일 의미로 맞춘다.
 
 | 테이블 | 역할 |
 |--------|------|
-| `web_research_followup_items` | Research Center에서 추출한 후속 확인 항목·PB 전송 메타(`user_key` 스코프). |
+| `web_research_followup_items` | Research Center 후속 확인 추적(`user_key` 스코프). 컬럼: `status`(open/tracking/discussed/dismissed/archived), `priority`, `selected_for_pb`, `pb_*`, `detail_json`(추출 메타·선택 `userNote` 등). |
 
-**미적용 시 API 동작:** 해당 테이블이 없으면 `GET|POST /api/research-center/followups*`, `POST .../extract`(저장 시), `POST .../send-to-pb`는 PostgreSQL/PostgREST 오류 대신 **503**과 함께 `code: research_followup_table_missing`, `actionHint`(위 SQL 파일 적용 안내)를 반환한다. 민감정보는 포함하지 않는다.
+**미적용 시 API 동작:** 해당 테이블이 없으면 `GET|POST /api/research-center/followups*`, `POST .../extract`(저장 시), `POST .../send-to-pb`는 PostgreSQL/PostgREST 오류 대신 **503**과 함께 `code: research_followup_table_missing`, `actionHint`(위 SQL 파일 적용 안내)를 반환한다. 민감정보는 포함하지 않는다. **`GET /api/research-center/followups`는 read-only**(SELECT만).
+
+## Investor profile (additive, judgment-assist only)
+
+**파일:** `docs/sql/append_investor_profile.sql`
+
+| 테이블 | 역할 |
+|--------|------|
+| `web_investor_profiles` | 사용자별 손실 감내·투자 기간·레버리지·집중도 선호 등 **판단 보조 맥락**(매수 추천·자동 실행 아님). `user_key` unique. |
+
+**미적용 시:** `GET|POST /api/investor-profile` 등에서 **503**·`code: investor_profile_table_missing`·`actionHint`(위 SQL 적용 안내). Today Brief는 적합성 단계를 건너뛸 수 있다.
 
 ## Trend Analysis Center — Phase 4 SQL memory
 
@@ -255,6 +266,7 @@ where routine_schema = 'public'
 ## Portfolio dashboard vs ledger responsibilities
 
 - `/portfolio`는 `web_portfolio_holdings`를 읽어 현황(평가/비중/경고)을 보여주는 점검 화면이다.
+- **EVO-005:** `GET /api/dashboard/today-brief`는 동일 보유 테이블을 **read-only**로 읽어 후보별 `concentrationRiskAssessment`에 반영한다(신규 컬럼 없음; `sector`·시세 가용성은 휴리스틱에 사용).
 - `/portfolio-ledger`는 동일 테이블/`web_portfolio_watchlist`를 수정하는 관리 화면이다.
 - `apply-trade`는 실제 주문 실행이 아닌 사후 기록 반영:
   - buy: 수량 증가 + 가중평균 단가 재계산

@@ -1,13 +1,22 @@
 import { NextResponse } from 'next/server';
-import type { ResearchFollowupCategory, ResearchFollowupItem, ResearchFollowupPriority } from '@office-unify/shared-types';
+import type {
+  InvestorProfile,
+  ResearchFollowupCategory,
+  ResearchFollowupItem,
+  ResearchFollowupPriority,
+} from '@office-unify/shared-types';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import {
   isResearchFollowupTableMissingError,
   researchFollowupTableMissingJson,
 } from '@/lib/server/researchFollowupSupabaseErrors';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
+import { getInvestorProfileForUser } from '@/lib/server/investorProfile';
 import { buildResearchFollowupPrivateBankerPrompt } from '@/lib/server/researchFollowupPbPrompt';
+import { buildConcentrationRiskPromptSection, getPortfolioExposureSnapshotForUser } from '@/lib/server/concentrationRisk';
+import { buildInvestorProfilePromptContext } from '@/lib/server/suitabilityAssessment';
 import { buildPrivateBankerContentHash, runPrivateBankerMessageWithDbIdempotency } from '@/lib/server/runPrivateBankerMessage';
+import { logResearchFollowupOpsEvent } from '@/lib/server/researchFollowupOps';
 
 function asCategory(c: string): ResearchFollowupCategory {
   const allowed: ResearchFollowupCategory[] = [
@@ -86,14 +95,37 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const followupsForPb = mergedItems && mergedItems.length > 0 ? mergedItems : [typedItem];
 
+  const userKeyStr = auth.userKey as string;
+
+  let investorProfileSection = '(투자자 프로필 맥락 생략)';
+  let profileForConc: InvestorProfile | null = null;
+  try {
+    const ip = await getInvestorProfileForUser(supabase, userKeyStr);
+    if (!ip.ok && ip.code === 'table_missing') {
+      investorProfileSection =
+        '(투자자 프로필 테이블 미적용 · docs/sql/append_investor_profile.sql 참고. 자동 주문·매수 강요 없음)';
+    } else if (ip.ok) {
+      profileForConc = ip.profileStatus === 'missing' ? null : ip.profile;
+      investorProfileSection = buildInvestorProfilePromptContext(
+        ip.profileStatus === 'missing' ? null : ip.profile,
+        ip.profileStatus,
+      );
+    }
+  } catch {
+    investorProfileSection = '(투자자 프로필 조회 생략)';
+  }
+
+  const snap = await getPortfolioExposureSnapshotForUser(supabase, auth.userKey);
+  const concentrationRiskSection = buildConcentrationRiskPromptSection(profileForConc, snap);
+
   const content = buildResearchFollowupPrivateBankerPrompt({
     companyName: row.company_name ?? undefined,
     symbol: row.symbol ?? undefined,
     conclusionSummaryLines: Array.isArray(body.conclusionSummaryLines) ? body.conclusionSummaryLines : [],
     followups: followupsForPb,
+    investorProfileSection,
+    concentrationRiskSection,
   });
-
-  const userKeyStr = auth.userKey as string;
   const contentHash = buildPrivateBankerContentHash(userKeyStr, content);
 
   const result = await runPrivateBankerMessageWithDbIdempotency({
@@ -114,11 +146,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const assistantId = result.body.assistantMessage?.id ?? null;
   const userMsgId = result.body.userMessage?.id ?? null;
 
+  const nextStatus = result.deduplicated ? 'tracking' : 'discussed';
+
   const { error: upErr } = await supabase
     .from('web_research_followup_items')
     .update({
       selected_for_pb: true,
-      status: 'discussed',
+      status: nextStatus,
       pb_turn_id: assistantId,
       pb_session_id: userMsgId,
       updated_at: new Date().toISOString(),
@@ -135,8 +169,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     );
   }
 
+  void logResearchFollowupOpsEvent({
+    userKey: userKeyStr,
+    code: 'research_followup_sent_to_pb',
+    fingerprint: `research_followup_sent_to_pb:${userKeyStr}:${id}:${idempotencyKey.slice(0, 12)}`,
+    message: 'Research follow-up sent to Private Banker',
+    detail: {
+      followupIdPrefix: id.slice(0, 8),
+      deduplicated: result.deduplicated,
+      status: nextStatus,
+    },
+  });
+
   return NextResponse.json({
     ok: true,
+    followup: { id, status: nextStatus, pbSessionId: userMsgId, pbTurnId: assistantId },
     pb: {
       userMessageId: userMsgId,
       assistantMessageId: assistantId,

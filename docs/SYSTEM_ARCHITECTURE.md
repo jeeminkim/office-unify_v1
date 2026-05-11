@@ -55,6 +55,7 @@
 - `POST /api/portfolio/watchlist/add-candidate`는 `added|already_exists`를 반환하고, 성공 후 postprocess를 best-effort로 수행한다.
 - 운영 요약은 `GET /api/dashboard/today-candidates/ops-summary`로 조회한다.
 - read-only 경로(`GET /api/dashboard/today-brief`)는 warning을 `qualityMeta`에 유지하고 `web_ops_events` write는 제한한다(개별 warning 억제, aggregate degraded는 일 1회/cooldown/budget).
+- **투자자 프로필(`web_investor_profiles`, SQL 선택):** 손실 감내·기간·레버리지·집중도·선호/회피 섹터를 **관찰·판단 보조** 맥락으로만 사용. `primaryCandidateDeck` 후보에 `suitabilityAssessment`(additive), `qualityMeta.todayCandidates.suitability` 요약. PB·후속 고찰 프롬프트에 짧은 맥락 주입. 자동매매·자동주문·무승인 포트 변경 없음.
 
 ## 서버 API 계층
 
@@ -68,10 +69,15 @@
   - 오늘의 3줄 브리핑(리스크/성과/행동) 생성
   - 사실 데이터와 제안 문장을 분리하고 confidence/경고를 함께 반환
   - optional `candidates` 블록(`userContext`/`usMarketKr`) 지원
-  - additive: `primaryCandidateDeck`, `displayMetrics`, `usKrSignalDiagnostics`, `usMarketSummary.diagnostics`
+  - additive: `primaryCandidateDeck`, `displayMetrics`(및 `displayMetrics.scoreExplanationDetail` 요인 설명), `usKrSignalDiagnostics`, `usMarketSummary.diagnostics`, 후보별 `suitabilityAssessment`, `qualityMeta.todayCandidates.suitability`(프로필 SQL 미적용 시 skipped 가능), `qualityMeta.todayCandidates.scoreExplanationSummary`, 후보별 **`concentrationRiskAssessment`**(`exposureBasis`, `themeMappingConfidence`), **`qualityMeta.todayCandidates.concentrationRiskSummary`**(EVO-005, `exposureBasis`·`themeMappingConfidenceCounts`, 금액·`userNote` 원문 없음; 집중도는 점검 질문, 매도·리밸런싱 지시 아님)
   - 후보별 `dataQuality.summary`, `reasonItems`, `primaryRisk`(additive)
   - 데이터 부족 시 NO_DATA 문구로 degrade
   - read-only 경로에서는 warning을 `qualityMeta.todayCandidates.warnings`에 유지하고 `web_ops_events` write는 제한(하루 1회/no_data, cooldown, budget 정책)
+- `/api/investor-profile`
+  - `GET` 현재 사용자 프로필(없으면 기본값·`profileStatus: missing`)
+  - `POST` upsert(허용 enum만, notes 길이 제한·sanitize)
+- `/api/investor-profile/assess`
+  - `POST` 적합성 미리보기(DB write 없음)
 - `/api/dashboard/profit-goal-summary`
   - 이번달/연간 실현손익과 목표 배분(미배분 포함) 요약
 - `/api/portfolio/summary`
@@ -136,7 +142,7 @@
   - preview 응답에 섹터별 `relatedAnchors`(최대 5개) 포함
   - 운영 로그(`web_ops_events`, domain `portfolio_watchlist`) 적재
 - 기존 투자 도구 API
-  - `/api/private-banker/message`
+  - `/api/private-banker/message` — 요청 본문 앞에 투자자 프로필 맥락 + **보유 집중도 점검** 블록 additive(데이터 기준·KR/US 시장 노출·질문형; 자동매매·자동주문·자동 리밸런싱 금지; 금액·원문 미포함)
   - `/api/committee-discussion/*`
   - `/api/trend/generate`
   - `/api/research-center/generate`
@@ -149,6 +155,8 @@
   - timeout risk exists for long-running generation; job queue migration is a future option
   - `/api/research-center/ops-summary` — **read-only** aggregate over `web_ops_events` (domain=`research_center`): SELECT only, no writes; sanitized detail; optional `range=24h|7d`, `requestId`, `limit`
   - `/api/research-center/ops-trace` — **read-only** single-`requestId` timeline over `web_ops_events` (same domain/user scope); SELECT only; bounded scan + optional JSON filter; complements ops-summary (aggregate vs per-request trace). Same `requestId` usable when migrating to a job queue later.
+  - `/api/research-center/followups` — **GET** 목록(`status`/`symbol`/`category` 쿼리)·**`qualityMeta.followups.summary`** 집계 additive; **read-only**에서 insert/update 없음. **POST** 단건 저장·중복(`research_request_id`+`title`+`symbol`) 시 기존 행+`duplicate: true`. **PATCH** `/followups/[id]`로 상태·우선순위·`selectedForPb`·`userNote`(detail_json) 변경. **SQL 미적용** 시 위 follow-up API는 **503**·`research_followup_table_missing`·`actionHint`.
+  - `/api/research-center/followups/[id]/send-to-pb` — PB 멱등 경로 재사용; 성공 시 `discussed` 또는 멱등 시 `tracking`; ops `research_followup_sent_to_pb` 등 fingerprint 기록.
   - `/api/trade-journal/*`
   - `/api/trade-journal/pattern-analysis`
     - 반복 투자 실수 패턴과 현재 위험 매칭을 요약

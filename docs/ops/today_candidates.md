@@ -27,6 +27,30 @@
 - 카드 표시는 내부 raw `score` 대신 **`displayMetrics`**(`관찰 점수 n/100`, 신뢰도·데이터 품질 등). 원본 배열 `candidates.*`는 유지.
 - 미국 신호→한국 후보가 비면 **`usKrSignalDiagnostics`**·`usMarketSummary.diagnostics`로 원인 코드를 노출; ops **`us_signal_candidates_empty`**(budget/cooldown·fingerprint).
 
+### 투자자 프로필 · 적합성 게이트 (additive)
+
+- 선택 테이블 `web_investor_profiles`(`docs/sql/append_investor_profile.sql`). 미적용 시 Today Brief는 적합성 단계를 **건너뛰고**(`qualityMeta.todayCandidates.suitability.skipped`) 기존 후보 구성 유지.
+- 프로필이 있으면 `primaryCandidateDeck` 각 후보에 **`suitabilityAssessment`** additive; `scoreAdjustment`는 대략 **-10 ~ +5**로 제한.
+- 홈 대시보드에서 프로필 편집·저장 가능; **매수 추천·자동 주문 아님**.
+- 민감정보·원문 프롬프트는 로그/`qualityMeta`에 넣지 않는다.
+
+### 관찰 점수 설명 (EVO-002, additive)
+
+- 후보별 **`displayMetrics.scoreExplanationDetail`**: 관심사·Sector Radar·시세 품질·리스크·미국→KR 진단(후보 0건 시 neutral 설명, 점수 인위 할인 없음)·적합성 조정 등을 요인 단위로 요약. 기존 **`scoreExplanation`** 문자열은 유지.
+- **`qualityMeta.todayCandidates.scoreExplanationSummary`**: 설명이 붙은 카드 수, 요인 코드별 건수, 프로필 상태 요약(민감 필드·notes 원문 없음).
+- UI: 카드에 요약 한 줄 + 「왜 이 후보?」접기; **매수 권유 아님** 고지 유지.
+
+### 보유 집중도 참고 (EVO-005 1차, additive)
+
+- **`concentrationRiskAssessment`**: `web_portfolio_holdings` 기반 비중 스냅샷과 후보 심볼·섹터/테마 라벨을 맞춰 **판단 보조** 신호만 제공(매도·매수·자동 리밸런싱 지시 아님).
+- **`exposureBasis`**: 행마다 시세가 있으면 `market_value`, 없으면 qty×평균 단가 `cost_basis`, 혼합 `mixed`, 비정상 합계 등 `unknown`(금액 원문 없음).
+- **`themeMappingConfidence`**: ETF/테마 힌트와 보유 버킷 **정확 키 일치** `high`, 섹터 문자열 직접 일치 `medium`, 부분 문자열 `low`, 불가 `missing`.
+- **`country_overweight`**: 타입 코드는 호환 유지. 의미는 **KR/US 상장 시장 노출** 1차 휴리스틱(국가 편중 판정 아님); UI/PB는 시장 비중·시장 노출 중심 문구.
+- **`concentrationLimit`**(`strict`/`moderate`/`flexible`)에 따라 단일 종목·테마 임계 %를 다르게 적용; 프로필·집중도 미설정 시 기존 동작에 가깝게 완화.
+- 시세 누락 시 스냅샷 `dataQuality: partial` — 문구에 **부분 데이터 기준**을 노출.
+- **`qualityMeta.todayCandidates.concentrationRiskSummary`**: 덱 평가 건수, high/medium 건수, `reasonCounts`, `exposureBasis`, `themeMappingConfidenceCounts`(코드·건수만; 금액·티커·`userNote` 원문 없음).
+- 점수 설명 요인 코드 **`portfolio_concentration`** additive; read-only Today Brief는 **새로운 ops write를 추가하지 않음**(기존 budget 정책 유지).
+
 ### 대시보드 UI (중복 완화)
 
 - 기본 화면은 **`primaryCandidateDeck`(최대 3카드)** 중심.

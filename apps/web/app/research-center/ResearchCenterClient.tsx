@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   parseResearchCenterTotalTimeoutMs,
@@ -9,7 +9,11 @@ import {
   type ResearchCenterOpsTraceResponse,
   type ResearchDeskId,
   type ResearchFollowupItem,
+  type ResearchFollowupRowDto,
+  type ResearchFollowupStatus,
+  type ResearchFollowupSummary,
   type ResearchToneMode,
+  normalizeResearchFollowupDedupeTitle,
 } from "@office-unify/shared-types";
 import {
   createResearchRequestId,
@@ -21,6 +25,13 @@ import {
 const jsonHeaders: HeadersInit = {
   "Content-Type": "application/json",
 };
+
+const FOLLOWUP_USER_NOTE_MAX = 2000;
+
+function followupTrayStatusLabel(status: string): string {
+  if (status === "archived") return "보관됨";
+  return status;
+}
 
 const DESKS: { id: ResearchDeskId; label: string; short: string }[] = [
   { id: "goldman_buy", label: "Goldman-style Buy Desk", short: "Goldman" },
@@ -73,6 +84,15 @@ export function ResearchCenterClient() {
   const [followupErr, setFollowupErr] = useState<string | null>(null);
   const [followupPbPreview, setFollowupPbPreview] = useState<string | null>(null);
   const [followupSelectedIds, setFollowupSelectedIds] = useState<Set<string>>(() => new Set());
+  const [followupTrayItems, setFollowupTrayItems] = useState<ResearchFollowupRowDto[]>([]);
+  const [followupTraySummary, setFollowupTraySummary] = useState<ResearchFollowupSummary | null>(null);
+  const [followupTrayLoading, setFollowupTrayLoading] = useState(false);
+  const [followupTrayErr, setFollowupTrayErr] = useState<string | null>(null);
+  const [followupTrayFilter, setFollowupTrayFilter] = useState<"all" | ResearchFollowupStatus>("all");
+  const [followupSaveBusyId, setFollowupSaveBusyId] = useState<string | null>(null);
+  const [followupNoteDrafts, setFollowupNoteDrafts] = useState<Record<string, string>>({});
+  const [followupNoteSavingId, setFollowupNoteSavingId] = useState<string | null>(null);
+  const followupTrayDetailsRef = useRef<HTMLDetailsElement>(null);
 
   const fetchOpsTrace = useCallback(async (rid: string) => {
     const trimmed = rid.trim();
@@ -353,6 +373,152 @@ export function ResearchCenterClient() {
       setFollowupLoading(false);
     }
   }, [followupItems, followupSelectedIds, result?.requestId, result?.warnings, name, symbol]);
+
+  const loadFollowupTray = useCallback(async () => {
+    setFollowupTrayLoading(true);
+    setFollowupTrayErr(null);
+    try {
+      const qs = new URLSearchParams();
+      if (followupTrayFilter !== "all") qs.set("status", followupTrayFilter);
+      const res = await fetch(`/api/research-center/followups?${qs.toString()}`, { credentials: "same-origin" });
+      const json = (await res.json()) as {
+        items?: ResearchFollowupRowDto[];
+        qualityMeta?: { followups?: { summary?: ResearchFollowupSummary } };
+        code?: string;
+        error?: string;
+        actionHint?: string;
+      };
+      if (!res.ok) {
+        throw new Error(json.actionHint ?? json.error ?? `HTTP ${res.status}`);
+      }
+      setFollowupTrayItems(json.items ?? []);
+      setFollowupTraySummary(json.qualityMeta?.followups?.summary ?? null);
+    } catch (e: unknown) {
+      setFollowupTrayErr(e instanceof Error ? e.message : "추적함 로드 실패");
+      setFollowupTrayItems([]);
+      setFollowupTraySummary(null);
+    } finally {
+      setFollowupTrayLoading(false);
+    }
+  }, [followupTrayFilter]);
+
+  useEffect(() => {
+    if (!followupTrayDetailsRef.current?.open) return;
+    void loadFollowupTray();
+  }, [followupTrayFilter, loadFollowupTray]);
+
+  const followupPreviewTrayKey = useCallback(
+    (it: ResearchFollowupItem) =>
+      `${result?.requestId ?? ""}|${normalizeResearchFollowupDedupeTitle(it.title)}|${symbol.trim() || ""}`,
+    [result?.requestId, symbol],
+  );
+
+  const followupTrayKeySet = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of followupTrayItems) {
+      s.add(
+        `${r.research_request_id ?? ""}|${normalizeResearchFollowupDedupeTitle(r.title)}|${r.symbol ?? ""}`,
+      );
+    }
+    return s;
+  }, [followupTrayItems]);
+
+  const addPreviewToTray = useCallback(
+    async (it: ResearchFollowupItem) => {
+      setFollowupSaveBusyId(it.id);
+      setFollowupErr(null);
+      try {
+        const res = await fetch("/api/research-center/followups", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            title: it.title,
+            category: it.category,
+            priority: it.priority,
+            researchRequestId: result?.requestId,
+            symbol: symbol.trim() || undefined,
+            companyName: name.trim() || undefined,
+            detailJson: {
+              followupId: it.id,
+              sourceSection: it.sourceSection,
+              category: it.category,
+              priority: it.priority,
+              bullets: it.detailBullets ?? [],
+            },
+          }),
+        });
+        const json = (await res.json()) as { duplicate?: boolean; error?: string; actionHint?: string };
+        if (!res.ok) throw new Error(json.actionHint ?? json.error ?? "저장 실패");
+        if (json.duplicate) {
+          setFollowupErr("동일 요청·제목·심볼 조합으로 이미 추적함에 있을 수 있습니다.");
+        }
+        await loadFollowupTray();
+      } catch (e: unknown) {
+        setFollowupErr(e instanceof Error ? e.message : "추적함 추가 실패");
+      } finally {
+        setFollowupSaveBusyId(null);
+      }
+    },
+    [result?.requestId, symbol, name, loadFollowupTray],
+  );
+
+  const patchFollowupTray = useCallback(
+    async (id: string, patch: { status?: ResearchFollowupStatus; userNote?: string | null }) => {
+      setFollowupTrayErr(null);
+      try {
+        const res = await fetch(`/api/research-center/followups/${id}`, {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: jsonHeaders,
+          body: JSON.stringify(patch),
+        });
+        const json = (await res.json()) as { error?: string; actionHint?: string };
+        if (!res.ok) throw new Error(json.actionHint ?? json.error ?? "상태 변경 실패");
+        if (patch.userNote !== undefined) {
+          setFollowupNoteDrafts((prev) => {
+            const next = { ...prev };
+            delete next[id];
+            return next;
+          });
+        }
+        await loadFollowupTray();
+      } catch (e: unknown) {
+        setFollowupTrayErr(e instanceof Error ? e.message : "상태 변경 실패");
+      }
+    },
+    [loadFollowupTray],
+  );
+
+  const sendTrayItemToPb = useCallback(
+    async (id: string) => {
+      setFollowupTrayErr(null);
+      setFollowupTrayLoading(true);
+      try {
+        const res = await fetch(`/api/research-center/followups/${id}/send-to-pb`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            idempotencyKey: crypto.randomUUID(),
+            conclusionSummaryLines: [
+              `Research Center 후속 확인 — ${name.trim() || symbol.trim() || "종목"}`,
+              ...(result?.warnings?.slice(0, 5) ?? []),
+            ],
+          }),
+        });
+        const json = (await res.json()) as { error?: string; pb?: { assistantPreview?: string } };
+        if (!res.ok) throw new Error(json.error ?? "PB 전송 실패");
+        setFollowupPbPreview(json.pb?.assistantPreview ?? "(응답 없음)");
+        await loadFollowupTray();
+      } catch (e: unknown) {
+        setFollowupTrayErr(e instanceof Error ? e.message : "PB 전송 실패");
+      } finally {
+        setFollowupTrayLoading(false);
+      }
+    },
+    [loadFollowupTray, name, symbol, result?.warnings],
+  );
 
   const copyActive = async () => {
     if (!activeBody) return;
@@ -651,7 +817,7 @@ export function ResearchCenterClient() {
           <div className="mt-6 rounded border border-slate-200 bg-white p-3 text-xs text-slate-800">
             <p className="font-semibold text-slate-900">다음에 확인할 것 (추출 · PB 고찰)</p>
             <p className="mt-1 text-slate-600">
-              Research Center 본문에서 &quot;다음에 확인할 것&quot; 섹션을 찾아 목록으로 만듭니다. 매수 권유·자동 주문 없음.
+              Research Center 본문에서 &quot;다음에 확인할 것&quot; 섹션을 찾아 목록으로 만듭니다. 매수 권유가 아니라 후속 확인 항목입니다. PB 고찰은 판단 보조이며 자동 주문을 실행하지 않습니다.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <button
@@ -671,19 +837,34 @@ export function ResearchCenterClient() {
               <ul className="mt-3 space-y-2">
                 {followupItems.map((it) => (
                   <li key={it.id} className="rounded border border-slate-100 bg-slate-50/80 px-2 py-1.5">
-                    <label className="flex cursor-pointer gap-2">
-                      <input
-                        type="checkbox"
-                        checked={followupSelectedIds.has(it.id)}
-                        onChange={() => toggleFollowupSelected(it.id)}
-                      />
-                      <span>
-                        <span className="font-medium">{it.title}</span>
-                        <span className="ml-2 text-[10px] text-slate-500">
-                          {it.category} · {it.priority}
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <label className="flex min-w-0 flex-1 cursor-pointer gap-2">
+                        <input
+                          type="checkbox"
+                          checked={followupSelectedIds.has(it.id)}
+                          onChange={() => toggleFollowupSelected(it.id)}
+                        />
+                        <span className="min-w-0">
+                          <span className="font-medium">{it.title}</span>
+                          <span className="ml-2 text-[10px] text-slate-500">
+                            {it.category} · {it.priority}
+                          </span>
+                          {followupTrayKeySet.has(followupPreviewTrayKey(it)) ? (
+                            <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-900">
+                              추적 중
+                            </span>
+                          ) : null}
                         </span>
-                      </span>
-                    </label>
+                      </label>
+                      <button
+                        type="button"
+                        className="shrink-0 rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-800 disabled:opacity-50"
+                        disabled={followupSaveBusyId === it.id || followupTrayKeySet.has(followupPreviewTrayKey(it))}
+                        onClick={() => void addPreviewToTray(it)}
+                      >
+                        {followupTrayKeySet.has(followupPreviewTrayKey(it)) ? "추적함에 있음" : "추적함에 추가"}
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -717,6 +898,167 @@ export function ResearchCenterClient() {
           </div>
         </section>
       ) : null}
+
+      <details
+        ref={followupTrayDetailsRef}
+        className="mt-8 rounded-lg border border-slate-200 bg-white shadow-sm"
+        onToggle={(e) => {
+          if (e.currentTarget.open) void loadFollowupTray();
+        }}
+      >
+        <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold text-slate-800">
+          Follow-up 추적함
+        </summary>
+        <div className="border-t border-slate-100 px-3 pb-3 pt-2 text-xs text-slate-700">
+          <p className="text-[11px] text-slate-600">
+            매수 권유가 아니라 후속 확인 항목입니다. PB 고찰은 판단 보조이며 자동 주문·자동매매를 실행하지 않습니다.
+          </p>
+          {followupTraySummary ? (
+            <p className="mt-1 text-[10px] text-slate-500">
+              전체 {followupTraySummary.totalCount}건 · 추적 지연(14일+) {followupTraySummary.staleTrackingCount}건 · PB
+              연결 {followupTraySummary.pbLinkedCount}건
+            </p>
+          ) : null}
+          <div className="mt-2 flex flex-wrap gap-1">
+            {(
+              [
+                ["all", "전체"],
+                ["open", "open"],
+                ["tracking", "tracking"],
+                ["discussed", "discussed"],
+                ["dismissed", "dismissed"],
+                ["archived", "보관됨"],
+              ] as const
+            ).map(([f, label]) => (
+              <button
+                key={f}
+                type="button"
+                className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                  followupTrayFilter === f ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                }`}
+                onClick={() => setFollowupTrayFilter(f)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {followupTrayErr ? <p className="mt-2 text-amber-800">{followupTrayErr}</p> : null}
+          {followupTrayLoading ? <p className="mt-2 text-slate-500">불러오는 중…</p> : null}
+          <ul className="mt-2 max-h-80 space-y-2 overflow-y-auto">
+            {followupTrayItems.map((row) => {
+              const dj = (row.detail_json ?? {}) as { bullets?: string[]; userNote?: string };
+              const bullets = Array.isArray(dj.bullets) ? dj.bullets.slice(0, 3) : [];
+              const noteValue =
+                followupNoteDrafts[row.id] !== undefined ? followupNoteDrafts[row.id] : (dj.userNote ?? "");
+              return (
+                <li key={row.id} className="rounded border border-slate-100 bg-slate-50/90 p-2">
+                  <p className="font-medium text-slate-900">{row.title}</p>
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    {row.symbol ?? "—"} · {row.company_name ?? "—"} · {row.category} · {row.priority} ·{" "}
+                    <span className="font-mono">{followupTrayStatusLabel(row.status)}</span>
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    생성 {row.created_at?.slice(0, 10)} · 수정 {row.updated_at?.slice(0, 10)}
+                  </p>
+                  {bullets.length > 0 ? (
+                    <ul className="mt-1 list-inside list-disc text-[10px] text-slate-600">
+                      {bullets.map((b) => (
+                        <li key={`${row.id}-b-${b.slice(0, 24)}`}>{b}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {(row.pb_session_id || row.pb_turn_id) && (
+                    <p className="mt-1 text-[10px] text-violet-900">
+                      PB: session {row.pb_session_id ?? "—"} · turn {row.pb_turn_id ?? "—"}
+                    </p>
+                  )}
+                  <div className="mt-2 space-y-1">
+                    <label className="block text-[10px] font-medium text-slate-600">메모 (본인 확인용)</label>
+                    <textarea
+                      className="w-full max-w-full rounded border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-800"
+                      rows={2}
+                      maxLength={FOLLOWUP_USER_NOTE_MAX}
+                      value={noteValue}
+                      onChange={(e) =>
+                        setFollowupNoteDrafts((prev) => ({ ...prev, [row.id]: e.target.value }))
+                      }
+                      placeholder="짧게 적어 두면 이후 확인에 도움이 됩니다."
+                    />
+                    <p className="text-[9px] text-slate-500">
+                      최대 {FOLLOWUP_USER_NOTE_MAX}자 · 서버에만 저장되며 운영 로그에는 원문이 남지 않습니다.
+                    </p>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] disabled:opacity-50"
+                      disabled={followupNoteSavingId === row.id}
+                      onClick={() => {
+                        setFollowupNoteSavingId(row.id);
+                        void patchFollowupTray(row.id, { userNote: noteValue }).finally(() => {
+                          setFollowupNoteSavingId(null);
+                        });
+                      }}
+                    >
+                      메모 저장
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px]"
+                      disabled={row.status === "tracking"}
+                      onClick={() => void patchFollowupTray(row.id, { status: "tracking" })}
+                    >
+                      추적 중
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px]"
+                      disabled={row.status === "discussed"}
+                      onClick={() => void patchFollowupTray(row.id, { status: "discussed" })}
+                    >
+                      논의됨
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px]"
+                      disabled={row.status === "dismissed"}
+                      onClick={() => void patchFollowupTray(row.id, { status: "dismissed" })}
+                    >
+                      종료
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px]"
+                      disabled={row.status === "archived"}
+                      onClick={() => void patchFollowupTray(row.id, { status: "archived" })}
+                    >
+                      보관
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-violet-300 bg-violet-50 px-2 py-0.5 text-[10px] text-violet-900"
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            "이 항목을 PB와 이어서 고찰합니다. 매수 권유가 아닙니다. 계속할까요?",
+                          )
+                        )
+                          return;
+                        void sendTrayItemToPb(row.id);
+                      }}
+                    >
+                      PB 고찰
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {!followupTrayLoading && followupTrayItems.length === 0 ? (
+            <p className="mt-2 text-[11px] text-slate-500">저장된 follow-up이 없습니다. 위에서 추출 후 &quot;추적함에 추가&quot;하세요.</p>
+          ) : null}
+        </div>
+      </details>
 
       <section className="mt-10 rounded-lg border border-dashed border-slate-200 bg-slate-50/50">
         <button

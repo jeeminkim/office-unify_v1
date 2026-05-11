@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isPostgresUniqueViolationError,
   isResearchFollowupTableMissingError,
   researchFollowupTableMissingJson,
 } from "./researchFollowupSupabaseErrors";
@@ -22,5 +23,10 @@ describe("researchFollowupSupabaseErrors", () => {
     expect(j.ok).toBe(false);
     expect(j.code).toBe("research_followup_table_missing");
     expect(j.actionHint).toContain("append_research_followup_items.sql");
+  });
+
+  it("detects unique_violation", () => {
+    expect(isPostgresUniqueViolationError({ code: "23505" })).toBe(true);
+    expect(isPostgresUniqueViolationError({ code: "42P01" })).toBe(false);
   });
 });

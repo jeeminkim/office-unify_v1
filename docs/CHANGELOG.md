@@ -4,6 +4,44 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05 보유 집중도·테마 리스크 참고 (EVO-005 1차)
+
+- **Shared types:** `ConcentrationRiskAssessment` / `TodayBriefConcentrationRiskSummary` / `buildConcentrationRiskCardHint`; `ObservationScoreFactorCode.portfolio_concentration`.
+- **Server:** `concentrationRisk.ts` — 보유 스냅샷(`web_portfolio_holdings`+시세 가용성), 후보별 집중도 평가, `strict|moderate|flexible` 임계(단일/테마 %), PB용 `[보유 집중도 점검]` 프롬프트 블록.
+- **`GET /api/dashboard/today-brief`:** `primaryCandidateDeck`에 `concentrationRiskAssessment` additive; 적합성 `concentration_risk`와 연계; strict+high 시 관찰 점수 소폭(-3)만; `qualityMeta.todayCandidates.concentrationRiskSummary`(건수·reason 집계, 금액 원문 없음); `scoreExplanationDetail`에 보유 집중도 요인.
+- **PB:** `POST /api/private-banker/message`, Research `send-to-pb` 프롬프트에 보유 집중도 점검 섹션 additive(자동 리밸런싱·매매 지시 금지 문구).
+- **대시보드:** 덱 카드 집중도 힌트 + 「보유 집중도 참고」접기 요약.
+
+### 2026-05 보유 집중도 문구·메타 보강 (EVO-005 안정화)
+
+- **Shared types (additive):** `ConcentrationExposureBasis`, `ConcentrationThemeMappingConfidence`; `ConcentrationRiskAssessment`·`TodayBriefConcentrationRiskSummary`에 `exposureBasis`·`themeMappingConfidence` / `themeMappingConfidenceCounts`.
+- **Server:** 행별 시세 유무로 스냅샷 `exposureBasis`(market_value / cost_basis / mixed / unknown); 후보–보유 테마 매칭 경로별 `themeMappingConfidence`. `country_overweight` 코드 유지, 문구는 **KR/US 시장 노출** 휴리스틱 명시. UI/PB는 매도·비중 축소·리밸런싱 지시형 문구 정리, 질문형·자동 실행 금지 유지.
+- **대시보드:** 집중도 요약에 가치 기준·테마 매핑 신뢰도 건수(코드만) 표시.
+
+### 2026-05 Research Center follow-up 추적함 (EVO-003)
+
+- **API:** `PATCH /api/research-center/followups/[id]`(상태·priority·`selectedForPb`·`userNote`), `GET /followups`에 `category` 필터·`qualityMeta.followups.summary`(stale tracking 14일·PB 연결 수 등), `POST` 중복 키 시 기존 행+`duplicate`.
+- **extract `save:true`:** 동일 중복 키 건너뛰기·`savedCount`/`duplicateWarnings`.
+- **send-to-pb:** 멱등 시 `tracking`, 신규 응답 `discussed`; 응답에 `followup` 블록 additive.
+- **Ops:** `research_followup_saved` / `status_changed` / `sent_to_pb` / `duplicate_detected`(fingerprint, detail에 id prefix만).
+- **UI:** `/research-center` Follow-up 추적함 섹션·추출 목록「추적함에 추가」.
+- **안정화(EVO-003 마무리):** `normalizeResearchFollowupDedupeTitle`(shared-types)·서버/DB 정책 정렬; `POST` 중복 응답에 `qualityMeta.followups.dedupePolicy` additive; DB 선택 적용용 **`docs/sql/append_research_followup_items_dedupe_index.sql`**(사전 중복 `SELECT`·unique index, 기존 중복 시 생성 실패 가능); `GET` read-only 테스트 고정; UI **archived(보관됨)** 필터·보관 상태·**메모** 편집(PATCH `userNote`, ops에 원문 미기록).
+
+### 2026-05 Today Brief observation score explanation (EVO-002)
+
+- **Shared types:** `ObservationScoreFactor` / `ObservationScoreExplanation`, `TodayCandidateDisplayMetrics.scoreExplanationDetail`(additive).
+- **Server:** `todayBriefScoreExplanation.ts` — 후보별 요인 분해, 미국→KR 후보 0건 시 진단 맥락(neutral, 점수 인위 할인 없음), `qualityMeta.todayCandidates.scoreExplanationSummary` 집계.
+- **`GET /api/dashboard/today-brief`:** 덱 후보에 `scoreExplanationDetail` 채움; 기존 `scoreExplanation` 문자열 유지.
+- **대시보드:** 메인 덱 카드에 요약 한 줄 + 「왜 이 후보?」접기(요인·고지). 매수 권유 아님 문구 유지.
+
+### 2026-05 Investor profile · suitability (EVO-001 scaffold)
+
+- **`web_investor_profiles`**(`docs/sql/append_investor_profile.sql`): 사용자별 투자 성향 맥락(판단 보조 전용).
+- **API:** `GET|POST /api/investor-profile`, `POST /api/investor-profile/assess`(미리보기, DB write 없음). 테이블 미적용 시 `investor_profile_table_missing` + `actionHint`.
+- **Today Brief:** `primaryCandidateDeck` 후보에 `suitabilityAssessment` additive, `qualityMeta.todayCandidates.suitability` 요약.
+- **PB:** Research Center send-to-pb·`/api/private-banker/message`에 짧은 프로필 맥락 주입; 프롬프트에 `[사용자 적합성 점검]` 항목.
+- **대시보드:** 투자자 프로필 편집(접기 영역). 자동매매·자동주문 없음.
+
 ### 2026-05 Ops / Today Candidates / Sector Radar stabilization
 
 - **Today Brief 관찰 덱 & 미국 신호 진단:** `primaryCandidateDeck`(관심 상위 2 + Sector Radar 대표 ETF 1), `displayMetrics`(관찰 점수 0–100·신뢰도 라벨), `usKrSignalDiagnostics`·`usMarketSummary.diagnostics`, ops `us_signal_candidates_empty`. Research Center `## 다음에 확인할 것` 추출 API·`web_research_followup_items`(SQL)·PB `/private-banker` 연계(send-to-pb).

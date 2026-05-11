@@ -34,7 +34,7 @@ function krEtfRow(
     low52: 80,
     volume: 1_000_000,
     volumeAvg: 900_000,
-    quoteUpdatedAt: "2026-05-07T12:00:00.000Z",
+    quoteUpdatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     ...opts,
   };
 }

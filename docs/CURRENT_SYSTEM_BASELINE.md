@@ -23,8 +23,9 @@
 ## 현재 핵심 기능
 
 - Today Candidates
-  - `today-brief` optional `candidates`(`userContext`/`usMarketKr`) + **`primaryCandidateDeck`**(관심 top2 + Sector Radar 대표 ETF 1; ETF 없으면 관심 top3 fallback)
-  - 사용자 표시: **`displayMetrics`**(관찰 점수/신뢰도 등); 미국 신호→KR 후보 없을 때 **`usKrSignalDiagnostics`**
+  - `today-brief` optional `candidates`(`userContext`/`usMarketKr`) + **`primaryCandidateDeck`**(관심 top2 + Sector Radar 대표 ETF 1; ETF 없으면 관심 top3 fallback); **EVO-005** `concentrationRiskAssessment`(`exposureBasis`, `themeMappingConfidence`)·`qualityMeta.todayCandidates.concentrationRiskSummary`(동일 메타·건수 집계; 금액·`userNote` 원문 없음; KR/US는 시장 노출 휴리스틱; 집중도는 점검 질문이며 자동 주문·자동 리밸런싱 아님)
+  - **투자자 프로필**(선택 SQL `web_investor_profiles`): 미설정 시 기존과 동일하게 동작; 설정 시 덱 후보에 **`suitabilityAssessment`**·`qualityMeta.todayCandidates.suitability` additive. 자동 실행 없음.
+  - 사용자 표시: **`displayMetrics`**(관찰 점수/신뢰도 등 + **`scoreExplanationDetail`** 요인 설명); **`qualityMeta.todayCandidates.scoreExplanationSummary`** 집계; 미국 신호→KR 후보 없을 때 **`usKrSignalDiagnostics`**
   - `isBuyRecommendation=false`, 관찰·판단 보조 UX
   - `dataQuality.summary/reasonItems/primaryRisk`(additive)
   - add-candidate + best-effort postprocess
@@ -48,7 +49,7 @@
   - degraded structured memory 시 signal upsert skip
 - Research Center
   - explicit generation action with requestId trace (`/api/research-center/generate`)
-  - “다음에 확인할 것” 섹션 추출 + PB 연계 API(`followups/*`); DB `web_research_followup_items` (SQL `append_research_followup_items.sql`)
+  - “다음에 확인할 것” 섹션 추출 + 추적함 UI + PB 연계 API(`followups/*`, **PATCH** 상태·`userNote`·**GET** `qualityMeta.followups.summary`); DB `web_research_followup_items` (SQL `append_research_followup_items.sql`, 선택 `append_research_followup_items_dedupe_index.sql`). 중복 키는 정규화 title 기준(앱·선택 unique index 정렬); **GET followups는 read-only**. PB 후 `discussed`/`tracking`. 자동매매 없음.
   - failed/degraded stage split (`provider`/`finalizer`/`sheets`/`context_cache`/`response_parse`); Chief Editor 실패 시 데스크 초안 병합 fallback(`fallback_editor_synthesis`), 자동 매매 없음
   - transient provider errors: 엔진 전체 최대 1회 재시도; timeout env: `RESEARCH_CENTER_TOTAL_TIMEOUT_MS`(호환 `RESEARCH_CENTER_ROUTE_TIMEOUT_MS`), `RESEARCH_CENTER_PROVIDER_TIMEOUT_MS`, `RESEARCH_CENTER_FINALIZER_TIMEOUT_MS`, `RESEARCH_CENTER_SHEETS_TIMEOUT_MS`, `RESEARCH_CENTER_CONTEXT_CACHE_TIMEOUT_MS`
   - client shows `errorCode`/`requestId`/`actionHint` instead of plain `Failed to fetch`

@@ -1,4 +1,12 @@
-import type { TodayCandidateDisplayMetrics, TodayBriefDeckSlot, UsKrSignalEmptyReasonCode } from '@office-unify/shared-types';
+import type {
+  ConcentrationRiskAssessment,
+  ObservationScoreFactorCode,
+  SuitabilityAssessment,
+  TodayCandidateDisplayMetrics,
+  TodayBriefConcentrationRiskSummary,
+  TodayBriefDeckSlot,
+  UsKrSignalEmptyReasonCode,
+} from '@office-unify/shared-types';
 
 export type TodayCandidateSource =
   | 'user_context'
@@ -91,6 +99,10 @@ export interface TodayStockCandidate {
   displayMetrics?: TodayCandidateDisplayMetrics;
   /** Additive: Sector ETF 카드 부제·테마 안내. */
   sectorEtfThemeHint?: string;
+  /** Additive: 투자자 프로필 기반 적합성(관찰·판단 보조). */
+  suitabilityAssessment?: SuitabilityAssessment;
+  /** Additive: EVO-005 보유·테마 집중도(자동 리밸런싱 아님). */
+  concentrationRiskAssessment?: ConcentrationRiskAssessment;
 }
 
 export interface UsMarketMorningSummary {
@@ -183,6 +195,21 @@ export interface TodayBriefWithCandidatesResponse {
       /** Additive: 7일 요약용 — 최근 empty reason 분포(코드 → 건수). */
       usKrEmptyReasonHistogram?: Partial<Record<UsKrSignalEmptyReasonCode, number>>;
       sectorEtfFallbackCount?: number;
+      /** Additive: 적합성 게이트 요약(Today Brief 덱). */
+      suitability?:
+        | {
+            profileStatus: 'missing' | 'partial' | 'complete';
+            warningCounts: Partial<Record<string, number>>;
+          }
+        | { skipped: true; reason: string };
+      /** Additive: EVO-002 관찰 점수 설명 요약(민감정보·원문 노트 없음). */
+      scoreExplanationSummary?: {
+        explainedCandidateCount: number;
+        factorCounts: Partial<Record<ObservationScoreFactorCode, number>>;
+        profileStatus: 'missing' | 'partial' | 'complete';
+      };
+      /** Additive: EVO-005 집중도 요약(금액·티커 원문 없음). */
+      concentrationRiskSummary?: TodayBriefConcentrationRiskSummary;
     };
   };
 }

@@ -254,6 +254,9 @@ export {
   parseResearchCenterTotalTimeoutMs,
 } from './researchCenterTimeoutConstants';
 export type {
+  ObservationScoreExplanation,
+  ObservationScoreFactor,
+  ObservationScoreFactorCode,
   TodayCandidateConfidenceLabel,
   TodayCandidateDisplayMetrics,
   TodayCandidateScoreLabel,
@@ -266,7 +269,27 @@ export type {
   ResearchFollowupPriority,
   ResearchFollowupRowDto,
   ResearchFollowupStatus,
+  ResearchFollowupSummary,
 } from './researchFollowups';
+export { normalizeResearchFollowupDedupeTitle, RESEARCH_FOLLOWUP_DEDUPE_POLICY_SUMMARY } from './researchFollowups';
+export type {
+  InvestorConcentrationLimit,
+  InvestorLeveragePolicy,
+  InvestorProfile,
+  InvestorRiskTolerance,
+  InvestorTimeHorizon,
+  SuitabilityAssessment,
+  SuitabilityWarningCode,
+} from './investorProfile';
+export type {
+  ConcentrationExposureBasis,
+  ConcentrationRiskAssessment,
+  ConcentrationRiskLevel,
+  ConcentrationRiskReasonCode,
+  ConcentrationThemeMappingConfidence,
+  TodayBriefConcentrationRiskSummary,
+} from './concentrationRisk';
+export { buildConcentrationRiskCardHint } from './concentrationRisk';
 export type {
   TrendAnalysisGenerateRequestBody,
   TrendAnalysisGenerateResponseBody,

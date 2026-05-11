@@ -26,13 +26,15 @@
 - `POST /api/research-center/generate` — 본문은 `ResearchCenterGenerateRequestBody` / `ResearchCenterGenerateResponseBody` (`@office-unify/shared-types`). 실패 시에도 JSON(`ok:false`, `errorCode`, `requestId`, `actionHint`, `qualityMeta.researchCenter`). 성공 응답 `meta`에 `resultMode`(`full`|`fallback_editor_synthesis`), `providerRetryCount` 등 additive 필드.
 - `GET /api/research-center/ops-summary` — 기간·코드·stage **집계**(**read-only**). 쿼리: `range=24h|7d`, `requestId`, `limit`.
 - `GET /api/research-center/ops-trace` — **단일 requestId** 타임라인·권장 조치(**read-only**). 쿼리: `requestId`, `range=24h|7d`. ops-summary와 달리 한 요청의 시간순 이벤트에 초점.
-- `POST /api/research-center/followups/extract` — 마크다운에서「다음에 확인할 것」류 섹션 추출(preview; `save:true` 시 DB insert). 매수·자동주문 없음. 추출 결과가 없으면 **`extractEmptyHint`**(additive 안내) 가능.
-- `GET|POST /api/research-center/followups` — 저장된 추적 항목 목록/단건 생성 (`web_research_followup_items`). **SQL 미적용 시 503**·`code: research_followup_table_missing`·`actionHint`(적용할 DDL 파일 안내).
-- `POST /api/research-center/followups/[id]/send-to-pb` — Private Banker(OpenAI)로 후속 고찰 프롬프트 전송; 응답 미리보기는 additive. 테이블 미적용 시 동일 **503** 계약.
+- `POST /api/research-center/followups/extract` — 마크다운에서「다음에 확인할 것」류 섹션 추출(preview; `save:true` 시 DB insert). **`user_key`+`research_request_id`+정규화된 `title`+`symbol`(null 동일 취급)** 중복은 insert 생략·Postgres unique index(선택 적용) 충돌 시에도 건너뜀; `duplicateWarnings`·`savedCount`로 안내. 정규화: `trim` + `toLowerCase` + 연속 공백 한 칸(`normalizeResearchFollowupDedupeTitle`, `@office-unify/shared-types`); **저장되는 `title` 원문은 유지**. 매수·자동주문 없음. 추출 결과가 없으면 **`extractEmptyHint`**(additive 안내) 가능.
+- `GET|POST /api/research-center/followups` — 저장된 추적 항목 목록/단건 생성 (`web_research_followup_items`). **GET은 SELECT만**(insert/update/upsert 없음). **GET** 응답에 **`qualityMeta.followups.summary`** additive(전체 건수·`statusCounts`·`categoryCounts`·`priorityCounts`·`staleTrackingCount` 14일+·`pbLinkedCount`). 쿼리 **`status`/`symbol`/`category`** 필터. **POST** 중복 시 기존 행 반환·`duplicate: true`·`qualityMeta.followups.dedupePolicy`(요약 문자열). **SQL 미적용 시 503**·`code: research_followup_table_missing`·`actionHint`(적용할 DDL 파일 안내). DB 중복 방지 강화는 **`docs/sql/append_research_followup_items_dedupe_index.sql`**(적용 전 그룹별 `count(*) > 1` 사전 점검 필수).
+- `PATCH /api/research-center/followups/[id]` — `status`(`open`|`tracking`|`discussed`|`dismissed`|`archived`), `priority`, `selectedForPb`, `userNote`(길이 제한·sanitize, `detail_json.userNote`에 저장) 변경. 소유 `user_key`만. **503** 테이블 미적용 동일 계약.
+- `POST /api/research-center/followups/[id]/send-to-pb` — Private Banker(OpenAI)로 후속 고찰 프롬프트 전송; 응답 미리보기·**`followup.status`는 신규 PB면 `discussed`, 멱등 중복(deduplicated)이면 `tracking`**(additive). 테이블 미적용 시 동일 **503** 계약.
 
 ## UI
 
 - 경로: `/research-center`
+- **Follow-up 추적함**(접기 섹션): 상태 필터(전체·open·tracking·discussed·dismissed·**archived/보관됨**), 항목별 추적/논의/종료/보관·PB 고찰, 짧은 **메모**(PATCH `userNote`, 최대 길이 안내·저장 후 목록 갱신; 운영 로그에 메모 원문 미저장), 요약 배지(지연 추적·PB 연결 건수). 리포트 추출 목록에서 **「추적함에 추가」**로 단건 저장(중복 키 안내). **매수 권유·자동 주문 아님** 문구 유지.
 
 ## 시트 준비
 

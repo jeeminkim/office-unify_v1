@@ -4,6 +4,9 @@ import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { buildPrivateBankerContentHash, runPrivateBankerMessageWithDbIdempotency } from '@/lib/server/runPrivateBankerMessage';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { normalizeInvestmentAssistantOutput } from '@/lib/server/investmentAssistantOutputFormat';
+import { getInvestorProfileForUser } from '@/lib/server/investorProfile';
+import { buildConcentrationRiskPromptSection, getPortfolioExposureSnapshotForUser } from '@/lib/server/concentrationRisk';
+import { buildInvestorProfilePromptContext } from '@/lib/server/suitabilityAssessment';
 
 /**
  * POST /api/private-banker/message
@@ -38,8 +41,6 @@ export async function POST(req: Request) {
     );
   }
 
-  const contentHash = buildPrivateBankerContentHash(userKeyStr, content);
-
   const openAiKey = process.env.OPENAI_API_KEY?.trim();
   if (!openAiKey) {
     return NextResponse.json(
@@ -58,6 +59,29 @@ export async function POST(req: Request) {
     );
   }
 
+  let messageContent = content;
+  try {
+    const ip = await getInvestorProfileForUser(supabase, userKeyStr);
+    const snap = await getPortfolioExposureSnapshotForUser(supabase, userKey);
+    const profileForConc = ip.ok && ip.profileStatus !== 'missing' ? ip.profile : null;
+    const conc = buildConcentrationRiskPromptSection(profileForConc, snap);
+    if (ip.ok) {
+      const prefix = buildInvestorProfilePromptContext(
+        ip.profileStatus === 'missing' ? null : ip.profile,
+        ip.profileStatus,
+      );
+      messageContent = `${prefix}\n\n${conc}\n\n---\n\n${content}`;
+    } else if (!ip.ok && ip.code === 'table_missing') {
+      messageContent = `[투자자 프로필 테이블 미적용 — docs/sql/append_investor_profile.sql. 판단 보조만 제공, 자동 주문 없음]\n\n${conc}\n\n---\n\n${content}`;
+    } else {
+      messageContent = `${conc}\n\n---\n\n${content}`;
+    }
+  } catch {
+    messageContent = content;
+  }
+
+  const contentHash = buildPrivateBankerContentHash(userKeyStr, messageContent);
+
   try {
     const result = await runPrivateBankerMessageWithDbIdempotency({
       supabase,
@@ -65,7 +89,7 @@ export async function POST(req: Request) {
       userKeyStr,
       openAiApiKey: openAiKey,
       geminiApiKey: geminiKey,
-      content,
+      content: messageContent,
       contentHash,
       idempotencyKey,
     });

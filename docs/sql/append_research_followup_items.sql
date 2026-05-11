@@ -37,3 +37,5 @@ create index if not exists web_research_followup_items_pb_selected_idx
   on public.web_research_followup_items (user_key, selected_for_pb);
 
 comment on table public.web_research_followup_items is 'Research Center 추출 follow-up; 매수/자동주문 없음. 서버 service role에서만 쓰기.';
+
+-- Optional: DB-level dedupe unique index (사전 중복 점검 필요) — docs/sql/append_research_followup_items_dedupe_index.sql

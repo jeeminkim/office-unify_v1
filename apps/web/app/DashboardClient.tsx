@@ -13,6 +13,7 @@ import {
   getVisibleSectorRadarWarningDetailsForSummary,
   getVisibleSectorRadarWarningsForSummary,
 } from "@/lib/sectorRadarWarningMessages";
+import { buildConcentrationRiskCardHint } from "@office-unify/shared-types";
 import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import { filterCandidatesByConfidence } from "@/lib/todayCandidateDataQuality";
 
@@ -164,6 +165,18 @@ export function DashboardClient() {
   const [watchlistAddState, setWatchlistAddState] = useState<Record<string, string>>({});
   const [todayOpsSummary, setTodayOpsSummary] = useState<TodayCandidatesOpsSummaryResponse | null>(null);
   const [showLowConfidenceCandidates, setShowLowConfidenceCandidates] = useState(false);
+  const [investorForm, setInvestorForm] = useState({
+    riskTolerance: "unknown",
+    timeHorizon: "unknown",
+    leveragePolicy: "unknown",
+    concentrationLimit: "unknown",
+    preferredSectors: "",
+    avoidSectors: "",
+    notes: "",
+  });
+  const [investorSaveMsg, setInvestorSaveMsg] = useState<string | null>(null);
+  const [investorSaving, setInvestorSaving] = useState(false);
+  const [openedScoreExplanationId, setOpenedScoreExplanationId] = useState<string | null>(null);
 
   const watchQueueTop5 = useMemo(() => {
     const rows = watchQueue?.candidates ?? [];
@@ -313,6 +326,39 @@ export function DashboardClient() {
   }, [loadOverview]);
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/investor-profile", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const j = (await res.json()) as {
+          profile?: {
+            riskTolerance?: string;
+            timeHorizon?: string;
+            leveragePolicy?: string;
+            concentrationLimit?: string;
+            preferredSectors?: string[];
+            avoidSectors?: string[];
+            notes?: string;
+          };
+        };
+        if (j.profile) {
+          setInvestorForm({
+            riskTolerance: j.profile.riskTolerance ?? "unknown",
+            timeHorizon: j.profile.timeHorizon ?? "unknown",
+            leveragePolicy: j.profile.leveragePolicy ?? "unknown",
+            concentrationLimit: j.profile.concentrationLimit ?? "unknown",
+            preferredSectors: (j.profile.preferredSectors ?? []).join(", "),
+            avoidSectors: (j.profile.avoidSectors ?? []).join(", "),
+            notes: j.profile.notes ?? "",
+          });
+        }
+      } catch {
+        /* no-op */
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
     const onLedgerUpdate = () => {
       void loadOverview();
     };
@@ -403,6 +449,32 @@ export function DashboardClient() {
           <div className="mt-3">
             <p className="text-xs font-semibold text-violet-950">오늘의 관찰 후보 (관심 상위 2 · 섹터 대표 ETF 1)</p>
             <p className="mt-0.5 text-[10px] text-violet-800/90">매수 권유 아님 · 관찰 후보입니다.</p>
+            {todayBrief?.qualityMeta?.todayCandidates?.concentrationRiskSummary ? (
+              <details className="mt-2 rounded border border-amber-100 bg-amber-50/60 p-2 text-[10px] text-amber-950">
+                <summary className="cursor-pointer select-none font-medium text-amber-950">
+                  보유 집중도 참고 (판단 보조 · 자동 주문·자동 리밸런싱 아님)
+                </summary>
+                <p className="mt-1 text-[10px] text-amber-900/95">
+                  덱 {todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.assessedCandidateCount}건 중
+                  높음 {todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.highRiskCount} · 중간{" "}
+                  {todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.mediumRiskCount}
+                  {todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.dataQuality === "partial"
+                    ? " · 부분 데이터 기준입니다."
+                    : ""}
+                  {todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.exposureBasis === "market_value"
+                    ? " 가치 기준: 시세 기반 평가."
+                    : todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.exposureBasis === "cost_basis"
+                      ? " 가치 기준: 평균 단가 추정(시세 없음)."
+                      : todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.exposureBasis === "mixed"
+                        ? " 가치 기준: 시세·평균 단가 혼합."
+                        : ""}
+                  {todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.themeMappingConfidenceCounts
+                    ? ` 테마 매핑 신뢰도(건수): high ${todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.themeMappingConfidenceCounts.high ?? 0} · medium ${todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.themeMappingConfidenceCounts.medium ?? 0} · low ${todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.themeMappingConfidenceCounts.low ?? 0} · missing ${todayBrief.qualityMeta.todayCandidates.concentrationRiskSummary.themeMappingConfidenceCounts.missing ?? 0}.`
+                    : ""}{" "}
+                  기존 보유 비중을 함께 확인하세요. 금액·원장 원문은 표시하지 않습니다.
+                </p>
+              </details>
+            ) : null}
             <ul className="mt-2 grid gap-2 md:grid-cols-3">
               {(todayBrief?.primaryCandidateDeck ?? []).map((c) => (
                 <li key={c.candidateId} className="rounded border border-violet-100 bg-white p-2">
@@ -416,6 +488,9 @@ export function DashboardClient() {
                   <p className="mt-1 text-[11px] text-slate-800">
                     관찰 점수 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
                   </p>
+                  {c.displayMetrics?.scoreExplanationDetail?.summary ? (
+                    <p className="mt-1 text-[10px] leading-snug text-slate-600">{c.displayMetrics.scoreExplanationDetail.summary}</p>
+                  ) : null}
                   <p className="mt-1 text-[11px] text-slate-700">{c.reasonSummary}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {(c.dataQuality?.badges ?? []).map((b) => (
@@ -424,6 +499,47 @@ export function DashboardClient() {
                   </div>
                   {c.displayMetrics?.primaryRiskLabel ? (
                     <p className="mt-1 text-[10px] text-amber-900">주요 리스크: {c.displayMetrics.primaryRiskLabel}</p>
+                  ) : null}
+                  {c.suitabilityAssessment?.cardHint ? (
+                    <p className="mt-1 text-[10px] text-indigo-950">{c.suitabilityAssessment.cardHint}</p>
+                  ) : null}
+                  {c.concentrationRiskAssessment && buildConcentrationRiskCardHint(c.concentrationRiskAssessment) ? (
+                    <p className="mt-1 text-[10px] text-amber-950">
+                      {c.concentrationRiskAssessment.dataQuality === "partial" ? "부분 데이터 기준 · " : null}
+                      {buildConcentrationRiskCardHint(c.concentrationRiskAssessment)}
+                    </p>
+                  ) : null}
+                  {c.displayMetrics?.scoreExplanationDetail ? (
+                    <div className="mt-1 rounded border border-slate-200 bg-slate-50/80 p-1.5">
+                      <button
+                        type="button"
+                        className="text-left text-[10px] font-medium text-slate-700 underline decoration-slate-400 underline-offset-2"
+                        onClick={() =>
+                          setOpenedScoreExplanationId((id) => (id === c.candidateId ? null : c.candidateId))
+                        }
+                      >
+                        {openedScoreExplanationId === c.candidateId ? "점수 설명 접기" : "왜 이 후보? · 점수 설명"}
+                      </button>
+                      {openedScoreExplanationId === c.candidateId ? (
+                        <div className="mt-1.5 space-y-1 border-t border-slate-200 pt-1.5 text-[10px] text-slate-700">
+                          <ul className="list-inside list-disc space-y-0.5">
+                            {(c.displayMetrics.scoreExplanationDetail.factors ?? []).map((f) => (
+                              <li key={`${c.candidateId}-${f.code}-${f.label}`}>
+                                <span className="text-slate-500">
+                                  {f.direction === "positive" ? "+ " : f.direction === "negative" ? "주의 " : "참고 "}
+                                </span>
+                                <span className="font-medium text-slate-800">{f.label}</span>
+                                {typeof f.points === "number" ? (
+                                  <span className="text-slate-500"> ({f.points > 0 ? "+" : ""}{f.points})</span>
+                                ) : null}
+                                : {f.message}
+                              </li>
+                            ))}
+                          </ul>
+                          <p className="text-[9px] leading-snug text-slate-500">{c.displayMetrics.scoreExplanationDetail.caveat}</p>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
                   <div className="mt-1 flex gap-2 text-[11px]">
                     <button type="button" className="rounded border border-slate-300 px-2 py-0.5" onClick={() => void onOpenReason(c)}>사유 보기</button>
@@ -452,6 +568,145 @@ export function DashboardClient() {
             </ul>
           </div>
         ) : null}
+
+        <details className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/50 p-2">
+          <summary className="cursor-pointer select-none text-xs font-semibold text-indigo-950">
+            투자자 프로필 (관찰·판단 보조 기준 — 매수 추천 아님)
+          </summary>
+          <p className="mt-1 text-[10px] text-indigo-900/90">
+            손실 감내·투자 기간·레버리지·집중도 선호를 맥락으로만 사용합니다. 저장 후 Today Brief·PB 고찰에 반영됩니다. 자동매매·자동주문 없음.
+          </p>
+          <div className="mt-2 grid gap-2 text-[11px] md:grid-cols-2">
+            <label className="flex flex-col gap-0.5 text-indigo-950">
+              위험 성향
+              <select
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+                value={investorForm.riskTolerance}
+                onChange={(e) => setInvestorForm((p) => ({ ...p, riskTolerance: e.target.value }))}
+              >
+                <option value="unknown">미설정</option>
+                <option value="low">낮음</option>
+                <option value="medium">보통</option>
+                <option value="high">높음</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5 text-indigo-950">
+              투자 기간
+              <select
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+                value={investorForm.timeHorizon}
+                onChange={(e) => setInvestorForm((p) => ({ ...p, timeHorizon: e.target.value }))}
+              >
+                <option value="unknown">미설정</option>
+                <option value="short">단기</option>
+                <option value="mid">중기</option>
+                <option value="long">장기</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5 text-indigo-950">
+              레버리지
+              <select
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+                value={investorForm.leveragePolicy}
+                onChange={(e) => setInvestorForm((p) => ({ ...p, leveragePolicy: e.target.value }))}
+              >
+                <option value="unknown">미설정</option>
+                <option value="not_allowed">허용 안 함</option>
+                <option value="limited">제한적</option>
+                <option value="allowed">허용</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5 text-indigo-950">
+              집중도
+              <select
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+                value={investorForm.concentrationLimit}
+                onChange={(e) => setInvestorForm((p) => ({ ...p, concentrationLimit: e.target.value }))}
+              >
+                <option value="unknown">미설정</option>
+                <option value="strict">엄격</option>
+                <option value="moderate">보통</option>
+                <option value="flexible">유연</option>
+              </select>
+            </label>
+          </div>
+          <label className="mt-2 flex flex-col gap-0.5 text-[11px] text-indigo-950">
+            선호 섹터 키워드 (쉼표 구분)
+            <input
+              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+              value={investorForm.preferredSectors}
+              onChange={(e) => setInvestorForm((p) => ({ ...p, preferredSectors: e.target.value }))}
+            />
+          </label>
+          <label className="mt-2 flex flex-col gap-0.5 text-[11px] text-indigo-950">
+            회피 섹터 키워드 (쉼표 구분)
+            <input
+              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+              value={investorForm.avoidSectors}
+              onChange={(e) => setInvestorForm((p) => ({ ...p, avoidSectors: e.target.value }))}
+            />
+          </label>
+          <label className="mt-2 flex flex-col gap-0.5 text-[11px] text-indigo-950">
+            메모 (선택, 짧게)
+            <textarea
+              className="min-h-[52px] rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+              value={investorForm.notes}
+              onChange={(e) => setInvestorForm((p) => ({ ...p, notes: e.target.value }))}
+              maxLength={2000}
+            />
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded border border-indigo-300 bg-white px-3 py-1 text-[11px] text-indigo-950"
+              disabled={investorSaving}
+              onClick={() => {
+                void (async () => {
+                  setInvestorSaving(true);
+                  setInvestorSaveMsg(null);
+                  try {
+                    const preferredSectors = investorForm.preferredSectors
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    const avoidSectors = investorForm.avoidSectors
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    const res = await fetch("/api/investor-profile", {
+                      method: "POST",
+                      credentials: "same-origin",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        riskTolerance: investorForm.riskTolerance,
+                        timeHorizon: investorForm.timeHorizon,
+                        leveragePolicy: investorForm.leveragePolicy,
+                        concentrationLimit: investorForm.concentrationLimit,
+                        preferredSectors,
+                        avoidSectors,
+                        notes: investorForm.notes,
+                      }),
+                    });
+                    const j = (await res.json()) as { ok?: boolean; error?: string; actionHint?: string };
+                    if (!res.ok) {
+                      setInvestorSaveMsg(j.actionHint ?? j.error ?? "저장 실패");
+                    } else {
+                      setInvestorSaveMsg("저장했습니다. Today Brief를 새로고침하면 적합성 안내가 반영됩니다.");
+                      void loadOverview();
+                    }
+                  } catch {
+                    setInvestorSaveMsg("저장 요청 실패");
+                  } finally {
+                    setInvestorSaving(false);
+                  }
+                })();
+              }}
+            >
+              {investorSaving ? "저장 중..." : "프로필 저장"}
+            </button>
+            {investorSaveMsg ? <span className="text-[10px] text-indigo-900">{investorSaveMsg}</span> : null}
+          </div>
+        </details>
 
         <div className="mt-3 rounded border border-violet-100 bg-white p-3">
           <p className="text-xs font-semibold text-violet-950">미국시장 신호 요약·진단</p>

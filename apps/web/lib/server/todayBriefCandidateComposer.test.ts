@@ -3,6 +3,8 @@ import type { SectorRadarSummaryResponse } from "@/lib/sectorRadarContract";
 import type { TodayStockCandidate, UsMarketMorningSummary } from "@/lib/todayCandidatesContract";
 import { composeTodayBriefCandidates, buildSectorRadarEtfCandidate } from "./todayBriefCandidateComposer";
 import { buildTodayCandidateDisplayMetrics } from "./todayBriefCandidateDisplay";
+import { diagnoseUsKrSignalCandidates } from "./usSignalCandidateDiagnostics";
+import { enrichPrimaryCandidateDeckScoreExplanations } from "./todayBriefScoreExplanation";
 
 const usSum = (available: boolean): UsMarketMorningSummary => ({
   asOfKst: new Date().toISOString(),
@@ -84,6 +86,60 @@ describe("composeTodayBriefCandidates", () => {
     const deckJson = JSON.stringify(out.deck);
     expect(deckJson).not.toMatch(/우선순위\s*60/);
     expect(deckJson).not.toMatch(/priority\s*60/i);
+  });
+
+  it("enrichPrimaryCandidateDeckScoreExplanations keeps legacy scoreExplanation and adds scoreExplanationDetail", () => {
+    const radar: SectorRadarSummaryResponse = {
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      sectors: [
+        {
+          key: "s1",
+          name: "AI/전력",
+          score: 80,
+          adjustedScore: 80,
+          zone: "greed",
+          actionHint: "hold",
+          narrativeHint: "n",
+          warnings: [],
+          anchors: [
+            {
+              symbol: "SOXX",
+              name: "SOXX ETF",
+              googleTicker: "NASDAQ:SOXX",
+              sourceLabel: "seed",
+              dataStatus: "ok",
+              etfDisplayGroup: "scored",
+              etfQuoteQualityStatus: "ok",
+              changePct: 1.2,
+            },
+          ],
+          components: {},
+        },
+      ],
+      warnings: [],
+      fearCandidatesTop3: [],
+      greedCandidatesTop3: [],
+    };
+    const out = composeTodayBriefCandidates({
+      userContextCandidates: [interest("a", 50), interest("b", 60), interest("c", 40)],
+      sectorRadarSummary: radar,
+      usMarketSummary: usSum(true),
+      usMarketKrCandidates: [],
+    });
+    const diag = diagnoseUsKrSignalCandidates({
+      usMarketSummary: usSum(true),
+      usMarketKrCandidates: [],
+    });
+    const enriched = enrichPrimaryCandidateDeckScoreExplanations(out.deck, {
+      usKrSignalDiagnostics: diag ?? null,
+      usMarketKrCount: 0,
+    });
+    expect(enriched[0]?.displayMetrics?.scoreExplanation).toContain("매수 권유가 아닌");
+    expect(enriched[0]?.displayMetrics?.scoreExplanationDetail?.factors?.length).toBeGreaterThan(0);
+    expect(enriched[0]?.displayMetrics?.scoreExplanationDetail?.finalScore).toBe(
+      enriched[0]?.displayMetrics?.observationScore,
+    );
   });
 
   it("falls back to interest top3 when no ETF", () => {

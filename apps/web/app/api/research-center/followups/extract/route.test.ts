@@ -21,8 +21,23 @@ describe("POST /api/research-center/followups/extract", () => {
     hoisted.getServiceSupabase.mockReset();
     hoisted.insertMock.mockReset();
     hoisted.insertMock.mockReturnValue(Promise.resolve({ error: null }));
+    const dupSelectChain = {
+      eq: vi.fn(function dupEq(this: typeof dupSelectChain) {
+        return this;
+      }),
+      is: vi.fn(function dupIs(this: typeof dupSelectChain) {
+        return this;
+      }),
+      limit: vi.fn(() => Promise.resolve({ data: [], error: null })),
+    };
     hoisted.getServiceSupabase.mockReturnValue({
-      from: vi.fn(() => ({ insert: hoisted.insertMock })),
+      from: vi.fn(() => ({
+        select: vi.fn((cols: string) => {
+          if (cols.includes("id")) return dupSelectChain;
+          return dupSelectChain;
+        }),
+        insert: hoisted.insertMock,
+      })),
     });
   });
 

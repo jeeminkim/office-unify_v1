@@ -83,11 +83,14 @@
 
 - 절차: `docs/ops/research_center_smoke_test.md`, 스크립트: `npm run research-center-smoke --workspace=apps/web`(기본 dry-run).
 
-## 후속 확인 항목 · PB 고찰
+## 후속 확인 항목 · PB 고찰 · 추적함
 
-- 마크다운 헤딩(`다음에 확인할 것` 등) 기반 추출: `POST /api/research-center/followups/extract`.
-- 저장 테이블: `web_research_followup_items`(SQL `docs/sql/append_research_followup_items.sql` 적용 필요).
-- PB 전송: `POST /api/research-center/followups/[id]/send-to-pb` → OpenAI Private Banker 경로; 매수 강요·자동 주문 없음.
+- 마크다운 헤딩(`다음에 확인할 것` 등) 기반 추출: `POST /api/research-center/followups/extract`. `save:true` 시 **`user_key`+`research_request_id`+정규화 title+`symbol`** 중복은 insert 생략·`duplicateWarnings`; Postgres **`23505` unique**(선택 인덱스 적용 시)도 동일하게 스킵.
+- 저장 테이블: `web_research_followup_items`(SQL `docs/sql/append_research_followup_items.sql` 적용 필요). 선택 **`append_research_followup_items_dedupe_index.sql`**: 표현식 unique index — 적용 전 `GROUP BY user_key, research_request_id, lower(regexp_replace(trim(title), E'\\s+', ' ', 'g')), coalesce(symbol,'') HAVING count(*)>1` 등으로 중복 정리. `detail_json.userNote`에 사용자 메모(서버 sanitize, 길이 제한); **ops 이벤트 detail/fingerprint에 userNote 원문을 넣지 않는다.**
+- **상태:** `open` · `tracking` · `discussed` · `dismissed` · `archived` — `PATCH /api/research-center/followups/[id]`.
+- **목록 요약:** `GET /api/research-center/followups` 응답 **`qualityMeta.followups.summary`** — `staleTrackingCount`는 `tracking`이면서 `updated_at` 기준 **14일 이상** 경과 건수(경고용 휴리스틱). **GET 경로는 read-only**(SELECT만; insert/update/upsert 없음).
+- PB 전송: `POST /api/research-center/followups/[id]/send-to-pb` → OpenAI Private Banker 경로; 매수 강요·자동 주문 없음. 성공 시 상태: **신규 응답 `discussed`**, **멱등 중복(deduplicated) `tracking`**. 프롬프트에 **`[사용자 적합성 점검]`** 및 투자자 프로필 맥락 블록 additive(`web_investor_profiles` 미적용 시 안내 문구). **additive `[보유 집중도 점검]`** 블록: 데이터 기준(`exposureBasis` 요약)·**KR/US 시장 노출** %·보유 건수·상위 테마 라벨만; 금액·`userNote` 원문 없음; **자동매매·자동주문·자동 리밸런싱·자동 포트폴리오 변경 금지**; PB는 질문형으로 기존 보유 의도·리스크 허용만 확인(매도·비중 축소·리밸런싱 지시 아님).
+- **Ops fingerprint 이벤트(domain `research_center`):** `research_followup_saved`, `research_followup_status_changed`, `research_followup_sent_to_pb`, `research_followup_duplicate_detected`. detail에는 **follow-up id 전체 대신 prefix** 등만 넣고 secret·프롬프트 원문·notes 원문은 넣지 않는다.
 
 ### SQL 미적용 시 예상 응답
 
@@ -98,9 +101,10 @@
 
 1. Supabase에서 `docs/sql/append_research_followup_items.sql` 적용 여부 확인.
 2. `POST /api/research-center/followups/extract` — `save:false`로 추출만 확인 → `save:true`로 1건 저장 smoke.
-3. `GET /api/research-center/followups?status=open` 로 사용자 스코프 목록 확인.
-4. `POST /api/research-center/followups/[id]/send-to-pb` — PB 멱등·`pb_turn_id`/`pb_session_id` 갱신 확인(실제 발송은 환경 키 필요).
-5. 문제 시 `/ops-events`에서 동일 사용자·route별 오류 확인(secret 미포함).
+3. `GET /api/research-center/followups?status=open` 로 사용자 스코프 목록·`qualityMeta.followups.summary` 확인.
+4. `PATCH /api/research-center/followups/[id]` — 상태 전환 smoke.
+5. `POST /api/research-center/followups/[id]/send-to-pb` — PB 멱등·`pb_turn_id`/`pb_session_id`·`followup.status` 갱신 확인(실제 발송은 환경 키 필요).
+6. 문제 시 `/ops-events`에서 동일 사용자·route별 오류 확인(secret 미포함).
 
 ## 장기 메모
 
