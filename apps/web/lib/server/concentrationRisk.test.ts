@@ -210,6 +210,26 @@ describe("assessConcentrationRiskForCandidate", () => {
     expect(a.themeMappingConfidence).toBe("low");
   });
 
+  it("EVO-007: themeConnection high upgrades themeMappingConfidence when heuristic was weaker", () => {
+    const rows = [{ h: h("KR", "005930", "금융", 10, 1), value: 100, valueSource: "market_value" }];
+    const snap = buildPortfolioExposureSnapshotFromHoldingsRows(rows, 100, true);
+    const a = assessConcentrationRiskForCandidate(
+      cand({
+        sector: "기타",
+        stockCode: "099999",
+        themeConnection: {
+          themeKey: "ai_power_infra",
+          themeLabel: "AI/전력 인프라",
+          confidence: "high",
+          reason: "Sector Radar와 registry 키 일치(테스트)",
+        },
+      }),
+      profileModerate,
+      snap,
+    );
+    expect(a.themeMappingConfidence).toBe("high");
+  });
+
   it("country_overweight message clarifies KR/US market exposure heuristic", () => {
     const rows = [
       { h: h("US", "QQQ", "기술", 1, 1), value: 90, valueSource: "market_value" },

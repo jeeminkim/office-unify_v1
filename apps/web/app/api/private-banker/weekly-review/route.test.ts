@@ -35,13 +35,17 @@ vi.mock("@/lib/server/runPrivateBankerMessage", () => ({
   runPrivateBankerMessageWithDbIdempotency: hoisted.runPb,
 }));
 
-vi.mock("@/lib/server/privateBankerWeeklyReview", () => ({
-  buildPrivateBankerWeeklyReviewContext: hoisted.buildCtx,
-  buildPrivateBankerWeeklyReviewPrompt: hoisted.buildPrompt,
-  buildPbWeeklyReviewFromContext: hoisted.buildPreview,
-  sanitizeWeeklyReviewContext: hoisted.sanitize,
-  weekOfMondayKstIso: vi.fn(() => "2026-05-11"),
-}));
+vi.mock("@/lib/server/privateBankerWeeklyReview", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/server/privateBankerWeeklyReview")>();
+  return {
+    ...actual,
+    buildPrivateBankerWeeklyReviewContext: hoisted.buildCtx,
+    buildPrivateBankerWeeklyReviewPrompt: hoisted.buildPrompt,
+    buildPbWeeklyReviewFromContext: hoisted.buildPreview,
+    sanitizeWeeklyReviewContext: hoisted.sanitize,
+    weekOfMondayKstIso: vi.fn(() => "2026-05-11"),
+  };
+});
 
 vi.mock("@office-unify/ai-office-engine", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@office-unify/ai-office-engine")>();
@@ -94,22 +98,35 @@ describe("/api/private-banker/weekly-review", () => {
     vi.unstubAllEnvs();
   });
 
-  it("GET returns 503 when supabase is not configured", async () => {
-    hoisted.getServiceSupabase.mockReturnValue(null);
-    const { GET } = await import("./route");
-    const res = await GET();
-    expect(res.status).toBe(503);
-  });
+  it(
+    "GET returns 503 when supabase is not configured",
+    async () => {
+      hoisted.getServiceSupabase.mockReturnValue(null);
+      const { GET } = await import("./route");
+      const res = await GET();
+      expect(res.status).toBe(503);
+    },
+    20_000,
+  );
 
-  it("GET returns preview without invoking PB idempotency", async () => {
+  it("GET returns preview and recommendedIdempotencyKey without invoking PB idempotency", async () => {
     hoisted.getServiceSupabase.mockReturnValue({});
     const { GET } = await import("./route");
+    const { buildRecommendedWeeklyReviewIdempotencyKey } = await import("@/lib/server/privateBankerWeeklyReview");
     const res = await GET();
     expect(res.status).toBe(200);
     expect(hoisted.runPb).not.toHaveBeenCalled();
-    const j = (await res.json()) as { ok?: boolean; preview?: { weekOf?: string } };
+    const j = (await res.json()) as {
+      ok?: boolean;
+      preview?: { weekOf?: string };
+      recommendedIdempotencyKey?: string;
+    };
     expect(j.ok).toBe(true);
     expect(j.preview?.weekOf).toBe("2026-05-11");
+    expect(j.recommendedIdempotencyKey).toMatch(/^pb-weekly:2026-05-11:[a-f0-9]{24}$/);
+    expect(j.recommendedIdempotencyKey).toBe(
+      buildRecommendedWeeklyReviewIdempotencyKey("2026-05-11", { weekOf: "2026-05-11" } as Record<string, unknown>),
+    );
   });
 
   it("POST requires idempotencyKey", async () => {
@@ -117,6 +134,8 @@ describe("/api/private-banker/weekly-review", () => {
     const { POST } = await import("./route");
     const res = await POST(new Request("http://local/x", { method: "POST", body: JSON.stringify({}) }));
     expect(res.status).toBe(400);
+    const j = (await res.json()) as { error?: string };
+    expect(j.error).toContain("recommendedIdempotencyKey");
   });
 
   it("POST merges qualityMeta with response guard and calls idempotency runner", async () => {
@@ -129,7 +148,7 @@ describe("/api/private-banker/weekly-review", () => {
         assistantMessage: {
           id: "am-1",
           role: "assistant",
-          content: "[행동 분류]\n[정보 상태]\n[사용자 적합성 점검]\n[보유 집중도 점검]\n[지금 해야 할 행동]\n[하면 안 되는 행동]\n자동 주문 없음 자동 매매 없음 리밸런싱 없음\n[관찰해야 할 신호]\n",
+          content: "[행동 분류]\n[정보 상태]\n[사용자 적합성 점검]\n[보유 집중도 점검]\n[지금 해야 할 행동]\n[하면 안 되는 행동]\n자동 주문을 하지 않습니다.\n[관찰해야 할 신호]\n",
           createdAt: new Date().toISOString(),
         },
         longTermMemorySummary: null,
@@ -147,11 +166,12 @@ describe("/api/private-banker/weekly-review", () => {
     const j = (await res.json()) as {
       pbSessionId?: string;
       pbTurnId?: string;
-      report?: { qualityMeta?: { todayCandidateCount?: number; privateBanker?: { responseGuard?: { missingSections?: string[] } } } };
+      report?: { qualityMeta?: { todayCandidateCount?: number; privateBanker?: { responseGuard?: { missingSections?: string[]; policyPhraseWarnings?: string[] } } } };
     };
     expect(j.pbSessionId).toBe("sess-wr-1");
     expect(j.pbTurnId).toBe("am-1");
     expect(j.report?.qualityMeta?.todayCandidateCount).toBe(0);
     expect(j.report?.qualityMeta?.privateBanker?.responseGuard?.missingSections).toEqual([]);
+    expect(j.report?.qualityMeta?.privateBanker?.responseGuard?.policyPhraseWarnings ?? []).toEqual([]);
   });
 });

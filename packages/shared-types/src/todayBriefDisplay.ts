@@ -18,6 +18,8 @@ export type ObservationScoreFactorCode =
   | 'diversity_adjustment'
   /** EVO-005: 보유·테마 집중도 참고(자동 리밸런싱 아님). */
   | 'portfolio_concentration'
+  /** EVO-007: 초기 registry·Sector Radar 기반 테마 연결 설명(후보 강제 생성 아님). */
+  | 'theme_link'
   | 'unknown';
 
 export type ObservationScoreFactor = {

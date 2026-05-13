@@ -32,10 +32,17 @@ describe("GET /api/dashboard/today-brief contract (additive)", () => {
             dataQuality: "partial",
             reasonCounts: { theme_overweight: 1 },
           },
+          themeConnectionSummary: {
+            mappedThemeCount: 2,
+            linkedInstrumentCount: 4,
+            confidenceCounts: { high: 1, medium: 1, low: 0, missing: 0 },
+            missingThemeCount: 0,
+          },
         },
       },
     };
     expect(sample.qualityMeta?.todayCandidates?.scoreExplanationSummary?.explainedCandidateCount).toBe(3);
     expect(sample.qualityMeta?.todayCandidates?.concentrationRiskSummary?.mediumRiskCount).toBe(1);
+    expect(sample.qualityMeta?.todayCandidates?.themeConnectionSummary?.mappedThemeCount).toBe(2);
   });
 });

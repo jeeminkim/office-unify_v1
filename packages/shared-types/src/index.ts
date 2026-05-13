@@ -264,6 +264,20 @@ export type {
   UsKrSignalEmptyReasonCode,
 } from './todayBriefDisplay';
 export type {
+  UsKrEmptyReasonHistogram,
+  UsKrEmptyReasonHistogramItem,
+  UsKrEmptyReasonHistogramRange,
+} from './usKrEmptyReasonHistogram';
+export { usKrEmptyReasonHistogramReasonLabel } from './usKrEmptyReasonHistogram';
+export type {
+  ThemeConnectionCandidateBinding,
+  ThemeConnectionMapItem,
+  ThemeConnectionSummary,
+  ThemeLinkedInstrument,
+  ThemeLinkConfidence,
+  ThemeLinkSource,
+} from './themeConnectionMap';
+export type {
   ResearchFollowupCategory,
   ResearchFollowupItem,
   ResearchFollowupPriority,
@@ -300,6 +314,14 @@ export type {
   PbWeeklyReviewQualityMeta,
   PbWeeklyReviewResponseGuardMeta,
 } from './privateBankerWeeklyReview';
+export type {
+  DecisionRetroOutcome,
+  DecisionRetroQualitySignal,
+  DecisionRetrospective,
+  DecisionRetrospectivesQualityMeta,
+  DecisionRetroSourceType,
+  DecisionRetroStatus,
+} from './decisionRetrospective';
 export type {
   TrendAnalysisGenerateRequestBody,
   TrendAnalysisGenerateResponseBody,

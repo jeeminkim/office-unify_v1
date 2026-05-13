@@ -11,6 +11,7 @@ import {
   buildPrivateBankerWeeklyReviewContext,
   buildPrivateBankerWeeklyReviewPrompt,
   buildPbWeeklyReviewFromContext,
+  buildRecommendedWeeklyReviewIdempotencyKey,
   sanitizeWeeklyReviewContext,
 } from '@/lib/server/privateBankerWeeklyReview';
 import { auditPrivateBankerStructuredResponse, mergePbWeeklyReviewQualityMetaWithGuard } from '@/lib/server/privateBankerResponseGuard';
@@ -34,11 +35,13 @@ export async function GET() {
     const ctx = await buildPrivateBankerWeeklyReviewContext(supabase, auth.userKey as string);
     const preview = buildPbWeeklyReviewFromContext(ctx);
     const context = sanitizeWeeklyReviewContext(ctx);
+    const recommendedIdempotencyKey = buildRecommendedWeeklyReviewIdempotencyKey(ctx.weekOf, context);
     return NextResponse.json({
       ok: true,
       weekOf: ctx.weekOf,
       preview,
       context,
+      recommendedIdempotencyKey,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
@@ -74,7 +77,10 @@ export async function POST(req: Request) {
       : '';
   if (!idempotencyKey) {
     return NextResponse.json(
-      { error: 'idempotencyKey is required (e.g. weekly-review:{weekOf}:{uuid}).' },
+      {
+        error:
+          'idempotencyKey is required. Use recommendedIdempotencyKey from GET /api/private-banker/weekly-review (same week, same preview context) so identical requests dedupe predictably.',
+      },
       { status: 400 },
     );
   }

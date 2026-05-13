@@ -3,7 +3,9 @@ import type { ResearchFollowupRowDto } from "@office-unify/shared-types";
 import type { TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import {
   buildPbWeeklyReviewFromContext,
+  buildRecommendedWeeklyReviewIdempotencyKey,
   sanitizeWeeklyReviewContext,
+  stableStringifyForWeeklyReviewHash,
   weekOfMondayKstIso,
   type PrivateBankerWeeklyReviewContext,
 } from "./privateBankerWeeklyReview";
@@ -184,5 +186,27 @@ describe("privateBankerWeeklyReview", () => {
     expect(s).not.toContain("12,345,678");
     expect(s).not.toContain("secret note");
     expect(s).not.toContain("userNote");
+  });
+});
+
+describe("buildRecommendedWeeklyReviewIdempotencyKey", () => {
+  it("is deterministic for same weekOf and sanitized payload", () => {
+    const sanitized = { weekOf: "2026-05-11", profileStatus: "missing" } as Record<string, unknown>;
+    const a = buildRecommendedWeeklyReviewIdempotencyKey("2026-05-11", sanitized);
+    const b = buildRecommendedWeeklyReviewIdempotencyKey("2026-05-11", sanitized);
+    expect(a).toBe(b);
+    expect(a).toMatch(/^pb-weekly:2026-05-11:[a-f0-9]{24}$/);
+  });
+
+  it("changes when sanitized payload differs", () => {
+    const k1 = buildRecommendedWeeklyReviewIdempotencyKey("2026-05-11", { a: 1 } as Record<string, unknown>);
+    const k2 = buildRecommendedWeeklyReviewIdempotencyKey("2026-05-11", { a: 2 } as Record<string, unknown>);
+    expect(k1).not.toBe(k2);
+  });
+
+  it("stableStringify sorts object keys for hash stability", () => {
+    const a = stableStringifyForWeeklyReviewHash({ z: 1, m: 2 });
+    const b = stableStringifyForWeeklyReviewHash({ m: 2, z: 1 });
+    expect(a).toBe(b);
   });
 });

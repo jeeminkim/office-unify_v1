@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   InvestorProfile,
@@ -354,6 +355,31 @@ export function buildPbWeeklyReviewFromContext(
     caveat: buildCaveat(),
     qualityMeta,
   };
+}
+
+/**
+ * weekOf + sanitize된 컨텍스트만으로 결정적 JSON 문자열(키 정렬, 민감 원문 미포함).
+ * 해시 입력에 user_key·금액·userNote·detail_json 원문을 넣지 않는다.
+ */
+export function stableStringifyForWeeklyReviewHash(value: unknown): string {
+  if (value === null) return 'null';
+  if (typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringifyForWeeklyReviewHash(v)).join(',')}]`;
+  }
+  const o = value as Record<string, unknown>;
+  const keys = Object.keys(o).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringifyForWeeklyReviewHash(o[k])}`).join(',')}}`;
+}
+
+/** GET에서 내려주는 권장 멱등 키(POST `idempotencyKey`에 그대로 사용 가능). */
+export function buildRecommendedWeeklyReviewIdempotencyKey(
+  weekOf: string,
+  sanitized: Record<string, unknown>,
+): string {
+  const body = `${weekOf}\n${stableStringifyForWeeklyReviewHash(sanitized)}`;
+  const h = createHash('sha256').update(body, 'utf8').digest('hex').slice(0, 24);
+  return `pb-weekly:${weekOf}:${h}`;
 }
 
 export function sanitizeWeeklyReviewContext(ctx: PrivateBankerWeeklyReviewContext): Record<string, unknown> {

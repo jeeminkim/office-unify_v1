@@ -24,8 +24,10 @@
 ### 메인 3카드 덱 (additive)
 
 - **`primaryCandidateDeck`**: 관심사 후보 상위 **2** + Sector Radar에서 고른 **대표 ETF 1** (ETF 없으면 관심 후보 **top 3** fallback, `qualityMeta.todayCandidates.composition.fallbackReason`).
+- **판단 복기(EVO-008, 선택):** 대시보드 「판단 복기」에서 메인 덱 **첫 후보**를 `POST /api/decision-retrospectives/from-today-candidate`로 시드 저장할 수 있다(서버가 요약 시드만 저장; 수익률 평가·자동 주문 아님). 요청은 **JSON 본문 길이 상한**·**허용 필드 화이트리스트**·관찰 요인 수·요인 메시지 길이 제한을 통과해야 하며, 위반 시 **400** + `actionHint`.
 - 카드 표시는 내부 raw `score` 대신 **`displayMetrics`**(`관찰 점수 n/100`, 신뢰도·데이터 품질 등). 원본 배열 `candidates.*`는 유지.
 - 미국 신호→한국 후보가 비면 **`usKrSignalDiagnostics`**·`usMarketSummary.diagnostics`로 원인 코드를 노출; ops **`us_signal_candidates_empty`**(budget/cooldown·fingerprint).
+- **EVO-007 테마 연결 맵(1차):** `primaryCandidateDeck` 항목에 **`themeConnection`**(themeKey·신뢰도·설명); `qualityMeta.todayCandidates.themeConnectionSummary` / `themeConnectionMap`(소량 registry 기반); `usKrEmptyThemeBridgeHint`는 **`usToKrMappingEmpty`**이면서 테마→국내 연결이 얇을 때만. **낮은 신뢰도는 후보 생성에 사용하지 않음.** 금액·원문 노트 미포함.
 
 ### 투자자 프로필 · 적합성 게이트 (additive)
 
@@ -57,15 +59,18 @@
 - 동일 후보의 원본 배열(`candidates.userContext` / `candidates.usMarketKr`)은 **접기(`<details>`)** 로 이동; 데이터/API 필드는 유지.
 - **미국시장 신호 요약·empty 진단**(`usMarketSummary`·`usKrSignalDiagnostics`)은 접기 밖에서 항상 노출(진단 가시성 유지).
 
-### 7일 운영 요약: 미국 empty 사유 히스토그램
+### 7일 운영 요약: 미국 empty 사유 히스토그램 (EVO-006)
 
-- `GET /api/dashboard/today-candidates/ops-summary` 응답의 **`usKrEmptyReasonHistogram`**: 최근 N일(쿼리 `days`, 기본 7) 동안 domain=`today_candidates` 이벤트 중 **`us_signal_candidates_empty`**만 모아 `detail.primaryReason`별로 `occurrence_count`를 합산한다.
-- `primaryReason`이 없거나 구형 payload면 **`unknown`** 으로 집계.
-- **read-only** 경로에서 별도 DB write 없음.
+- `GET /api/dashboard/today-candidates/ops-summary` — 쿼리 **`range=24h|7d`**(기본은 `days` 미지정 시 7일; `days=1..30`을 넣으면 `range`보다 우선) 및 **`days`**(기존 호환).
+- domain은 **`today_candidates` 또는 `today_brief`** 이벤트를 함께 읽는다(미래·교차 로깅 대비). **`us_signal_candidates_empty`**만 집계한다.
+- 버킷 키: **`detail.primaryReason`** 우선 → 없으면 **`detail.reasonCodes[0]`** → 없으면 **`unknown`**. `occurrence_count` 가중 합, 버킷별 **`lastSeenAt`**은 해당 사유 행 중 최신 `last_seen_at`.
+- 응답: 기존 **`usKrEmptyReasonHistogram`** 배열(항목에 additive **`lastSeenAt`**) + **`qualityMeta.todayCandidates.usKrEmptyReasonHistogram`**(`range`, `totalCount`, `items`).
+- **read-only** 성공 경로는 **SELECT만**(행 상한 300). 후보를 늘리지 않고 **원인 진단**만 강화한다.
 
 ### PB 주간 점검과의 연결 (EVO-004)
 
 - `GET /api/private-banker/weekly-review`는 Today Brief와 동일한 **read-only** 후보 덱 파이프라인(내부 서버 유틸)으로 `primaryCandidateDeck` 요약·`scoreExplanationDetail.summary`·집중도·적합성을 주간 미리보기에 넣되, **`GET /api/dashboard/today-brief`의 ops write 경로는 호출하지 않는다.**
+- **GET 응답 `recommendedIdempotencyKey`:** `weekOf` + sanitize된 컨텍스트만 결정적 JSON(키 정렬) 문자열로 SHA-256 해시한 권장 `idempotencyKey` — POST에 그대로 사용 가능. 금액·userNote·user_key는 해시 입력에 넣지 않는다.
 
 ## 관심종목 추가
 
@@ -216,13 +221,14 @@ low/very_low 후보는 기본 숨김(토글로 표시) 정책을 사용한다.
 ## 후보 운영 상태 카드
 
 - 대시보드에 `후보 운영 상태 · 최근 7일` 카드 노출
-- 표시 항목: 생성, 사유보기, 관심추가, 중복, 미국장 no_data, 추가 실패
+- 표시 항목: 생성, 사유보기, 관심추가, 중복, 미국장 no_data, **미국신호→KR empty**·추가 실패
+- **EVO-006:** 「미국 신호 비어 있음 원인 요약」— `usKrEmptyReasonHistogram` / `qualityMeta.todayCandidates.usKrEmptyReasonHistogram` 기반, 원인별 친화 문구 + 건수 + 코드(운영 진단, 후보 강제 생성 아님).
 - API 실패 시 안내 문구만 노출하고 화면은 유지한다.
 
 ## 운영 요약 API
 
-- `GET /api/dashboard/today-candidates/ops-summary?days=7`
-- `today_candidates` domain의 최근 이벤트를 생성/중복/no_data/실패 기준으로 집계한다.
+- `GET /api/dashboard/today-candidates/ops-summary?range=7d` 또는 `?days=7`(기존)
+- domain `today_candidates` **또는** `today_brief`의 최근 이벤트(상한 300행)를 생성/중복/no_data/실패·**empty 사유 히스토그램** 기준으로 집계한다.
 
 ## read-only 경로 DB write 제한
 

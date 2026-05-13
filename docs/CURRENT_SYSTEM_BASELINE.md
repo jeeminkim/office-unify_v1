@@ -23,7 +23,7 @@
 ## 현재 핵심 기능
 
 - Today Candidates
-  - `today-brief` optional `candidates`(`userContext`/`usMarketKr`) + **`primaryCandidateDeck`**(관심 top2 + Sector Radar 대표 ETF 1; ETF 없으면 관심 top3 fallback); **EVO-005** `concentrationRiskAssessment`(`exposureBasis`, `themeMappingConfidence`)·`qualityMeta.todayCandidates.concentrationRiskSummary`(동일 메타·건수 집계; 금액·`userNote` 원문 없음; KR/US는 시장 노출 휴리스틱; 집중도는 점검 질문이며 자동 주문·자동 리밸런싱 아님)
+  - `today-brief` optional `candidates`(`userContext`/`usMarketKr`) + **`primaryCandidateDeck`**(관심 top2 + Sector Radar 대표 ETF 1; ETF 없으면 관심 top3 fallback); **EVO-005** `concentrationRiskAssessment`(`exposureBasis`, `themeMappingConfidence`)·`qualityMeta.todayCandidates.concentrationRiskSummary`(동일 메타·건수 집계; 금액·`userNote` 원문 없음; KR/US는 시장 노출 휴리스틱; 집중도는 점검 질문이며 자동 주문·자동 리밸런싱 아님); **EVO-007** `themeConnection`·`themeConnectionSummary`·`themeConnectionMap`·`usKrEmptyThemeBridgeHint`(초기 registry 휴리스틱, 후보 강제 생성 아님)
   - **투자자 프로필**(선택 SQL `web_investor_profiles`): 미설정 시 기존과 동일하게 동작; 설정 시 덱 후보에 **`suitabilityAssessment`**·`qualityMeta.todayCandidates.suitability` additive. 자동 실행 없음.
   - 사용자 표시: **`displayMetrics`**(관찰 점수/신뢰도 등 + **`scoreExplanationDetail`** 요인 설명); **`qualityMeta.todayCandidates.scoreExplanationSummary`** 집계; 미국 신호→KR 후보 없을 때 **`usKrSignalDiagnostics`**
   - `isBuyRecommendation=false`, 관찰·판단 보조 UX
@@ -50,7 +50,8 @@
 - Research Center
   - explicit generation action with requestId trace (`/api/research-center/generate`)
   - “다음에 확인할 것” 섹션 추출 + 추적함 UI + PB 연계 API(`followups/*`, **PATCH** 상태·`userNote`·**GET** `qualityMeta.followups.summary`); DB `web_research_followup_items` (SQL `append_research_followup_items.sql`, 선택 `append_research_followup_items_dedupe_index.sql`). 중복 키는 정규화 title 기준(앱·선택 unique index 정렬); **GET followups는 read-only**. PB 후 `discussed`/`tracking`. 자동매매 없음.
-  - **PB 주간 점검(EVO-004):** 홈 대시보드·`GET /api/private-banker/weekly-review`에서 동일 사용자의 open/tracking follow-up·Today Brief 덱 요약·집중도·적합성을 주간 단위로 묶어 미리보기(민감 필드 제외). `POST`는 PB 판단 보조 메시지 생성 전용(멱등); 자동 실행 없음.
+  - **PB 주간 점검(EVO-004):** 홈 대시보드·`GET /api/private-banker/weekly-review`에서 동일 사용자의 open/tracking follow-up·Today Brief 덱 요약·집중도·적합성을 주간 단위로 묶어 미리보기(민감 필드 제외). **`recommendedIdempotencyKey`**(weekOf+sanitize만 해시) additive. `POST`는 PB 판단 보조 메시지 생성·멱등; 자동 실행 없음.
+  - **판단 복기(EVO-008):** `web_decision_retrospectives`(`append_decision_retrospectives.sql`); `GET /api/decision-retrospectives`는 **read-only** + `qualityMeta.decisionRetrospectives`(stale draft 30일+ 등). `POST …/from-followup`, `POST …/from-weekly-review`, `POST …/from-today-candidate`로 시드 생성; `POST …/from-today-candidate`는 **요청 본문 길이 상한**·**candidate 필드 화이트리스트**·관찰 요인 수·요인 `message` 길이를 검증하고 과대/비정상이면 **400** + `actionHint`; `PATCH …/[id]`로 outcome·신호·메모·**status(reviewed/learned/archived)** 갱신. **수익률 평가·자동 주문·자동 리밸런싱 아님.** PB가 복기 글을 자동 작성하는 것은 1차 비범위.
   - failed/degraded stage split (`provider`/`finalizer`/`sheets`/`context_cache`/`response_parse`); Chief Editor 실패 시 데스크 초안 병합 fallback(`fallback_editor_synthesis`), 자동 매매 없음
   - transient provider errors: 엔진 전체 최대 1회 재시도; timeout env: `RESEARCH_CENTER_TOTAL_TIMEOUT_MS`(호환 `RESEARCH_CENTER_ROUTE_TIMEOUT_MS`), `RESEARCH_CENTER_PROVIDER_TIMEOUT_MS`, `RESEARCH_CENTER_FINALIZER_TIMEOUT_MS`, `RESEARCH_CENTER_SHEETS_TIMEOUT_MS`, `RESEARCH_CENTER_CONTEXT_CACHE_TIMEOUT_MS`
   - client shows `errorCode`/`requestId`/`actionHint` instead of plain `Failed to fetch`
@@ -72,6 +73,7 @@
 - SQL이 미적용이어도 가능한 경로는 본문/핵심 응답을 유지한다.
 - 미적용 영향은 warnings/qualityMeta/ops에 표시한다.
 - RPC/테이블 부재는 기능 전체 중단보다 best-effort degrade를 우선한다.
+- **`web_decision_retrospectives` 미적용:** `GET|POST /api/decision-retrospectives*` 관련 경로는 **503** + `decision_retrospective_table_missing` + `actionHint`( `docs/sql/append_decision_retrospectives.sql` 적용 안내).
 
 ## 운영 확인 순서
 
@@ -79,4 +81,4 @@
 2. `/ops-events`
 3. Google Sheets status (`/api/portfolio/quotes/status`, ticker/sector status)
 4. Sector Radar status (`/api/sector-radar/status`)
-5. Today Candidates ops summary (`/api/dashboard/today-candidates/ops-summary`)
+5. Today Candidates ops summary (`/api/dashboard/today-candidates/ops-summary`, `range=24h|7d`·EVO-006 **미국 신호 empty 사유 히스토그램**, read-only)

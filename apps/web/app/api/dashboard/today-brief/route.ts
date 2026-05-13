@@ -19,6 +19,10 @@ import {
   buildPortfolioExposureSnapshotFromHoldingsRows,
   buildTodayBriefConcentrationRiskSummary,
 } from '@/lib/server/concentrationRisk';
+import {
+  buildUsKrEmptyThemeBridgeHint,
+  enrichPrimaryDeckWithThemeConnections,
+} from '@/lib/server/themeConnectionMap';
 import { applySuitabilityToPrimaryDeck } from '@/lib/server/suitabilityAssessment';
 import { diagnoseUsKrSignalCandidates } from '@/lib/server/usSignalCandidateDiagnostics';
 import {
@@ -274,13 +278,30 @@ export async function GET() {
       usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
     });
 
+    const {
+      deck: deckWithTheme,
+      themeConnectionMap,
+      themeConnectionSummary,
+    } = enrichPrimaryDeckWithThemeConnections(composedDeck.deck, {
+      sectorRadarSectors: todayCandidates.sectorRadarSummary?.sectors,
+      holdingRows: rows.map((r) => ({
+        name: r.h.name,
+        sector: r.h.sector,
+        symbol: r.h.symbol,
+        market: String(r.h.market),
+      })),
+      userContextCandidates: todayCandidates.userContextCandidates,
+      usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
+      usSignals: todayCandidates.usMarketSummary.signals.map((s) => ({ label: s.label, signalKey: s.signalKey })),
+    });
+
     const exposureSnapshot = buildPortfolioExposureSnapshotFromHoldingsRows(
       rows.map((r) => ({ h: r.h, value: r.value, valueSource: r.valueSource })),
       total,
       quote.quoteAvailable,
     );
 
-    let primaryCandidateDeck = composedDeck.deck;
+    let primaryCandidateDeck = deckWithTheme;
     let profileForConcentration: InvestorProfile | null = null;
     let suitabilitySummary:
       | {
@@ -297,7 +318,7 @@ export async function GET() {
       } else if (ipRes.ok) {
         const profileForSuit = ipRes.profileStatus === 'missing' ? null : ipRes.profile;
         profileForConcentration = profileForSuit;
-        const applied = applySuitabilityToPrimaryDeck(composedDeck.deck, profileForSuit);
+        const applied = applySuitabilityToPrimaryDeck(deckWithTheme, profileForSuit);
         primaryCandidateDeck = applied.deck;
         suitabilitySummary = {
           profileStatus: ipRes.profileStatus,
@@ -305,7 +326,7 @@ export async function GET() {
         };
       }
     } catch {
-      primaryCandidateDeck = composedDeck.deck;
+      primaryCandidateDeck = deckWithTheme;
       suitabilitySummary = undefined;
     }
 
@@ -318,6 +339,12 @@ export async function GET() {
     const usKrSignalDiagnostics = diagnoseUsKrSignalCandidates({
       usMarketSummary: todayCandidates.usMarketSummary,
       usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
+    });
+
+    const usKrEmptyThemeBridgeHint = buildUsKrEmptyThemeBridgeHint({
+      diagnostics: usKrSignalDiagnostics,
+      themeConnectionSummary,
+      themeConnectionMap,
     });
 
     primaryCandidateDeck = enrichPrimaryCandidateDeckScoreExplanations(primaryCandidateDeck, {
@@ -596,6 +623,9 @@ export async function GET() {
           ...(suitabilitySummary ? { suitability: suitabilitySummary } : {}),
           scoreExplanationSummary,
           concentrationRiskSummary,
+          themeConnectionSummary,
+          themeConnectionMap,
+          ...(usKrEmptyThemeBridgeHint ? { usKrEmptyThemeBridgeHint } : {}),
         },
       },
     };

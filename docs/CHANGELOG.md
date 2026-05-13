@@ -4,6 +4,44 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05 테마 연결 맵 1차 (EVO-007)
+
+- **목적:** Sector Radar 대표 ETF·관심/보유·Today 후보·미국 신호를 **공통 theme key**로 설명·진단(후보 강제 생성·매수 추천·자동매매·자동 주문 없음).
+- **Shared types:** `ThemeLinkConfidence` / `ThemeLinkSource` / `ThemeLinkedInstrument` / `ThemeConnectionMapItem` / `ThemeConnectionCandidateBinding` / `ThemeConnectionSummary` (`packages/shared-types/src/themeConnectionMap.ts`); `ObservationScoreFactorCode.theme_link`.
+- **초기 registry:** `themeConnectionRegistry.ts` — 소량 휴리스틱 키워드·대표 ETF 심볼(연결 설명용).
+- **Server:** `themeConnectionMap.ts` — `normalizeThemeKey`, `buildThemeConnectionMap`, `enrichPrimaryDeckWithThemeConnections`, `buildUsKrEmptyThemeBridgeHint`(`usToKrMappingEmpty` + 얇은 맵일 때 안내).
+- **Today Brief:** `primaryCandidateDeck`에 `themeConnection` additive; `qualityMeta.todayCandidates.themeConnectionSummary` / `themeConnectionMap` / `usKrEmptyThemeBridgeHint`; 집중도 `themeMappingConfidence`는 **themeConnection**이 더 높으면 상향.
+- **UI:** 대시보드 「테마 연결 맵」`<details>` + 카드별 테마 한 줄.
+
+### 2026-05 미국 신호 empty reason 히스토그램 (EVO-006)
+
+- **목적:** Today Brief **운영 진단** — 미국 신호→한국 후보가 비는 사유를 요청 단위가 아니라 **최근 구간 집계**로 확인(후보 강제 생성·매수 추천·자동매매 아님).
+- **Shared types:** `UsKrEmptyReasonHistogram` / `UsKrEmptyReasonHistogramItem` / `usKrEmptyReasonHistogramReasonLabel` (`packages/shared-types/src/usKrEmptyReasonHistogram.ts`).
+- **집계:** `web_ops_events`에서 `code=us_signal_candidates_empty`, domain `today_candidates` **또는** `today_brief`, `detail.primaryReason` 우선·없으면 `detail.reasonCodes[0]`·없으면 `unknown`; 버킷별 `occurrence_count` 합·`lastSeenAt` 최신.
+- **API:** `GET /api/dashboard/today-candidates/ops-summary` — 쿼리 `range=24h|7d`(기본 동작은 `range` 미지정 시 `days` 또는 **7일**), `days=1..30`과 병행 가능(`days`가 있으면 우선). 응답에 기존 `usKrEmptyReasonHistogram` 배열(additive `lastSeenAt`) + **`qualityMeta.todayCandidates.usKrEmptyReasonHistogram`**(`range`, `totalCount`, `items`). SELECT만(성공 경로); 행 상한 300 유지.
+- **UI:** 대시보드 「후보 운영 상태」에 원인별 친화 문구·건수·코드 표기.
+
+### 2026-05 판단 복기 시스템 1차 (EVO-008)
+
+- **목적:** Today 후보·Research follow-up·PB 주간 점검 등 **판단 과정** 복기(수익률 자랑·자동매매·자동 주문·리밸런싱 아님).
+- **Shared types:** `decisionRetrospective.ts` — `DecisionRetroSourceType` / `DecisionRetroStatus` / `DecisionRetroOutcome` / `DecisionRetroQualitySignal` / `DecisionRetrospective` / `DecisionRetrospectivesQualityMeta`.
+- **SQL:** `docs/sql/append_decision_retrospectives.sql` — `web_decision_retrospectives`(`user_key` 스코프, `(user_key, source_type, source_id)` 부분 unique dedupe).
+- **Server:** `decisionRetrospective.ts` / `decisionRetrospectiveSanitize.ts` — 시드(follow-up·주간·Today 후보), 입력 sanitize, `qualityMeta` 집계·stale draft(30일+).
+- **API:** `GET`/`POST` `/api/decision-retrospectives`, `PATCH …/[id]`, `POST …/from-followup/[id]`, `POST …/from-weekly-review`, `POST …/from-today-candidate`(additive). **GET은 read-only**; 테이블 미적용 시 `503` + `decision_retrospective_table_missing` + `actionHint`.
+- **UI:** 대시보드 「판단 복기」`<details>`(필터·outcome·신호·nextRule·Today 첫 덱 복기); PB 주간 「이번 주 점검 복기 만들기」; Research 추적함 「복기 만들기」.
+
+### 2026-05 판단 복기 안정화 (EVO-008)
+
+- **Lint:** `privateBankerResponseGuard` unused 파라미터 제거.
+- **from-today-candidate:** 요청 본문 크기 상한·허용 필드 화이트리스트·관찰 요인 개수·`factor.message` 길이 검증(과대 시 **400** + `actionHint`); `detail_json`에 원문 candidate 전체 미저장.
+- **대시보드:** 복기 항목 **reviewed / learned / archived** 상태 버튼 + PATCH.
+
+### 2026-05 PB 주간 점검 안정화 (EVO-004)
+
+- **responseGuard:** 단순 “자동 주문/리밸런싱 키워드 누락” 경고 제거 → **지시형 표현**(매수·매도·비중 축소·리밸런싱 하세요 등) 및 **부정 없는** `자동 주문`/`주문 실행` 언급만 `policyPhraseWarnings`. “~하지 않습니다”, “권유가 아닙니다”, `[하면 안 되는 행동]` 불릿 명사 목록 등은 경고 제외.
+- **GET `/api/private-banker/weekly-review`:** additive `recommendedIdempotencyKey` — `weekOf` + sanitize 컨텍스트만 SHA-256(24hex)로 해시(민감 원문·user_key 미포함). POST는 동일 키로 멱등 권장.
+- **UI:** 대시보드 PB 주간 점검에서 GET 권장 멱등 키 표시·생성 요청에 사용.
+
 ### 2026-05 PB 주간 점검 리포트 (EVO-004 1차)
 
 - **Shared types:** `PbWeeklyReview` / `PbWeeklyReviewItem` / `PbWeeklyReviewQualityMeta`(+additive `privateBanker.responseGuard`).

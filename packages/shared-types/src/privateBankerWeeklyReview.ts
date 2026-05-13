@@ -28,7 +28,7 @@ export type PbWeeklyReviewDataQuality = 'ok' | 'partial' | 'missing';
 /** Additive: PB 응답 형식 검증 메타(1차는 경고만, 재요청 없음). */
 export type PbWeeklyReviewResponseGuardMeta = {
   missingSections: string[];
-  /** 응답에 금지 정책 문구가 빠졌을 때 등 */
+  /** 지시형·위험 문맥 탐지 코드(안전 고지 문장은 제외). */
   policyPhraseWarnings?: string[];
 };
 

@@ -13,9 +13,19 @@ import {
   getVisibleSectorRadarWarningDetailsForSummary,
   getVisibleSectorRadarWarningsForSummary,
 } from "@/lib/sectorRadarWarningMessages";
-import { buildConcentrationRiskCardHint } from "@office-unify/shared-types";
+import {
+  buildConcentrationRiskCardHint,
+  usKrEmptyReasonHistogramReasonLabel,
+} from "@office-unify/shared-types";
+import type {
+  DecisionRetroOutcome,
+  DecisionRetroQualitySignal,
+  DecisionRetrospective,
+  DecisionRetrospectivesQualityMeta,
+  DecisionRetroStatus,
+  PbWeeklyReview,
+} from "@office-unify/shared-types";
 import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from "@/lib/todayCandidatesContract";
-import type { PbWeeklyReview } from "@office-unify/shared-types";
 import { filterCandidatesByConfidence } from "@/lib/todayCandidateDataQuality";
 
 type StatusSection = {
@@ -87,7 +97,17 @@ type TodayCandidatesOpsSummaryResponse = {
     alreadyExists: number;
     addFailed: number;
   };
-  usKrEmptyReasonHistogram?: Array<{ reason: string; count: number }>;
+  usKrEmptyReasonHistogram?: Array<{ reason: string; count: number; lastSeenAt?: string }>;
+  qualityMeta?: {
+    todayCandidates?: {
+      readOnlySummary?: true;
+      usKrEmptyReasonHistogram?: {
+        range: "24h" | "7d";
+        totalCount: number;
+        items: Array<{ reason: string; count: number; lastSeenAt?: string }>;
+      };
+    };
+  };
 };
 
 type ProfitGoalSummaryResponse = {
@@ -149,6 +169,32 @@ function sectorRadarDisplayScore(s: SectorRadarSummarySector): number | undefine
   return v != null && Number.isFinite(v) ? v : undefined;
 }
 
+function formatDecisionRetroSource(st: string): string {
+  if (st === "today_candidate") return "Today 후보";
+  if (st === "research_followup") return "Follow-up";
+  if (st === "pb_weekly_review") return "PB 주간 점검";
+  if (st === "pb_message") return "PB 메시지";
+  if (st === "manual") return "수동";
+  return st;
+}
+
+const DECISION_RETRO_SIGNAL_OPTIONS: ReadonlyArray<{ code: DecisionRetroQualitySignal; label: string }> = [
+  { code: "risk_warning_useful", label: "리스크 경고" },
+  { code: "suitability_warning_useful", label: "적합성 경고" },
+  { code: "concentration_warning_useful", label: "집중도 경고" },
+  { code: "data_quality_warning_useful", label: "데이터 품질 경고" },
+  { code: "pb_question_useful", label: "PB 질문" },
+  { code: "followup_checked", label: "follow-up 확인" },
+];
+
+const DECISION_RETRO_FILTERS: ReadonlyArray<{ key: "all" | DecisionRetroStatus; label: string }> = [
+  { key: "all", label: "전체" },
+  { key: "draft", label: "draft" },
+  { key: "reviewed", label: "reviewed" },
+  { key: "learned", label: "learned" },
+  { key: "archived", label: "archived" },
+];
+
 export function DashboardClient() {
   const [statusSections, setStatusSections] = useState<StatusSection[]>([]);
   const [overview, setOverview] = useState<DashboardResponse | null>(null);
@@ -179,6 +225,7 @@ export function DashboardClient() {
   const [investorSaving, setInvestorSaving] = useState(false);
   const [openedScoreExplanationId, setOpenedScoreExplanationId] = useState<string | null>(null);
   const [weeklyPreview, setWeeklyPreview] = useState<PbWeeklyReview | null>(null);
+  const [weeklyRecommendedIdempotencyKey, setWeeklyRecommendedIdempotencyKey] = useState<string | null>(null);
   const [weeklyPreviewLoading, setWeeklyPreviewLoading] = useState(false);
   const [weeklyGenLoading, setWeeklyGenLoading] = useState(false);
   const [weeklyGenError, setWeeklyGenError] = useState<string | null>(null);
@@ -191,6 +238,30 @@ export function DashboardClient() {
     missingSections: string[];
     policyPhraseWarnings?: string[];
   } | null>(null);
+
+  type DecisionRetroFilter = "all" | DecisionRetroStatus;
+  const [retroFilter, setRetroFilter] = useState<DecisionRetroFilter>("all");
+  const [retroItems, setRetroItems] = useState<DecisionRetrospective[]>([]);
+  const [retroQuality, setRetroQuality] = useState<DecisionRetrospectivesQualityMeta | null>(null);
+  const [retroLoading, setRetroLoading] = useState(false);
+  const [retroErr, setRetroErr] = useState<string | null>(null);
+  const [retroHint, setRetroHint] = useState<string | null>(null);
+  const [retroRowDraft, setRetroRowDraft] = useState<
+    Record<
+      string,
+      {
+        outcome: DecisionRetroOutcome;
+        signals: DecisionRetroQualitySignal[];
+        nextRule: string;
+        whatWorked: string;
+        whatDidNotWork: string;
+      }
+    >
+  >({});
+  const [retroSavingId, setRetroSavingId] = useState<string | null>(null);
+  const [retroWeeklyBusy, setRetroWeeklyBusy] = useState(false);
+  const [retroTodayBusy, setRetroTodayBusy] = useState(false);
+  const [retroPbMsg, setRetroPbMsg] = useState<string | null>(null);
 
   const watchQueueTop5 = useMemo(() => {
     const rows = watchQueue?.candidates ?? [];
@@ -210,7 +281,7 @@ export function DashboardClient() {
         fetch("/api/dashboard/profit-goal-summary", { credentials: "same-origin" }),
         fetch("/api/trade-journal/pattern-analysis", { credentials: "same-origin" }),
         fetch("/api/portfolio/alerts", { credentials: "same-origin" }),
-        fetch("/api/dashboard/today-candidates/ops-summary?days=7", { credentials: "same-origin" }),
+        fetch("/api/dashboard/today-candidates/ops-summary?range=7d", { credentials: "same-origin" }),
       ]);
       const statusJson = (await statusRes.json()) as { sections?: StatusSection[]; error?: string };
       const overviewJson = (await overviewRes.json()) as DashboardResponse & { error?: string };
@@ -261,11 +332,26 @@ export function DashboardClient() {
       setWeeklyPreviewLoading(true);
       try {
         const wRes = await fetch("/api/private-banker/weekly-review", { credentials: "same-origin" });
-        const wj = (await wRes.json()) as { ok?: boolean; preview?: PbWeeklyReview; error?: string };
-        if (wRes.ok && wj.ok && wj.preview) setWeeklyPreview(wj.preview);
-        else setWeeklyPreview(null);
+        const wj = (await wRes.json()) as {
+          ok?: boolean;
+          preview?: PbWeeklyReview;
+          recommendedIdempotencyKey?: string;
+          error?: string;
+        };
+        if (wRes.ok && wj.ok && wj.preview) {
+          setWeeklyPreview(wj.preview);
+          setWeeklyRecommendedIdempotencyKey(
+            typeof wj.recommendedIdempotencyKey === "string" && wj.recommendedIdempotencyKey.length > 0
+              ? wj.recommendedIdempotencyKey
+              : null,
+          );
+        } else {
+          setWeeklyPreview(null);
+          setWeeklyRecommendedIdempotencyKey(null);
+        }
       } catch {
         setWeeklyPreview(null);
+        setWeeklyRecommendedIdempotencyKey(null);
       } finally {
         setWeeklyPreviewLoading(false);
       }
@@ -275,6 +361,129 @@ export function DashboardClient() {
       setReloading(false);
     }
   }, []);
+
+  const loadDecisionRetrospectives = useCallback(async (f: DecisionRetroFilter) => {
+    setRetroLoading(true);
+    setRetroErr(null);
+    setRetroHint(null);
+    try {
+      const qs = f === "all" ? "" : `?status=${encodeURIComponent(f)}`;
+      const res = await fetch(`/api/decision-retrospectives${qs}`, { credentials: "same-origin" });
+      const j = (await res.json()) as {
+        ok?: boolean;
+        items?: DecisionRetrospective[];
+        qualityMeta?: { decisionRetrospectives?: DecisionRetrospectivesQualityMeta };
+        code?: string;
+        actionHint?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        if (j.code === "decision_retrospective_table_missing") {
+          setRetroHint(j.actionHint ?? null);
+          setRetroErr("판단 복기 테이블이 아직 준비되지 않았습니다.");
+        } else {
+          setRetroErr(j.error ?? `HTTP ${res.status}`);
+        }
+        setRetroItems([]);
+        setRetroQuality(null);
+        setRetroRowDraft({});
+        return;
+      }
+      const items = j.items ?? [];
+      setRetroItems(items);
+      setRetroQuality(j.qualityMeta?.decisionRetrospectives ?? null);
+      const drafts: Record<
+        string,
+        {
+          outcome: DecisionRetroOutcome;
+          signals: DecisionRetroQualitySignal[];
+          nextRule: string;
+          whatWorked: string;
+          whatDidNotWork: string;
+        }
+      > = {};
+      for (const it of items) {
+        drafts[it.id] = {
+          outcome: it.outcome,
+          signals: [...it.qualitySignals],
+          nextRule: it.nextRule ?? "",
+          whatWorked: it.whatWorked ?? "",
+          whatDidNotWork: it.whatDidNotWork ?? "",
+        };
+      }
+      setRetroRowDraft(drafts);
+    } catch (e: unknown) {
+      setRetroErr(e instanceof Error ? e.message : "불러오기 실패");
+    } finally {
+      setRetroLoading(false);
+    }
+  }, []);
+
+  const toggleRetroSignal = useCallback((id: string, code: DecisionRetroQualitySignal) => {
+    setRetroRowDraft((prev) => {
+      const cur = prev[id];
+      if (!cur) return prev;
+      const has = cur.signals.includes(code);
+      const signals = has ? cur.signals.filter((s) => s !== code) : [...cur.signals, code];
+      return { ...prev, [id]: { ...cur, signals } };
+    });
+  }, []);
+
+  const saveRetroRow = useCallback(
+    async (id: string) => {
+      const d = retroRowDraft[id];
+      if (!d) return;
+      setRetroSavingId(id);
+      setRetroErr(null);
+      try {
+        const res = await fetch(`/api/decision-retrospectives/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            outcome: d.outcome,
+            qualitySignals: d.signals,
+            nextRule: d.nextRule.trim().length > 0 ? d.nextRule : undefined,
+            whatWorked: d.whatWorked.trim().length > 0 ? d.whatWorked : undefined,
+            whatDidNotWork: d.whatDidNotWork.trim().length > 0 ? d.whatDidNotWork : undefined,
+          }),
+        });
+        const j = (await res.json()) as { ok?: boolean; error?: string; actionHint?: string; code?: string };
+        if (!res.ok) {
+          setRetroErr(j.error ?? j.actionHint ?? `HTTP ${res.status}`);
+          return;
+        }
+        await loadDecisionRetrospectives(retroFilter);
+      } finally {
+        setRetroSavingId(null);
+      }
+    },
+    [retroRowDraft, retroFilter, loadDecisionRetrospectives],
+  );
+
+  const patchRetroStatus = useCallback(
+    async (id: string, status: DecisionRetroStatus) => {
+      setRetroSavingId(id);
+      setRetroErr(null);
+      try {
+        const res = await fetch(`/api/decision-retrospectives/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ status }),
+        });
+        const j = (await res.json()) as { ok?: boolean; error?: string; actionHint?: string };
+        if (!res.ok) {
+          setRetroErr(j.error ?? j.actionHint ?? `HTTP ${res.status}`);
+          return;
+        }
+        await loadDecisionRetrospectives(retroFilter);
+      } finally {
+        setRetroSavingId(null);
+      }
+    },
+    [retroFilter, loadDecisionRetrospectives],
+  );
 
   const allTodayCandidates = useMemo(() => {
     const deck = todayBrief?.primaryCandidateDeck ?? [];
@@ -500,6 +709,50 @@ export function DashboardClient() {
                 </p>
               </details>
             ) : null}
+            {todayBrief?.qualityMeta?.todayCandidates?.themeConnectionSummary ? (
+              <details className="mt-2 rounded border border-sky-100 bg-sky-50/60 p-2 text-[10px] text-sky-950">
+                <summary className="cursor-pointer select-none font-medium text-sky-950">
+                  테마 연결 맵 (관찰·설명용, 후보 강제 생성 아님)
+                </summary>
+                <p className="mt-1 text-[10px] leading-snug text-sky-900/95">
+                  연결 신뢰도가 낮으면 후보 생성에 사용하지 않습니다. 자동매매·자동 주문·자동 리밸런싱 없음.
+                </p>
+                <p className="mt-1 text-[10px] text-sky-900">
+                  매핑된 테마 {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.mappedThemeCount}개 · 연결
+                  표기 {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.linkedInstrumentCount}건 · high{" "}
+                  {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.confidenceCounts.high} · medium{" "}
+                  {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.confidenceCounts.medium} · low{" "}
+                  {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.confidenceCounts.low} · missing{" "}
+                  {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.confidenceCounts.missing} · 부족 테마
+                  추정 {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.missingThemeCount}
+                </p>
+                {todayBrief.qualityMeta.todayCandidates.usKrEmptyThemeBridgeHint ? (
+                  <p className="mt-1 rounded border border-amber-200 bg-amber-50/80 p-1.5 text-[10px] text-amber-950">
+                    {todayBrief.qualityMeta.todayCandidates.usKrEmptyThemeBridgeHint}
+                  </p>
+                ) : null}
+                <ul className="mt-1.5 space-y-1 border-t border-sky-200/80 pt-1.5">
+                  {(todayBrief.qualityMeta.todayCandidates.themeConnectionMap ?? []).map((it) => (
+                    <li key={it.themeKey} className="text-[10px] text-sky-900">
+                      <span className="font-medium text-sky-950">{it.themeLabel}</span>
+                      {" · "}
+                      <span className="text-sky-800">신뢰도 {it.confidence}</span>
+                      {it.representativeEtf ? (
+                        <span className="text-sky-800">
+                          {" · "}
+                          대표 ETF {it.representativeEtf.symbol}
+                        </span>
+                      ) : null}
+                      {" · "}
+                      연결 {it.linkedInstruments.length + (it.representativeEtf ? 1 : 0)}건
+                      {(it.warnings ?? []).length > 0 ? (
+                        <span className="block text-amber-900">{(it.warnings ?? []).join(" ")}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
             <ul className="mt-2 grid gap-2 md:grid-cols-3">
               {(todayBrief?.primaryCandidateDeck ?? []).map((c) => (
                 <li key={c.candidateId} className="rounded border border-violet-100 bg-white p-2">
@@ -532,6 +785,11 @@ export function DashboardClient() {
                     <p className="mt-1 text-[10px] text-amber-950">
                       {c.concentrationRiskAssessment.dataQuality === "partial" ? "부분 데이터 기준 · " : null}
                       {buildConcentrationRiskCardHint(c.concentrationRiskAssessment)}
+                    </p>
+                  ) : null}
+                  {c.themeConnection ? (
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      테마 연결: {c.themeConnection.themeLabel} · 신뢰도 {c.themeConnection.confidence}
                     </p>
                   ) : null}
                   {c.displayMetrics?.scoreExplanationDetail ? (
@@ -930,11 +1188,29 @@ export function DashboardClient() {
               생성 {todayOpsSummary.totals.generated}회 · 사유 보기 {todayOpsSummary.totals.detailOpened}회 · 관심추가 {todayOpsSummary.totals.watchlistAdded}회 · 중복 {todayOpsSummary.totals.alreadyExists}회 · 미국장 no_data {todayOpsSummary.totals.usMarketNoData}회 · 미국신호→KR후보 empty{" "}
               {todayOpsSummary.totals.usSignalCandidatesEmpty ?? 0}회 · 추가 실패 {todayOpsSummary.totals.addFailed}회
             </p>
+            <p className="mt-2 text-[11px] leading-snug text-violet-800/90">
+              후보를 억지로 만들지 않고 원인을 진단합니다. 매수 추천·자동매매가 아닙니다.
+            </p>
             {(todayOpsSummary.usKrEmptyReasonHistogram ?? []).length > 0 ? (
-              <p className="mt-1 text-[11px] text-violet-800/95">
-                미국신호→KR empty 사유(최근 구간):{" "}
-                {(todayOpsSummary.usKrEmptyReasonHistogram ?? []).map((h) => `${h.reason} ${h.count}회`).join(" · ")}
-              </p>
+              <div className="mt-2 rounded border border-violet-100 bg-violet-50/60 p-2">
+                <p className="text-[11px] font-medium text-violet-900">
+                  미국 신호 비어 있음 원인 요약 (
+                  {todayOpsSummary.qualityMeta?.todayCandidates?.usKrEmptyReasonHistogram?.range === "24h" ? "24시간" : "7일"}
+                  · 가중 {todayOpsSummary.qualityMeta?.todayCandidates?.usKrEmptyReasonHistogram?.totalCount ?? "—"}회)
+                </p>
+                <ul className="mt-1 space-y-1 text-[11px] text-violet-900">
+                  {(todayOpsSummary.usKrEmptyReasonHistogram ?? []).map((h) => {
+                    const label = usKrEmptyReasonHistogramReasonLabel(h.reason);
+                    return (
+                      <li key={h.reason} className="flex flex-wrap gap-x-2 gap-y-0.5">
+                        <span className="font-medium text-violet-950">{label}</span>
+                        <span className="text-violet-700">{h.count}회</span>
+                        <span className="text-violet-500/80">({h.reason})</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             ) : null}
           </>
         ) : (
@@ -1212,9 +1488,11 @@ export function DashboardClient() {
           <summary className="cursor-pointer text-sm font-semibold text-violet-950">
             PB 주간 점검 (미리보기)
           </summary>
-          <p className="mt-2 text-[11px] leading-relaxed text-violet-950/90">
-            매수 추천이 아니라 이번 주 확인할 질문입니다. 자동 주문·자동 리밸런싱을 실행하지 않습니다.
-          </p>
+              <p className="mt-2 text-[11px] leading-relaxed text-violet-950/90">
+                매수 추천이 아니라 이번 주 확인할 질문입니다. 자동 주문·자동 리밸런싱을 실행하지 않습니다. 생성 시{" "}
+                <code className="rounded bg-violet-100 px-1 font-mono text-[10px]">GET /api/private-banker/weekly-review</code>의{" "}
+                <span className="font-medium">recommendedIdempotencyKey</span>를 그대로 쓰면 동일 미리보기 컨텍스트에서 멱등이 맞춰집니다.
+              </p>
           {weeklyPreviewLoading ? (
             <p className="mt-2 text-xs text-violet-800">불러오는 중…</p>
           ) : weeklyPreview ? (
@@ -1222,6 +1500,12 @@ export function DashboardClient() {
               <p className="text-[11px] text-violet-900/90">
                 주간 시작(월요일, KST): <span className="font-mono">{weeklyPreview.weekOf}</span> · 프로필 상태:{" "}
                 {weeklyPreview.profileStatus} · 데이터 품질: {weeklyPreview.qualityMeta.dataQuality}
+              </p>
+              <p className="mt-1 text-[10px] text-violet-900/80">
+                권장 멱등 키:{" "}
+                <span className="font-mono break-all">
+                  {weeklyRecommendedIdempotencyKey ?? "(미로드)"}
+                </span>
               </p>
               <p className="rounded border border-violet-100 bg-white/80 px-2 py-1.5 text-[11px] text-violet-900">{weeklyPreview.caveat}</p>
               <div className="grid gap-2 md:grid-cols-2">
@@ -1273,7 +1557,10 @@ export function DashboardClient() {
                 setWeeklyGenLoading(true);
                 setWeeklyGenError(null);
                 try {
-                  const idempotencyKey = `weekly-review:${weeklyPreview.weekOf}:${crypto.randomUUID()}`;
+                const idempotencyKey =
+                  weeklyRecommendedIdempotencyKey && weeklyRecommendedIdempotencyKey.startsWith("pb-weekly:")
+                    ? weeklyRecommendedIdempotencyKey
+                    : `pb-weekly-fallback:${weeklyPreview.weekOf}:${crypto.randomUUID()}`;
                   const res = await fetch("/api/private-banker/weekly-review", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -1319,7 +1606,40 @@ export function DashboardClient() {
             <Link href="/private-banker" className="text-xs text-violet-800 underline underline-offset-2">
               PB 화면으로 이동
             </Link>
+            <button
+              type="button"
+              disabled={retroWeeklyBusy || !weeklyPreview}
+              className="rounded border border-violet-400 bg-white px-2 py-1.5 text-xs font-medium text-violet-900 disabled:opacity-50"
+              onClick={async () => {
+                if (!weeklyPreview) return;
+                setRetroPbMsg(null);
+                setRetroWeeklyBusy(true);
+                try {
+                  const res = await fetch("/api/decision-retrospectives/from-weekly-review", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "same-origin",
+                    body: JSON.stringify({ preview: weeklyPreview }),
+                  });
+                  const j = (await res.json()) as { ok?: boolean; deduped?: boolean; error?: string; actionHint?: string; code?: string };
+                  if (!res.ok) {
+                    setRetroPbMsg(j.error ?? j.actionHint ?? `HTTP ${res.status}`);
+                    return;
+                  }
+                  setRetroPbMsg(
+                    j.deduped
+                      ? "기존 주간 점검 복기 항목을 불러왔습니다."
+                      : "주간 점검 판단 복기 초안을 만들었습니다. 아래 「판단 복기」에서 확인하세요.",
+                  );
+                } finally {
+                  setRetroWeeklyBusy(false);
+                }
+              }}
+            >
+              {retroWeeklyBusy ? "복기 생성 중…" : "이번 주 점검 복기 만들기"}
+            </button>
           </div>
+          {retroPbMsg ? <p className="mt-1 text-[11px] text-emerald-900">{retroPbMsg}</p> : null}
           {weeklyGenError ? <p className="mt-2 text-xs text-red-700">{weeklyGenError}</p> : null}
           {weeklyGenResult ? (
             <div className="mt-3 rounded border border-violet-100 bg-white/90 p-2 text-[11px] text-violet-950">
@@ -1373,6 +1693,199 @@ export function DashboardClient() {
           ) : null}
         </div>
       </section>
+
+      <details
+        className="mb-5 rounded-xl border border-slate-300 bg-slate-50/90 p-4 shadow-sm"
+        onToggle={(e) => {
+          if (e.currentTarget.open) void loadDecisionRetrospectives(retroFilter);
+        }}
+      >
+        <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900">판단 복기</summary>
+        <div className="mt-2 space-y-3 border-t border-slate-200 pt-2 text-xs text-slate-800">
+          <p className="text-[11px] leading-relaxed text-slate-700">
+            수익률 평가가 아니라 <span className="font-medium">판단 과정 복기</span>입니다. 자동 주문·자동 리밸런싱을 실행하지 않습니다.
+          </p>
+          {retroQuality ? (
+            <p className="text-[10px] text-slate-600">
+              전체 {retroQuality.totalCount}건 · stale draft(30일+) {retroQuality.staleDraftCount}건 · learned {retroQuality.learnedCount}건
+            </p>
+          ) : null}
+          {todayBrief?.primaryCandidateDeck?.[0] ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={retroTodayBusy}
+                className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-800 disabled:opacity-50"
+                onClick={async () => {
+                  const c = todayBrief?.primaryCandidateDeck?.[0];
+                  if (!c) return;
+                  setRetroTodayBusy(true);
+                  setRetroErr(null);
+                  try {
+                    const res = await fetch("/api/decision-retrospectives/from-today-candidate", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      credentials: "same-origin",
+                      body: JSON.stringify({ candidate: c }),
+                    });
+                    const j = (await res.json()) as { ok?: boolean; error?: string; actionHint?: string; code?: string };
+                    if (!res.ok) {
+                      setRetroErr(j.error ?? j.actionHint ?? `HTTP ${res.status}`);
+                      return;
+                    }
+                    await loadDecisionRetrospectives(retroFilter);
+                  } finally {
+                    setRetroTodayBusy(false);
+                  }
+                }}
+              >
+                {retroTodayBusy ? "저장 중…" : "메인 덱 첫 후보 복기 저장"}
+              </button>
+              <span className="text-[10px] text-slate-500">Today Brief 메인 덱 1번째 카드 기준</span>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-1">
+            {DECISION_RETRO_FILTERS.map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                  retroFilter === key ? "bg-slate-900 text-white" : "bg-white text-slate-700 ring-1 ring-slate-200"
+                }`}
+                onClick={() => {
+                  setRetroFilter(key);
+                  void loadDecisionRetrospectives(key);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {retroErr ? <p className="text-amber-900">{retroErr}</p> : null}
+          {retroHint ? <p className="text-[11px] text-slate-700">{retroHint}</p> : null}
+          {retroLoading ? <p className="text-slate-500">불러오는 중…</p> : null}
+          <ul className="max-h-96 space-y-3 overflow-y-auto">
+            {retroItems.map((it) => {
+              const draft = retroRowDraft[it.id];
+              return (
+                <li key={it.id} className="rounded border border-slate-200 bg-white p-2 shadow-sm">
+                  <p className="font-medium text-slate-900">{it.title}</p>
+                  <p className="mt-0.5 text-[10px] text-slate-600">
+                    {formatDecisionRetroSource(it.sourceType)} · {it.symbol ?? "—"} · 상태 {it.status}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-700">{it.summary}</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      disabled={retroSavingId === it.id || it.status === "reviewed"}
+                      className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-800 disabled:opacity-50"
+                      onClick={() => void patchRetroStatus(it.id, "reviewed")}
+                    >
+                      reviewed
+                    </button>
+                    <button
+                      type="button"
+                      disabled={retroSavingId === it.id || it.status === "learned"}
+                      className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-800 disabled:opacity-50"
+                      onClick={() => void patchRetroStatus(it.id, "learned")}
+                    >
+                      learned
+                    </button>
+                    <button
+                      type="button"
+                      disabled={retroSavingId === it.id || it.status === "archived"}
+                      className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-800 disabled:opacity-50"
+                      onClick={() => void patchRetroStatus(it.id, "archived")}
+                    >
+                      archived
+                    </button>
+                  </div>
+                  {draft ? (
+                    <div className="mt-2 space-y-2 border-t border-slate-100 pt-2">
+                      <label className="block text-[10px] font-medium text-slate-600">도움이 됐는가?</label>
+                      <select
+                        className="w-full max-w-xs rounded border border-slate-200 bg-white px-2 py-1 text-[11px]"
+                        value={draft.outcome}
+                        onChange={(e) =>
+                          setRetroRowDraft((prev) => ({
+                            ...prev,
+                            [it.id]: { ...draft, outcome: e.target.value as DecisionRetroOutcome },
+                          }))
+                        }
+                      >
+                        <option value="unknown">unknown</option>
+                        <option value="helpful">helpful</option>
+                        <option value="partially_helpful">partially_helpful</option>
+                        <option value="not_helpful">not_helpful</option>
+                      </select>
+                      <p className="text-[10px] font-medium text-slate-600">유효했던 신호</p>
+                      <div className="flex flex-wrap gap-1">
+                        {DECISION_RETRO_SIGNAL_OPTIONS.map((opt) => (
+                          <label key={opt.code} className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px]">
+                            <input
+                              type="checkbox"
+                              checked={draft.signals.includes(opt.code)}
+                              onChange={() => toggleRetroSignal(it.id, opt.code)}
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                      <label className="block text-[10px] font-medium text-slate-600">잘된 점(선택)</label>
+                      <textarea
+                        className="w-full max-w-full rounded border border-slate-200 px-2 py-1 text-[11px]"
+                        rows={2}
+                        value={draft.whatWorked}
+                        onChange={(e) =>
+                          setRetroRowDraft((prev) => ({
+                            ...prev,
+                            [it.id]: { ...draft, whatWorked: e.target.value },
+                          }))
+                        }
+                      />
+                      <label className="block text-[10px] font-medium text-slate-600">아쉬운 점(선택)</label>
+                      <textarea
+                        className="w-full max-w-full rounded border border-slate-200 px-2 py-1 text-[11px]"
+                        rows={2}
+                        value={draft.whatDidNotWork}
+                        onChange={(e) =>
+                          setRetroRowDraft((prev) => ({
+                            ...prev,
+                            [it.id]: { ...draft, whatDidNotWork: e.target.value },
+                          }))
+                        }
+                      />
+                      <label className="block text-[10px] font-medium text-slate-600">다음에 적용할 규칙</label>
+                      <textarea
+                        className="w-full max-w-full rounded border border-slate-200 px-2 py-1 text-[11px]"
+                        rows={2}
+                        value={draft.nextRule}
+                        onChange={(e) =>
+                          setRetroRowDraft((prev) => ({
+                            ...prev,
+                            [it.id]: { ...draft, nextRule: e.target.value },
+                          }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        disabled={retroSavingId === it.id}
+                        className="rounded bg-slate-900 px-2 py-1 text-[11px] font-medium text-white disabled:opacity-50"
+                        onClick={() => void saveRetroRow(it.id)}
+                      >
+                        {retroSavingId === it.id ? "저장 중…" : "변경 저장"}
+                      </button>
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {!retroLoading && retroItems.length === 0 ? (
+            <p className="text-[11px] text-slate-500">복기 항목이 없습니다. Research Center follow-up 또는 PB 주간 점검에서 만들 수 있습니다.</p>
+          ) : null}
+        </div>
+      </details>
     </div>
   );
 }

@@ -308,6 +308,13 @@ export function assessConcentrationRiskForCandidate(
     }
   }
 
+  const tcBoost = candidate.themeConnection?.confidence;
+  if (tcBoost) {
+    const r: Record<ConcentrationThemeMappingConfidence, number> = { high: 4, medium: 3, low: 2, missing: 1 };
+    const b = tcBoost as ConcentrationThemeMappingConfidence;
+    if (r[b] > r[themeMappingConfidence]) themeMappingConfidence = b;
+  }
+
   let countryBias = false;
   if (candidate.country === 'US' && snapshot.marketUsPct >= 68) {
     reasons.push('country_overweight');

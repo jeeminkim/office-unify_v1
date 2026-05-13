@@ -92,6 +92,8 @@ export function ResearchCenterClient() {
   const [followupSaveBusyId, setFollowupSaveBusyId] = useState<string | null>(null);
   const [followupNoteDrafts, setFollowupNoteDrafts] = useState<Record<string, string>>({});
   const [followupNoteSavingId, setFollowupNoteSavingId] = useState<string | null>(null);
+  const [followupRetroBusyId, setFollowupRetroBusyId] = useState<string | null>(null);
+  const [followupRetroOk, setFollowupRetroOk] = useState<string | null>(null);
   const followupTrayDetailsRef = useRef<HTMLDetailsElement>(null);
 
   const fetchOpsTrace = useCallback(async (rid: string) => {
@@ -943,6 +945,7 @@ export function ResearchCenterClient() {
             ))}
           </div>
           {followupTrayErr ? <p className="mt-2 text-amber-800">{followupTrayErr}</p> : null}
+          {followupRetroOk ? <p className="mt-2 text-emerald-900">{followupRetroOk}</p> : null}
           {followupTrayLoading ? <p className="mt-2 text-slate-500">불러오는 중…</p> : null}
           <ul className="mt-2 max-h-80 space-y-2 overflow-y-auto">
             {followupTrayItems.map((row) => {
@@ -1033,6 +1036,34 @@ export function ResearchCenterClient() {
                       onClick={() => void patchFollowupTray(row.id, { status: "archived" })}
                     >
                       보관
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-600 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-900 disabled:opacity-50"
+                      disabled={followupRetroBusyId === row.id}
+                      onClick={async () => {
+                        setFollowupRetroBusyId(row.id);
+                        setFollowupTrayErr(null);
+                        setFollowupRetroOk(null);
+                        try {
+                          const res = await fetch(`/api/decision-retrospectives/from-followup/${encodeURIComponent(row.id)}`, {
+                            method: "POST",
+                            credentials: "same-origin",
+                          });
+                          const j = (await res.json()) as { ok?: boolean; error?: string; actionHint?: string; code?: string };
+                          if (!res.ok) {
+                            setFollowupTrayErr(j.error ?? j.actionHint ?? `HTTP ${res.status}`);
+                            return;
+                          }
+                          setFollowupRetroOk("판단 복기 초안을 만들었습니다. 대시보드 「판단 복기」에서 확인하세요.");
+                        } catch {
+                          setFollowupTrayErr("복기 생성 요청에 실패했습니다.");
+                        } finally {
+                          setFollowupRetroBusyId(null);
+                        }
+                      }}
+                    >
+                      {followupRetroBusyId === row.id ? "복기 생성 중…" : "복기 만들기"}
                     </button>
                     <button
                       type="button"

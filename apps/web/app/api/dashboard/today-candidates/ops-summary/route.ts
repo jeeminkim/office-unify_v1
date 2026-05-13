@@ -5,25 +5,36 @@ import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFinger
 import { summarizeTodayCandidateOps } from '@/lib/server/todayCandidatesOpsSummary';
 import type { WebOpsEventRow } from '@office-unify/supabase-access';
 
+const OPS_SUMMARY_ROW_LIMIT = 300;
+
 export async function GET(req: Request) {
   const auth = await requirePersonaChatAuth();
   if (!auth.ok) return auth.response;
   const supabase = getServiceSupabase();
   if (!supabase) return NextResponse.json({ ok: false, warnings: ['supabase_unconfigured'] }, { status: 503 });
   const url = new URL(req.url);
-  const days = Math.max(1, Math.min(30, Number(url.searchParams.get('days') ?? 7) || 7));
+  const rangeQ = url.searchParams.get('range');
+  const daysParam = url.searchParams.get('days');
+  let windowDays = 7;
+  if (daysParam != null && daysParam !== '') {
+    windowDays = Math.max(1, Math.min(30, Number(daysParam) || 7));
+  } else if (rangeQ === '24h') {
+    windowDays = 1;
+  } else if (rangeQ === '7d') {
+    windowDays = 7;
+  }
   try {
-    const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const from = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from('web_ops_events')
       .select('*')
-      .eq('domain', 'today_candidates')
+      .in('domain', ['today_candidates', 'today_brief'])
       .eq('user_key', auth.userKey as string)
       .gte('last_seen_at', from)
       .order('last_seen_at', { ascending: false })
-      .limit(300);
+      .limit(OPS_SUMMARY_ROW_LIMIT);
     if (error) throw error;
-    return NextResponse.json(summarizeTodayCandidateOps((data ?? []) as WebOpsEventRow[], days));
+    return NextResponse.json(summarizeTodayCandidateOps((data ?? []) as WebOpsEventRow[], windowDays));
   } catch (e: unknown) {
     const ymd = new Date().toISOString().slice(0, 10).replaceAll('-', '');
     await upsertOpsEventByFingerprint({

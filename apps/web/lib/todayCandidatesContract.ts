@@ -2,6 +2,9 @@ import type {
   ConcentrationRiskAssessment,
   ObservationScoreFactorCode,
   SuitabilityAssessment,
+  ThemeConnectionCandidateBinding,
+  ThemeConnectionMapItem,
+  ThemeConnectionSummary,
   TodayCandidateDisplayMetrics,
   TodayBriefConcentrationRiskSummary,
   TodayBriefDeckSlot,
@@ -103,6 +106,8 @@ export interface TodayStockCandidate {
   suitabilityAssessment?: SuitabilityAssessment;
   /** Additive: EVO-005 보유·테마 집중도(자동 리밸런싱 아님). */
   concentrationRiskAssessment?: ConcentrationRiskAssessment;
+  /** EVO-007: 테마 연결 진단(관찰·설명용, 후보 강제 생성 아님). */
+  themeConnection?: ThemeConnectionCandidateBinding;
 }
 
 export interface UsMarketMorningSummary {
@@ -210,6 +215,12 @@ export interface TodayBriefWithCandidatesResponse {
       };
       /** Additive: EVO-005 집중도 요약(금액·티커 원문 없음). */
       concentrationRiskSummary?: TodayBriefConcentrationRiskSummary;
+      /** Additive: EVO-007 테마 연결 맵 요약(민감 원문 없음). */
+      themeConnectionSummary?: ThemeConnectionSummary;
+      /** Additive: EVO-007 테마별 연결(소량 registry 기반). */
+      themeConnectionMap?: ThemeConnectionMapItem[];
+      /** Additive: EVO-007 + EVO-006 — usToKrMappingEmpty일 때 테마 맵 얇음 안내. */
+      usKrEmptyThemeBridgeHint?: string;
     };
   };
 }

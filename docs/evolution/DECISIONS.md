@@ -24,6 +24,41 @@
 
 ---
 
+### 2026-05-13 — 미국 신호 empty 사유는 ops 히스토그램으로만 7일(또는 24h) 집계한다 (EVO-006)
+
+- **결정:** 채택
+- **이유:** 단일 요청의 `usKrSignalDiagnostics`만으로는 패턴을 보기 어렵다. `web_ops_events`의 **`us_signal_candidates_empty`**를 **read-only SELECT**로 집계하면 운영자·사용자가 빈도를 볼 수 있고, 후보를 억지로 늘리지 않는다.
+- **대안:** Today Brief 본문에 장문 히스토리 포함(노이즈·민감정보 위험).
+- **링크:** (PR)
+
+### 2026-05-13 — 테마 연결 맵은 설명·진단용이며 후보 수를 늘리지 않는다 (EVO-007 1차)
+
+- **결정:** 채택 (1차 휴리스틱 registry)
+- **이유:** ETF·국내 관심·보유·미국 신호를 **theme key**로 묶어 “왜 같은 테마로 보였는지”를 설명하면 매핑 품질을 점검할 수 있다. **낮은 신뢰도는 후보 생성에 사용하지 않는다.**
+- **대안:** 요청마다 LLM으로 테마 내러티브 생성(비용·일관성·민감정보 위험).
+- **링크:** (PR)
+
+### 2026-05-13 — Today 후보 복기 시드는 화이트리스트·길이 제한으로만 받는다
+
+- **결정:** 채택
+- **이유:** 클라이언트가 임의 JSON을 보낼 수 있어 과대 페이로드·민감 필드 혼입을 막고, `detail_json`에는 요약 메타만 남긴다.
+- **대안:** 서버에서 Today Brief를 재조회해 후보를 복원(추가 조회·캐시 의존).
+- **링크:** (PR)
+
+### 2026-05-13 — PB 멱등 키는 `(user_key, idempotency_key)` 복합 unique
+
+- **결정:** 채택
+- **이유:** `web_persona_chat_requests`(및 동일 패턴)에서 idempotency 키는 **user_key와 함께**만 unique이며, 단독 전역 unique가 아니다. 주간 점검 `recommendedIdempotencyKey`는 기존 해시 형식을 유지한다.
+- **대안:** 키 문자열에 `userScopeHash`를 additive로 포함(전역 키 공유 환경 대비) — 현 스키마에서는 필수 아님.
+- **링크:** (PR)
+
+### 2026-05-13 — 판단 복기(EVO-008) 1차는 사용자 피드백 중심, PB 자동 복기는 비범위
+
+- **결정:** 채택 (1차)
+- **이유:** 복기 목적은 **판단 품질 개선**이며 수익률만으로 좋고 나쁨을 나누지 않는다. PB가 복기 본문을 자동 생성하면 주관적 회고와 섞일 수 있다.
+- **대안:** 2차에서 선택적 「PB 복기 코치」(요약 제안만, 저장은 사용자 확인).
+- **링크:** (PR)
+
 ### 2026-05-11 — Today Brief는 관찰 후보 덱 중심으로 유지
 
 - **결정:** 채택
@@ -93,6 +128,13 @@
 - **이유:** 매주 “이번 주 확인할 것”을 한 화면에서 정리하되, **조회 API에서 DB write·PB 호출을 하지 않는다.** POST만 기존 `web_persona_chat_requests` 멱등으로 PB 메시지를 남긴다. 응답 형식은 `responseGuard`로 누락 섹션·정책 문구를 경고만 한다(1차는 자동 재요청 없음). 금액·userNote·민감 메모는 sanitize/qualityMeta에 넣지 않는다.
 - **대안:** Today Brief GET에 주간 블록을 직접 합치기(단일 경로 ops write 위험·경계 혼동)
 - **링크:** `docs/ops/today_candidates.md`, `GET|POST /api/private-banker/weekly-review`
+
+### 2026-05-13 — PB 주간 점검 멱등 키는 GET `recommendedIdempotencyKey`로 고정 (EVO-004 안정화)
+
+- **결정:** 채택
+- **이유:** 동일 주·동일 sanitize 미리보기 컨텍스트면 POST가 예측 가능하게 dedupe되도록 `weekOf`+결정적 JSON만 SHA-256한 권장 키를 GET에 additive로 내려준다. responseGuard는 “키워드 누락”이 아니라 **지시형·부정 없는 위험 언급**만 경고하고, “~하지 않습니다”류 안전 고지는 경고 대상에서 제외한다.
+- **대안:** 클라이언트가 매 요청 UUID로 멱등 키 생성
+- **링크:** `privateBankerResponseGuard.ts`, `privateBankerWeeklyReview.ts`
 
 ---
 

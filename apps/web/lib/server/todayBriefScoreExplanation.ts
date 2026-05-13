@@ -99,6 +99,19 @@ function collectSectorRadarFactors(c: TodayStockCandidate, factors: ObservationS
   }
 }
 
+function collectThemeLinkFactors(c: TodayStockCandidate, factors: ObservationScoreFactor[]): void {
+  const t = c.themeConnection;
+  if (!t) return;
+  const dir: ObservationScoreFactor['direction'] =
+    t.confidence === 'high' ? 'positive' : t.confidence === 'medium' ? 'neutral' : 'neutral';
+  pushFactor(factors, {
+    code: 'theme_link',
+    label: '테마 연결',
+    direction: dir,
+    message: `${t.themeLabel}: ${t.reason}`.slice(0, 280),
+  });
+}
+
 function collectQuoteAndDataFactors(c: TodayStockCandidate, factors: ObservationScoreFactor[]): void {
   const dq = c.dataQuality;
   if (!dq) return;
@@ -258,6 +271,7 @@ export function buildObservationScoreExplanation(input: BuildObservationScoreExp
 
   collectInterestFactors(c, factors);
   collectSectorRadarFactors(c, factors);
+  collectThemeLinkFactors(c, factors);
   collectQuoteAndDataFactors(c, factors);
   collectRiskFactors(c, factors);
   collectUsMarketFactors(c, factors, usKrSignalEmpty);

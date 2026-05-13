@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TodayStockCandidate, UsMarketMorningSummary } from "@/lib/todayCandidatesContract";
+import { buildUsKrEmptyThemeBridgeHint } from "./themeConnectionMap";
 import { diagnoseUsKrSignalCandidates } from "./usSignalCandidateDiagnostics";
 
 describe("diagnoseUsKrSignalCandidates", () => {
@@ -61,5 +62,29 @@ describe("diagnoseUsKrSignalCandidates", () => {
       },
     ];
     expect(diagnoseUsKrSignalCandidates({ usMarketSummary: us, usMarketKrCandidates: kr })).toBeUndefined();
+  });
+
+  it("EVO-007: usToKrMappingEmpty plus weak theme map yields bridge hint", () => {
+    const us: UsMarketMorningSummary = {
+      asOfKst: "",
+      available: true,
+      conclusion: "risk_on",
+      summary: "",
+      signals: [{ signalKey: "x", label: "L", direction: "positive", confidence: "low", evidence: [] }],
+      warnings: [],
+      diagnostics: { yahooQuoteResultCount: 8, anchorSymbolsRequested: 10, fetchFailed: false },
+    };
+    const d = diagnoseUsKrSignalCandidates({ usMarketSummary: us, usMarketKrCandidates: [] });
+    const hint = buildUsKrEmptyThemeBridgeHint({
+      diagnostics: d,
+      themeConnectionSummary: {
+        mappedThemeCount: 0,
+        linkedInstrumentCount: 0,
+        confidenceCounts: { high: 0, medium: 0, low: 0, missing: 4 },
+        missingThemeCount: 4,
+      },
+      themeConnectionMap: [{ themeKey: "ai_power_infra", themeLabel: "AI", linkedInstruments: [], confidence: "missing" }] as never,
+    });
+    expect(hint).toMatch(/한국 종목 연결/);
   });
 });
