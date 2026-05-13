@@ -57,6 +57,15 @@ function empty(mode: Mode): WatchlistSectorMatchApiResponse {
         lowConfidence: 0,
         manualProtected: 0,
       },
+      keywordMatch: {
+        previewCount: 0,
+        appliedCount: 0,
+        skippedCount: 0,
+        unmatchedCount: 0,
+        mappingVersion: 'watchlist_sector_matcher_v1',
+        mode,
+        reason: 'empty',
+      },
       opsLogging: { attempted: false, savedCount: 0, failedCount: 0, warnings: [] },
     },
   };
@@ -265,6 +274,25 @@ export async function POST(req: Request) {
     out.noMatch = noMatch;
     out.items = items;
     out.warnings = warnings;
+    const skippedCount =
+      mode === 'apply'
+        ? Math.max(0, matched - applied) + manualProtected + needsReview + lowConfidence
+        : Math.max(0, rows.length - matched);
+    const keywordMatch = {
+      previewCount: mode === 'preview' ? rows.length : 0,
+      appliedCount: mode === 'apply' ? applied : 0,
+      skippedCount,
+      unmatchedCount: noMatch,
+      ...(mode === 'apply' ? { lastAppliedAt: new Date().toISOString() } : {}),
+      mappingVersion: 'watchlist_sector_matcher_v1',
+      mode,
+      reason:
+        mode === 'preview'
+          ? 'preview_only_no_db_write'
+          : applied > 0
+            ? 'apply_success'
+            : 'apply_noop_or_skipped',
+    };
     out.qualityMeta = {
       sectorMatch: {
         total: rows.length,
@@ -275,6 +303,7 @@ export async function POST(req: Request) {
         lowConfidence,
         manualProtected,
       },
+      keywordMatch,
       opsLogging: {
         attempted: opsState.attempted > 0,
         savedCount: opsState.saved,
@@ -302,6 +331,15 @@ export async function POST(req: Request) {
         noMatch: out.noMatch,
         lowConfidence: 0,
         manualProtected: 0,
+      },
+      keywordMatch: {
+        previewCount: 0,
+        appliedCount: 0,
+        skippedCount: 0,
+        unmatchedCount: out.noMatch,
+        mappingVersion: 'watchlist_sector_matcher_v1',
+        mode,
+        reason: 'error',
       },
       opsLogging: {
         attempted: opsState.attempted > 0,

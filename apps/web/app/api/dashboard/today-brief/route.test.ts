@@ -37,6 +37,8 @@ describe("GET /api/dashboard/today-brief contract (additive)", () => {
             linkedInstrumentCount: 4,
             confidenceCounts: { high: 1, medium: 1, low: 0, missing: 0 },
             missingThemeCount: 0,
+            truncated: true,
+            watchlistSourceAvailable: false,
           },
         },
       },

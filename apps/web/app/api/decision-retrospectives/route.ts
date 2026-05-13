@@ -15,7 +15,7 @@ import {
   type DecisionRetroDbRow,
   type DecisionRetroStatsRow,
 } from '@/lib/server/decisionRetrospective';
-import { stripDecisionRetroControlChars } from '@/lib/server/decisionRetrospectiveSanitize';
+import { sanitizeDecisionRetroInput, stripDecisionRetroControlChars } from '@/lib/server/decisionRetrospectiveSanitize';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 
 function truncateField(raw: string, max: number): string {
@@ -100,6 +100,11 @@ export async function POST(req: Request) {
     status?: unknown;
     outcome?: unknown;
     qualitySignals?: unknown;
+    whatWorked?: unknown;
+    whatDidNotWork?: unknown;
+    nextRule?: unknown;
+    /** Additive: `pb_coach` when saving from PB 복기 코치 초안. */
+    detailSeed?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -159,6 +164,16 @@ export async function POST(req: Request) {
     qs = parsed;
   }
 
+  const detailSeedRaw = typeof body.detailSeed === 'string' ? body.detailSeed.trim() : '';
+  const detailSeed = detailSeedRaw === 'pb_coach' ? 'pb_coach' : 'manual';
+
+  const textFields = sanitizeDecisionRetroInput({
+    whatWorked: body.whatWorked !== undefined ? (typeof body.whatWorked === 'string' ? body.whatWorked : null) : undefined,
+    whatDidNotWork:
+      body.whatDidNotWork !== undefined ? (typeof body.whatDidNotWork === 'string' ? body.whatDidNotWork : null) : undefined,
+    nextRule: body.nextRule !== undefined ? (typeof body.nextRule === 'string' ? body.nextRule : null) : undefined,
+  });
+
   const insertRow = {
     user_key: userKey,
     source_type: st,
@@ -169,7 +184,10 @@ export async function POST(req: Request) {
     status: insStatus,
     outcome: insOutcome,
     quality_signals: qs,
-    detail_json: { seed: 'manual' },
+    what_worked: textFields.whatWorked ?? null,
+    what_did_not_work: textFields.whatDidNotWork ?? null,
+    next_rule: textFields.nextRule ?? null,
+    detail_json: { seed: detailSeed },
     updated_at: new Date().toISOString(),
   };
 

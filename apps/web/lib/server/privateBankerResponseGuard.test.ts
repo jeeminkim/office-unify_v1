@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { auditPrivateBankerStructuredResponse, mergePbWeeklyReviewQualityMetaWithGuard } from "./privateBankerResponseGuard";
+import { auditPrivateBankerStructuredResponse, auditRetroCoachPolicyWarnings, mergePbWeeklyReviewQualityMetaWithGuard } from "./privateBankerResponseGuard";
 
 const sectionsOnly =
   "[행동 분류]\nx\n[정보 상태]\nx\n[사용자 적합성 점검]\nx\n[보유 집중도 점검]\nx\n[지금 해야 할 행동]\nx\n[하면 안 되는 행동]\nx\n[관찰해야 할 신호]\nx";
@@ -64,5 +64,10 @@ describe("privateBankerResponseGuard", () => {
     );
     expect(merged.privateBanker?.responseGuard?.missingSections).toEqual(["[행동 분류]"]);
     expect(merged.privateBanker?.responseGuard?.policyPhraseWarnings).toEqual(["x"]);
+  });
+
+  it("auditRetroCoachPolicyWarnings flags profit guarantee language", () => {
+    const g = auditRetroCoachPolicyWarnings("이 종목은 수익 보장입니다.");
+    expect(g.policyPhraseWarnings).toContain("profit_guarantee_language");
   });
 });

@@ -17,8 +17,8 @@
 |----|------|------|------|------|
 | EVO-005 | 보유 비중/테마 집중도 리스크 경고 | `#portfolio` `#pb` `#risk` | discussing · 1차 shipped + 안정화 | Today Brief 덱·`exposureBasis`·`themeMappingConfidence`·점수 설명·`qualityMeta` 요약; PB/Research send-to-pb `[보유 집중도 점검]` 질문형. `country_overweight`=시장 노출 휴리스틱. 임계는 `concentrationLimit`. 집중도는 점검 질문이며 매도·리밸런싱 지시 아님. 자동 실행 없음. |
 | EVO-006 | 미국 신호 empty reason 7일 히스토그램 | `#today-brief` `#ops` | **1차 shipped** | `GET …/today-candidates/ops-summary`에서 `us_signal_candidates_empty`를 **primaryReason → reasonCodes[0] → unknown**으로 집계, `qualityMeta.todayCandidates.usKrEmptyReasonHistogram`, `range=24h|7d`. read-only·민감 detail 미저장. |
-| EVO-007 | 관심 테마별 ETF/국내주식 연결 맵 | `#sector-radar` `#today-brief` | **1차 shipped** | shared-types 테마 모델·`themeConnectionRegistry`(초기 휴리스틱)·`themeConnectionMap`·Today Brief `themeConnection`/`qualityMeta.themeConnectionSummary`·`usKrEmptyThemeBridgeHint`·집중도 매핑 신뢰도 보강·대시보드 `<details>`. 후보 강제 생성 아님. |
-| EVO-008 | 판단 복기 시스템 | `#pb` `#research-center` `#ops` | **1차+안정화** | 과거 후보/리포트/PB 맥락을 **판단 과정** 관점에서 복기(수익률 평가·자동매매 아님). SQL `append_decision_retrospectives.sql`; API·대시보드·Research 연결; Today 후보 시드 **페이로드 검증**·상태 **reviewed/learned/archived** UI. PB 자동 복기 코치는 비범위(후속). |
+| EVO-007 | 관심 테마별 ETF/국내주식 연결 맵 | `#sector-radar` `#today-brief` | **1차 shipped + 안정화** | registry·`themeConnectionMap`·Brief 덱 `themeConnection`·`usKrEmptyThemeBridgeHint`·집중도 매핑 보강. **Brief `themeConnectionMap`은 5테마×링크8 truncate** + `summary.truncated`; 전체/bridge는 내부 full map. **`GET /api/dashboard/theme-connections`** read-only 상세(링크20). Sector bucket→`mapSectorRadarThemeToThemeKey`. 관심 원천 `watchlistRows`(후속 정교화). 후보 강제 생성 아님. |
+| EVO-008 | 판단 복기 시스템 | `#pb` `#research-center` `#ops` | **1차+안정화+PB 코치** | 과거 후보/리포트/PB 맥락을 **판단 과정** 관점에서 복기(수익률 평가·자동매매 아님). SQL `append_decision_retrospectives.sql`; API·대시보드·Research 연결; Today 후보 시드 **페이로드 검증**·상태 **reviewed/learned/archived** UI. **`GET|POST /api/decision-retrospectives/coach`** — PB 초안만, 자동 저장 없음; `auditRetroCoachPolicyWarnings`. |
 
 ## 보류 · 나중에
 

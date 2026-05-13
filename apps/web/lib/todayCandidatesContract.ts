@@ -212,6 +212,10 @@ export interface TodayBriefWithCandidatesResponse {
         explainedCandidateCount: number;
         factorCounts: Partial<Record<ObservationScoreFactorCode, number>>;
         profileStatus: 'missing' | 'partial' | 'complete';
+        repeatedCandidateCount?: number;
+        neutralScoreCount?: number;
+        scoreDefaultReasonCounts?: Record<string, number>;
+        diversityPolicy?: string;
       };
       /** Additive: EVO-005 집중도 요약(금액·티커 원문 없음). */
       concentrationRiskSummary?: TodayBriefConcentrationRiskSummary;

@@ -18,6 +18,8 @@ import {
   usKrEmptyReasonHistogramReasonLabel,
 } from "@office-unify/shared-types";
 import type {
+  DecisionRetroCoachPostQualityMeta,
+  DecisionRetroCoachSuggestion,
   DecisionRetroOutcome,
   DecisionRetroQualitySignal,
   DecisionRetrospective,
@@ -262,6 +264,26 @@ export function DashboardClient() {
   const [retroWeeklyBusy, setRetroWeeklyBusy] = useState(false);
   const [retroTodayBusy, setRetroTodayBusy] = useState(false);
   const [retroPbMsg, setRetroPbMsg] = useState<string | null>(null);
+  const [retroCoachRecommendedKey, setRetroCoachRecommendedKey] = useState<string | null>(null);
+  const [retroCoachBusy, setRetroCoachBusy] = useState(false);
+  const [retroCoachPost, setRetroCoachPost] = useState<{
+    assistantPreview: string;
+    suggestions: DecisionRetroCoachSuggestion[];
+    qualityMeta?: DecisionRetroCoachPostQualityMeta;
+  } | null>(null);
+  const [retroCoachEdits, setRetroCoachEdits] = useState<
+    Record<
+      number,
+      {
+        outcome: DecisionRetroOutcome;
+        signals: DecisionRetroQualitySignal[];
+        whatWorked: string;
+        whatDidNotWork: string;
+        nextRule: string;
+      }
+    >
+  >({});
+  const [retroCoachSaveBusy, setRetroCoachSaveBusy] = useState<number | null>(null);
 
   const watchQueueTop5 = useMemo(() => {
     const rows = watchQueue?.candidates ?? [];
@@ -483,6 +505,134 @@ export function DashboardClient() {
       }
     },
     [retroFilter, loadDecisionRetrospectives],
+  );
+
+  const loadRetroCoachPreview = useCallback(async () => {
+    try {
+      const res = await fetch("/api/decision-retrospectives/coach", { credentials: "same-origin" });
+      const j = (await res.json()) as { ok?: boolean; recommendedCoachIdempotencyKey?: string };
+      if (res.ok && j.ok && typeof j.recommendedCoachIdempotencyKey === "string") {
+        setRetroCoachRecommendedKey(j.recommendedCoachIdempotencyKey);
+      }
+    } catch {
+      /* non-fatal */
+    }
+  }, []);
+
+  const toggleRetroCoachSignal = useCallback((idx: number, code: DecisionRetroQualitySignal) => {
+    setRetroCoachEdits((prev) => {
+      const cur = prev[idx];
+      if (!cur) return prev;
+      const has = cur.signals.includes(code);
+      const signals = has ? cur.signals.filter((s) => s !== code) : [...cur.signals, code];
+      return { ...prev, [idx]: { ...cur, signals } };
+    });
+  }, []);
+
+  const runRetroCoach = useCallback(async () => {
+    setRetroCoachBusy(true);
+    setRetroErr(null);
+    try {
+      let key = retroCoachRecommendedKey;
+      if (!key) {
+        const gr = await fetch("/api/decision-retrospectives/coach", { credentials: "same-origin" });
+        const gj = (await gr.json()) as { ok?: boolean; recommendedCoachIdempotencyKey?: string; error?: string };
+        if (!gr.ok || !gj.ok) {
+          setRetroErr(gj.error ?? `HTTP ${gr.status}`);
+          return;
+        }
+        key = gj.recommendedCoachIdempotencyKey ?? null;
+        if (key) setRetroCoachRecommendedKey(key);
+      }
+      if (!key) {
+        setRetroErr("멱등 키를 준비하지 못했습니다.");
+        return;
+      }
+      const pr = await fetch("/api/decision-retrospectives/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ idempotencyKey: key }),
+      });
+      const pj = (await pr.json()) as {
+        ok?: boolean;
+        error?: string;
+        assistantPreview?: string;
+        suggestions?: DecisionRetroCoachSuggestion[];
+        qualityMeta?: DecisionRetroCoachPostQualityMeta;
+      };
+      if (!pr.ok || !pj.ok) {
+        setRetroErr(pj.error ?? `HTTP ${pr.status}`);
+        setRetroCoachPost(null);
+        return;
+      }
+      setRetroCoachPost({
+        assistantPreview: pj.assistantPreview ?? "",
+        suggestions: pj.suggestions ?? [],
+        qualityMeta: pj.qualityMeta,
+      });
+      const edits: Record<
+        number,
+        {
+          outcome: DecisionRetroOutcome;
+          signals: DecisionRetroQualitySignal[];
+          whatWorked: string;
+          whatDidNotWork: string;
+          nextRule: string;
+        }
+      > = {};
+      (pj.suggestions ?? []).forEach((s, i) => {
+        edits[i] = {
+          outcome: s.suggestedOutcome,
+          signals: [...s.suggestedQualitySignals],
+          whatWorked: s.suggestedWhatWorked ?? "",
+          whatDidNotWork: s.suggestedWhatDidNotWork ?? "",
+          nextRule: s.suggestedNextRule ?? "",
+        };
+      });
+      setRetroCoachEdits(edits);
+    } finally {
+      setRetroCoachBusy(false);
+    }
+  }, [retroCoachRecommendedKey]);
+
+  const saveRetroFromCoach = useCallback(
+    async (idx: number, s: DecisionRetroCoachSuggestion) => {
+      const ed = retroCoachEdits[idx];
+      if (!ed) return;
+      setRetroCoachSaveBusy(idx);
+      setRetroErr(null);
+      try {
+        const res = await fetch("/api/decision-retrospectives", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            sourceType: s.sourceType,
+            sourceId: s.sourceId,
+            title: s.title,
+            summary: s.summary,
+            outcome: ed.outcome,
+            qualitySignals: ed.signals,
+            whatWorked: ed.whatWorked.trim().length > 0 ? ed.whatWorked : undefined,
+            whatDidNotWork: ed.whatDidNotWork.trim().length > 0 ? ed.whatDidNotWork : undefined,
+            nextRule: ed.nextRule.trim().length > 0 ? ed.nextRule : undefined,
+            status: "draft",
+            detailSeed: "pb_coach",
+          }),
+        });
+        const j = (await res.json()) as { ok?: boolean; error?: string };
+        if (!res.ok || !j.ok) {
+          setRetroErr(j.error ?? `HTTP ${res.status}`);
+          return;
+        }
+        setRetroPbMsg("PB 복기 초안을 바탕으로 복기를 저장했습니다.");
+        await loadDecisionRetrospectives(retroFilter);
+      } finally {
+        setRetroCoachSaveBusy(null);
+      }
+    },
+    [retroCoachEdits, retroFilter, loadDecisionRetrospectives],
   );
 
   const allTodayCandidates = useMemo(() => {
@@ -717,6 +867,18 @@ export function DashboardClient() {
                 <p className="mt-1 text-[10px] leading-snug text-sky-900/95">
                   연결 신뢰도가 낮으면 후보 생성에 사용하지 않습니다. 자동매매·자동 주문·자동 리밸런싱 없음.
                 </p>
+                {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.truncated ? (
+                  <p className="mt-1 text-[10px] leading-snug text-sky-900">
+                    Today Brief에는 테마·연결 상세 일부만 포함됩니다(응답 크기 제한). 전체 맵은{" "}
+                    <code className="rounded bg-white/80 px-0.5">GET /api/dashboard/theme-connections?range=7d</code>{" "}
+                    로 조회할 수 있습니다(read-only).
+                  </p>
+                ) : null}
+                {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.watchlistSourceAvailable === false ? (
+                  <p className="mt-1 text-[10px] text-slate-600">
+                    관심종목 원천 DB를 맵 입력으로 쓰지 못한 경우입니다. 후속 정교화로 연결을 강화할 수 있습니다.
+                  </p>
+                ) : null}
                 <p className="mt-1 text-[10px] text-sky-900">
                   매핑된 테마 {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.mappedThemeCount}개 · 연결
                   표기 {todayBrief.qualityMeta.todayCandidates.themeConnectionSummary.linkedInstrumentCount}건 · high{" "}
@@ -766,9 +928,6 @@ export function DashboardClient() {
                   <p className="mt-1 text-[11px] text-slate-800">
                     관찰 점수 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
                   </p>
-                  {c.displayMetrics?.scoreExplanationDetail?.summary ? (
-                    <p className="mt-1 text-[10px] leading-snug text-slate-600">{c.displayMetrics.scoreExplanationDetail.summary}</p>
-                  ) : null}
                   <p className="mt-1 text-[11px] text-slate-700">{c.reasonSummary}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {(c.dataQuality?.badges ?? []).map((b) => (
@@ -805,6 +964,19 @@ export function DashboardClient() {
                       </button>
                       {openedScoreExplanationId === c.candidateId ? (
                         <div className="mt-1.5 space-y-1 border-t border-slate-200 pt-1.5 text-[10px] text-slate-700">
+                          {c.displayMetrics.scoreExplanationDetail.userReadableSummary ? (
+                            <p className="text-[10px] leading-snug text-slate-800">
+                              {c.displayMetrics.scoreExplanationDetail.userReadableSummary}
+                            </p>
+                          ) : null}
+                          {c.displayMetrics.scoreExplanationDetail.repeatExposure ? (
+                            <p className="text-[10px] text-slate-600">
+                              7일 상세 열람 {c.displayMetrics.scoreExplanationDetail.repeatExposure.candidateRepeatCount7d}회
+                              {c.displayMetrics.scoreExplanationDetail.repeatExposure.lastShownAt
+                                ? ` · 최근 ${c.displayMetrics.scoreExplanationDetail.repeatExposure.lastShownAt}`
+                                : ""}
+                            </p>
+                          ) : null}
                           <ul className="list-inside list-disc space-y-0.5">
                             {(c.displayMetrics.scoreExplanationDetail.factors ?? []).map((f) => (
                               <li key={`${c.candidateId}-${f.code}-${f.label}`}>
@@ -1107,7 +1279,9 @@ export function DashboardClient() {
         {openedCandidateId ? (
           <div className="mt-3 rounded border border-violet-200 bg-violet-50 p-3 text-xs">
             <p className="font-semibold text-violet-950">선정 사유</p>
-            <p className="mt-1 text-[11px] text-violet-900">이 점수는 매수 점수가 아니라, 오늘 먼저 확인할 관찰 우선순위입니다.</p>
+            <p className="mt-1 text-[11px] text-violet-900">
+              관찰 점수는 매수 추천이 아니라 후보 정렬용 판단 보조 지표입니다. 오늘 확인할 맥락을 정리한 것입니다.
+            </p>
             <ul className="mt-1 list-inside list-disc space-y-1 text-violet-950">
               {(allTodayCandidates.find((c) => c.candidateId === openedCandidateId)?.reasonDetails ?? []).map((d, i) => <li key={`${openedCandidateId}-${i}`}>{d}</li>)}
             </ul>
@@ -1383,7 +1557,7 @@ export function DashboardClient() {
           </Link>
         </div>
         <p className="mt-1 text-[11px] text-teal-900/90">
-          매수 추천이 아니라 관찰 우선순위입니다. 섹터가 공포 구간이어도 개별 종목 thesis 확인이 필요합니다.
+          매수 추천이 아니라 관찰 후보 정렬용 점검 지표입니다. 섹터가 공포 구간이어도 개별 종목 thesis 확인이 필요합니다.
         </p>
         {watchQueueTop5.length === 0 ? (
           <p className="mt-2 text-xs text-slate-600">지금 관찰·준비 구간(watch_now / prepare)에 오른 관심종목이 없거나 데이터가 없습니다.</p>
@@ -1697,7 +1871,10 @@ export function DashboardClient() {
       <details
         className="mb-5 rounded-xl border border-slate-300 bg-slate-50/90 p-4 shadow-sm"
         onToggle={(e) => {
-          if (e.currentTarget.open) void loadDecisionRetrospectives(retroFilter);
+          if (e.currentTarget.open) {
+            void loadDecisionRetrospectives(retroFilter);
+            void loadRetroCoachPreview();
+          }
         }}
       >
         <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900">판단 복기</summary>
@@ -1705,6 +1882,131 @@ export function DashboardClient() {
           <p className="text-[11px] leading-relaxed text-slate-700">
             수익률 평가가 아니라 <span className="font-medium">판단 과정 복기</span>입니다. 자동 주문·자동 리밸런싱을 실행하지 않습니다.
           </p>
+          <div className="mt-2 rounded border border-violet-200 bg-violet-50/80 p-2">
+            <p className="text-[11px] font-semibold text-violet-950">PB 복기 코치</p>
+            <ul className="mt-1 list-inside list-disc text-[10px] leading-snug text-violet-900">
+              <li>PB가 제안한 초안이며 자동 저장되지 않습니다.</li>
+              <li>수익률 평가가 아니라 판단 과정 복기입니다.</li>
+              <li>자동 주문·자동 리밸런싱을 실행하지 않습니다.</li>
+            </ul>
+            <button
+              type="button"
+              data-testid="decision-retro-coach-request"
+              disabled={retroCoachBusy}
+              className="mt-2 rounded border border-violet-400 bg-white px-2 py-1 text-[11px] font-medium text-violet-950 disabled:opacity-50"
+              onClick={() => void runRetroCoach()}
+            >
+              {retroCoachBusy ? "PB 요청 중…" : "PB 복기 초안 받기"}
+            </button>
+            {retroCoachPost?.qualityMeta?.parseStatus ? (
+              <p className="mt-1 text-[10px] text-slate-600">
+                파싱 상태: {retroCoachPost.qualityMeta.parseStatus}
+                {retroCoachPost.qualityMeta.autoSaved === false ? " · 자동 저장 없음" : ""}
+              </p>
+            ) : null}
+            {retroCoachPost?.qualityMeta?.responseGuard?.policyPhraseWarnings?.length ? (
+              <p className="mt-1 text-[10px] text-amber-900">
+                정책 점검 코드: {retroCoachPost.qualityMeta.responseGuard.policyPhraseWarnings.join(", ")}
+              </p>
+            ) : null}
+            {retroCoachPost?.assistantPreview ? (
+              <details className="mt-2 rounded border border-violet-100 bg-white/90 p-1.5">
+                <summary className="cursor-pointer text-[10px] font-medium text-violet-900">PB 응답 미리보기</summary>
+                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[10px] text-slate-700">
+                  {retroCoachPost.assistantPreview}
+                </pre>
+              </details>
+            ) : null}
+            {(retroCoachPost?.suggestions ?? []).map((s, idx) => {
+              const ed = retroCoachEdits[idx];
+              return (
+                <div key={`coach-${idx}-${s.title}`} className="mt-2 rounded border border-slate-200 bg-white p-2">
+                  <p className="text-[11px] font-medium text-slate-900">{s.title}</p>
+                  <p className="mt-0.5 text-[10px] text-slate-600">{s.sourceType}{s.sourceId ? ` · ${s.sourceId}` : ""}</p>
+                  <p className="mt-1 text-[11px] text-slate-700">{s.summary}</p>
+                  <p className="mt-1 text-[10px] text-slate-500">{s.caveat}</p>
+                  {ed ? (
+                    <div className="mt-2 space-y-2 border-t border-slate-100 pt-2">
+                      <label className="block text-[10px] font-medium text-slate-600">도움이 됐는가? (저장 시 반영)</label>
+                      <select
+                        className="w-full max-w-xs rounded border border-slate-200 bg-white px-2 py-1 text-[11px]"
+                        value={ed.outcome}
+                        onChange={(e) =>
+                          setRetroCoachEdits((prev) => ({
+                            ...prev,
+                            [idx]: { ...ed, outcome: e.target.value as DecisionRetroOutcome },
+                          }))
+                        }
+                      >
+                        <option value="unknown">unknown</option>
+                        <option value="helpful">helpful</option>
+                        <option value="partially_helpful">partially_helpful</option>
+                        <option value="not_helpful">not_helpful</option>
+                      </select>
+                      <p className="text-[10px] font-medium text-slate-600">유효했던 신호</p>
+                      <div className="flex flex-wrap gap-1">
+                        {DECISION_RETRO_SIGNAL_OPTIONS.map((opt) => (
+                          <label key={`coach-${idx}-${opt.code}`} className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px]">
+                            <input
+                              type="checkbox"
+                              checked={ed.signals.includes(opt.code)}
+                              onChange={() => toggleRetroCoachSignal(idx, opt.code)}
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                      <label className="block text-[10px] font-medium text-slate-600">잘된 점</label>
+                      <textarea
+                        className="w-full rounded border border-slate-200 px-2 py-1 text-[11px]"
+                        rows={2}
+                        value={ed.whatWorked}
+                        onChange={(e) =>
+                          setRetroCoachEdits((prev) => ({
+                            ...prev,
+                            [idx]: { ...ed, whatWorked: e.target.value },
+                          }))
+                        }
+                      />
+                      <label className="block text-[10px] font-medium text-slate-600">아쉬운 점</label>
+                      <textarea
+                        className="w-full rounded border border-slate-200 px-2 py-1 text-[11px]"
+                        rows={2}
+                        value={ed.whatDidNotWork}
+                        onChange={(e) =>
+                          setRetroCoachEdits((prev) => ({
+                            ...prev,
+                            [idx]: { ...ed, whatDidNotWork: e.target.value },
+                          }))
+                        }
+                      />
+                      <label className="block text-[10px] font-medium text-slate-600">다음 규칙</label>
+                      <textarea
+                        className="w-full rounded border border-slate-200 px-2 py-1 text-[11px]"
+                        rows={2}
+                        value={ed.nextRule}
+                        onChange={(e) =>
+                          setRetroCoachEdits((prev) => ({
+                            ...prev,
+                            [idx]: { ...ed, nextRule: e.target.value },
+                          }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        data-testid={`decision-retro-coach-save-${idx}`}
+                        disabled={retroCoachSaveBusy === idx}
+                        className="rounded border border-emerald-600 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-950 disabled:opacity-50"
+                        onClick={() => void saveRetroFromCoach(idx, s)}
+                      >
+                        {retroCoachSaveBusy === idx ? "저장 중…" : "이 복기 저장"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
           {retroQuality ? (
             <p className="text-[10px] text-slate-600">
               전체 {retroQuality.totalCount}건 · stale draft(30일+) {retroQuality.staleDraftCount}건 · learned {retroQuality.learnedCount}건

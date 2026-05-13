@@ -23,12 +23,14 @@ import {
   buildUsKrEmptyThemeBridgeHint,
   enrichPrimaryDeckWithThemeConnections,
 } from '@/lib/server/themeConnectionMap';
+import { loadThemeConnectionMapInput } from '@/lib/server/themeConnectionMapLoader';
 import { applySuitabilityToPrimaryDeck } from '@/lib/server/suitabilityAssessment';
 import { diagnoseUsKrSignalCandidates } from '@/lib/server/usSignalCandidateDiagnostics';
 import {
   buildTodayBriefScoreExplanationSummary,
   enrichPrimaryCandidateDeckScoreExplanations,
 } from '@/lib/server/todayBriefScoreExplanation';
+import { fetchTodayCandidateRepeatStats7d } from '@/lib/server/todayCandidateRepeatExposure';
 import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
 import {
   appendQualityMetaOpsEventTrace,
@@ -101,6 +103,13 @@ export async function GET() {
         .limit(4),
     ]);
 
+    const holdingActiveForValuation = (h: (typeof holdings)[0]) => {
+      const qty = toNum(h.qty);
+      const avg = toNum(h.avg_price);
+      return qty > 0 && avg > 0;
+    };
+    const valuationHoldings = holdings.filter(holdingActiveForValuation);
+
     if (holdings.length === 0) {
       return NextResponse.json({
         ok: true,
@@ -119,8 +128,26 @@ export async function GET() {
       });
     }
 
+    if (valuationHoldings.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        generatedAt: new Date().toISOString(),
+        lines: [
+          {
+            title: 'INCOMPLETE_HOLDINGS',
+            body: '수량·평균단가가 입력된 보유만 집계합니다. 간편 등록만 된 종목은 입력을 마친 뒤 브리핑이 풍부해집니다.',
+            severity: 'warn',
+            source: ['web_portfolio_holdings'],
+          },
+        ],
+        badges: ['HOLDINGS_INCOMPLETE'],
+        degraded: true,
+        warnings: ['holdings_incomplete_only'],
+      });
+    }
+
     const quote = await loadHoldingQuotes(
-      holdings.map((h) => ({
+      valuationHoldings.map((h) => ({
         market: h.market,
         symbol: h.symbol,
         displayName: h.name,
@@ -129,7 +156,7 @@ export async function GET() {
       })),
     );
     warnings.push(...quote.warnings);
-    const rows = holdings.map((h) => {
+    const rows = valuationHoldings.map((h) => {
       const key = `${h.market}:${h.symbol.toUpperCase()}`;
       const q = quote.quoteByHolding.get(key);
       const qty = toNum(h.qty);
@@ -278,22 +305,21 @@ export async function GET() {
       usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
     });
 
-    const {
-      deck: deckWithTheme,
-      themeConnectionMap,
-      themeConnectionSummary,
-    } = enrichPrimaryDeckWithThemeConnections(composedDeck.deck, {
-      sectorRadarSectors: todayCandidates.sectorRadarSummary?.sectors,
+    const themeConnectionInput = await loadThemeConnectionMapInput(supabase, auth.userKey, {
+      reuseTodayCandidates: todayCandidates,
       holdingRows: rows.map((r) => ({
         name: r.h.name,
         sector: r.h.sector,
         symbol: r.h.symbol,
         market: String(r.h.market),
       })),
-      userContextCandidates: todayCandidates.userContextCandidates,
-      usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
-      usSignals: todayCandidates.usMarketSummary.signals.map((s) => ({ label: s.label, signalKey: s.signalKey })),
     });
+    const {
+      deck: deckWithTheme,
+      themeConnectionMap,
+      themeConnectionSummary,
+      themeConnectionMapFull,
+    } = enrichPrimaryDeckWithThemeConnections(composedDeck.deck, themeConnectionInput);
 
     const exposureSnapshot = buildPortfolioExposureSnapshotFromHoldingsRows(
       rows.map((r) => ({ h: r.h, value: r.value, valueSource: r.valueSource })),
@@ -344,12 +370,20 @@ export async function GET() {
     const usKrEmptyThemeBridgeHint = buildUsKrEmptyThemeBridgeHint({
       diagnostics: usKrSignalDiagnostics,
       themeConnectionSummary,
-      themeConnectionMap,
+      themeConnectionMap: themeConnectionMapFull,
     });
+
+    const repeatIds = primaryCandidateDeck.map((c) => c.candidateId);
+    const repeatByCandidateId = await fetchTodayCandidateRepeatStats7d(
+      supabase,
+      String(auth.userKey),
+      repeatIds,
+    );
 
     primaryCandidateDeck = enrichPrimaryCandidateDeckScoreExplanations(primaryCandidateDeck, {
       usKrSignalDiagnostics,
       usMarketKrCount: todayCandidates.usMarketKrCandidates.length,
+      repeatByCandidateId,
     });
     const scoreExplanationSummary = buildTodayBriefScoreExplanationSummary(
       primaryCandidateDeck,

@@ -20,6 +20,10 @@ export type ObservationScoreFactorCode =
   | 'portfolio_concentration'
   /** EVO-007: 초기 registry·Sector Radar 기반 테마 연결 설명(후보 강제 생성 아님). */
   | 'theme_link'
+  /** 데이터가 부족해 기본·중립 점수 근처에 머문 경우를 명시한다. */
+  | 'data_default_hold'
+  /** 최근 동일 후보 노출 진단(점수 인위 조작 없이 설명용). */
+  | 'repeat_exposure'
   | 'unknown';
 
 export type ObservationScoreFactor = {
@@ -31,6 +35,27 @@ export type ObservationScoreFactor = {
   message: string;
 };
 
+export type ObservationScoreRepeatExposure = {
+  candidateRepeatCount7d: number;
+  lastShownAt?: string;
+  repeatedCandidate: boolean;
+  repeatReason: string;
+  /** 저신뢰 후보를 강제로 끌어올리지 않고, 반복 노출만 진단·힌트로 남긴다. */
+  diversityPolicyNote?: string;
+};
+
+export type ObservationScoreDiagnostics = {
+  /** 시세 검증이 부족해 가점/감점을 제한했는지 */
+  needsQuoteVerification?: boolean;
+  needsSectorVerification?: boolean;
+  watchlistLinked?: boolean;
+  profileOrConcentrationAdjusted?: boolean;
+  /** 최종 점수가 중립대(기본 관찰 근처)인지 */
+  neutralScoreBand?: boolean;
+  /** 데이터 부족으로 강한 조정을 하지 않았는지 */
+  defaultScoreHold?: boolean;
+};
+
 export type ObservationScoreExplanation = {
   /** 적합성 등 조정 전 관찰 점수(가능할 때만) */
   baseScore?: number;
@@ -38,6 +63,12 @@ export type ObservationScoreExplanation = {
   factors: ObservationScoreFactor[];
   summary: string;
   caveat: string;
+  /** 카드 상단 한 줄 요약 대신(또는 병행) 사용자 문장형 설명 */
+  userReadableSummary?: string;
+  diagnostics?: ObservationScoreDiagnostics;
+  repeatExposure?: ObservationScoreRepeatExposure;
+  /** qualityMeta 집계용 짧은 코드(원문·메모 없음) */
+  scoreDefaultReasons?: string[];
 };
 
 export type TodayCandidateDisplayMetrics = {

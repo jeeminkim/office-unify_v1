@@ -43,13 +43,29 @@ export async function PATCH(req: Request, context: Params) {
   if (!current) {
     return NextResponse.json({ error: 'Holding not found.' }, { status: 404 });
   }
+  const wasIncomplete =
+    current.qty == null ||
+    current.avg_price == null ||
+    Number(current.qty) <= 0 ||
+    Number(current.avg_price) <= 0;
+
   const qty = body.qty == null ? Number(current.qty ?? 0) : Number(body.qty);
   const avg = body.avg_price == null ? Number(current.avg_price ?? 0) : Number(body.avg_price);
-  if (!Number.isFinite(qty) || qty < 0) {
-    return NextResponse.json({ error: 'qty must be >= 0' }, { status: 400 });
-  }
-  if (!Number.isFinite(avg) || avg <= 0) {
-    return NextResponse.json({ error: 'avg_price must be > 0' }, { status: 400 });
+
+  if (wasIncomplete) {
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(avg) || avg <= 0) {
+      return NextResponse.json(
+        { error: '간편 등록 종목을 활성화하려면 수량과 평균단가를 모두 0보다 크게 입력하세요.' },
+        { status: 400 },
+      );
+    }
+  } else {
+    if (!Number.isFinite(qty) || qty < 0) {
+      return NextResponse.json({ error: 'qty must be >= 0' }, { status: 400 });
+    }
+    if (!Number.isFinite(avg) || avg <= 0) {
+      return NextResponse.json({ error: 'avg_price must be > 0' }, { status: 400 });
+    }
   }
   try {
     const holdingPatch: PortfolioLedgerHoldingInput = {
@@ -70,7 +86,10 @@ export async function PATCH(req: Request, context: Params) {
       holdingPatch.quote_symbol = body.quote_symbol?.trim() || null;
     }
     await upsertPortfolioHolding(supabase, auth.userKey, holdingPatch);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      holdingStatus: wasIncomplete ? 'active' : undefined,
+    });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

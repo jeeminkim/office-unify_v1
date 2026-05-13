@@ -21,9 +21,9 @@ SQL 적용 상태/우선순위는 `docs/ops/sql-application-status.md`를 함께
 
 | 테이블 | 역할 |
 |--------|------|
-| `web_decision_retrospectives` | **판단 과정 복기**(수익률 평가·자동매매 아님). `user_key` 스코프. `source_type`+`source_id`(null이 아니고 빈 문자열이 아닐 때) **부분 unique**로 동일 출처 중복 방지. `detail_json`은 시드 메타·코드 위주(PB 응답 원문·민감 메모 원문 과다 저장 지양). **`POST /api/decision-retrospectives/from-today-candidate`**는 클라이언트 candidate에 **화이트리스트**·길이 제한을 적용하며 원문 전체를 `detail_json`에 넣지 않는다. |
+| `web_decision_retrospectives` | **판단 과정 복기**(수익률 평가·자동매매 아님). `user_key` 스코프. `source_type`+`source_id`(null이 아니고 빈 문자열이 아닐 때) **부분 unique**로 동일 출처 중복 방지. `detail_json`은 시드 메타·코드 위주(PB 응답 원문·민감 메모 원문 과다 저장 지양). **`POST /api/decision-retrospectives/from-today-candidate`**는 클라이언트 candidate에 **화이트리스트**·길이 제한을 적용하며 원문 전체를 `detail_json`에 넣지 않는다. **`POST /api/decision-retrospectives/coach`**는 PB 초안만 반환하며 **이 테이블에 자동 insert 하지 않는다**; 사용자 확인 후 **`POST /api/decision-retrospectives`**(add `detailSeed: pb_coach` 등)로 저장. |
 
-**미적용 시 API 동작:** 테이블이 없으면 `GET|POST /api/decision-retrospectives*` 관련 경로는 **503**과 `code: decision_retrospective_table_missing`, `actionHint`(위 SQL 적용 안내). **`GET /api/decision-retrospectives`는 read-only**(SELECT만).
+**미적용 시 API 동작:** 테이블이 없으면 `GET|POST /api/decision-retrospectives*` 및 **`/api/decision-retrospectives/coach`** 관련 경로는 **503**과 `code: decision_retrospective_table_missing`, `actionHint`(위 SQL 적용 안내). **`GET /api/decision-retrospectives`는 read-only**(SELECT만).
 
 ## Investor profile (additive, judgment-assist only)
 

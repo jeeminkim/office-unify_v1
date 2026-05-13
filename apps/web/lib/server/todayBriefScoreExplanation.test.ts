@@ -30,6 +30,23 @@ function baseCandidate(partial: Partial<TodayStockCandidate>): TodayStockCandida
 }
 
 describe("buildObservationScoreExplanation", () => {
+  it("theme_link factor is explanatory only (no score points)", () => {
+    const out = buildObservationScoreExplanation({
+      candidate: baseCandidate({
+        themeConnection: {
+          themeKey: "biotech",
+          themeLabel: "바이오",
+          confidence: "low",
+          reason: "부분 매칭",
+        },
+      }),
+      finalObservationScore: 60,
+    });
+    const tf = out.factors.find((f) => f.code === "theme_link");
+    expect(tf).toBeDefined();
+    expect(tf?.points).toBeUndefined();
+  });
+
   it("adds interest_match for user_context", () => {
     const out = buildObservationScoreExplanation({
       candidate: baseCandidate({ source: "user_context", alreadyInWatchlist: true }),
@@ -111,7 +128,7 @@ describe("buildObservationScoreExplanation", () => {
       candidate: baseCandidate({}),
       finalObservationScore: 40,
     });
-    expect(out.caveat).toContain("매수 권유");
+    expect(out.caveat).toContain("매수 추천이 아니라");
     expect(out.summary).toContain("매수 권유가 아닙니다");
   });
 
@@ -193,6 +210,7 @@ describe("enrichPrimaryCandidateDeckScoreExplanations + summary", () => {
     const enriched = enrichPrimaryCandidateDeckScoreExplanations(deck, {
       usKrSignalDiagnostics: null,
       usMarketKrCount: 2,
+      repeatByCandidateId: new Map([["a", { candidateRepeatCount7d: 3, lastShownAt: "2026-05-10T00:00:00.000Z" }]]),
     });
     expect(enriched[0]?.displayMetrics?.scoreExplanationDetail?.finalScore).toBe(61);
     expect(enriched[0]?.displayMetrics?.scoreExplanation).toBe("legacy");
@@ -201,6 +219,9 @@ describe("enrichPrimaryCandidateDeckScoreExplanations + summary", () => {
     expect((summary.factorCounts.interest_match ?? 0) >= 1).toBe(true);
     expect((summary.factorCounts.sector_radar_match ?? 0) >= 1).toBe(true);
     expect((summary.factorCounts.portfolio_concentration ?? 0) >= 1).toBe(true);
+    expect((summary.factorCounts.repeat_exposure ?? 0) >= 1).toBe(true);
+    expect(summary.repeatedCandidateCount).toBe(1);
+    expect(summary.diversityPolicy?.length).toBeGreaterThan(10);
     expect(summary.profileStatus).toBe("complete");
   });
 });

@@ -47,8 +47,9 @@ type CreateHoldingRequest = {
   market: 'KR' | 'US';
   symbol: string;
   name: string;
-  quantity: number;
-  avgPrice: number;
+  quantity?: number | null;
+  avgPrice?: number | null;
+  incomplete?: boolean;
   sector?: string;
   investmentMemo?: string;
   judgmentMemo?: string;
@@ -100,21 +101,48 @@ export async function POST(req: Request) {
   if (!market || !rawSymbol.trim() || !name) {
     return NextResponse.json({ error: 'market, symbol, name are required.' }, { status: 400 });
   }
-  const quantity = Number(body.quantity);
-  const avgPrice = Number(body.avgPrice);
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    return NextResponse.json({ error: 'quantity must be > 0' }, { status: 400 });
+  const quantityRaw = body.quantity;
+  const avgPriceRaw = body.avgPrice;
+  const wantIncomplete =
+    body.incomplete === true ||
+    quantityRaw == null ||
+    avgPriceRaw == null ||
+    (typeof quantityRaw === 'number' && quantityRaw <= 0) ||
+    (typeof avgPriceRaw === 'number' && avgPriceRaw <= 0);
+
+  const quantity = quantityRaw == null ? NaN : Number(quantityRaw);
+  const avgPrice = avgPriceRaw == null ? NaN : Number(avgPriceRaw);
+
+  if (!wantIncomplete) {
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return NextResponse.json({ error: 'quantity must be > 0' }, { status: 400 });
+    }
+    if (!Number.isFinite(avgPrice) || avgPrice <= 0) {
+      return NextResponse.json({ error: 'avgPrice must be > 0' }, { status: 400 });
+    }
   }
-  if (!Number.isFinite(avgPrice) || avgPrice <= 0) {
-    return NextResponse.json({ error: 'avgPrice must be > 0' }, { status: 400 });
-  }
+
   const symbol = normalizeSymbol(market, rawSymbol);
   try {
     const existing = await listWebPortfolioHoldingsForUser(supabase, auth.userKey);
-    const already = existing.some((row) => row.market === market && row.symbol.trim().toUpperCase() === symbol);
+    const already = existing.find((row) => row.market === market && row.symbol.trim().toUpperCase() === symbol);
     if (already) {
+      const inc =
+        already.qty == null ||
+        already.avg_price == null ||
+        Number(already.qty) <= 0 ||
+        Number(already.avg_price) <= 0;
       return NextResponse.json(
-        { error: '이미 보유 중입니다. 신규 추가가 아니라 매수/매도 반영을 사용하세요.' },
+        {
+          ok: false,
+          duplicate: true,
+          symbol,
+          holdingStatusHint: inc ? 'incomplete' : 'active',
+          error:
+            inc && wantIncomplete
+              ? '이미 동일 심볼로 간편 등록된 행이 있습니다. 원장에서 수량·평단을 채워 주세요.'
+              : '이미 보유 중입니다. 신규 추가가 아니라 매수/매도 반영을 사용하세요.',
+        },
         { status: 409 },
       );
     }
@@ -125,8 +153,8 @@ export async function POST(req: Request) {
       market,
       symbol,
       name,
-      qty: quantity,
-      avg_price: avgPrice,
+      qty: wantIncomplete ? null : quantity,
+      avg_price: wantIncomplete ? null : avgPrice,
       sector: body.sector?.trim() || null,
       investment_memo: body.investmentMemo?.trim() || null,
       judgment_memo: judgmentMemoWithStop,
@@ -137,8 +165,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       symbol,
-      message: '보유 종목을 등록했습니다. 시세 새로고침 요청으로 평가값을 갱신하세요.',
-      recommendQuoteRefresh: true,
+      holdingStatus: wantIncomplete ? 'incomplete' : 'active',
+      message: wantIncomplete
+        ? '보유 종목을 간편 등록했습니다. 수량·평단은 나중에 입력할 수 있습니다. 시세 새로고침은 입력 후 진행하세요.'
+        : '보유 종목을 등록했습니다. 시세 새로고침 요청으로 평가값을 갱신하세요.',
+      recommendQuoteRefresh: !wantIncomplete,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';

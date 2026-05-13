@@ -5,12 +5,15 @@ import type { UsKrSignalDiagnostics } from "@/lib/server/usSignalCandidateDiagno
 import {
   buildThemeConnectionMap,
   buildThemeConnectionSummary,
+  buildThemeLinkSourceHistogram,
   buildUsKrEmptyThemeBridgeHint,
   classifyThemeLinkConfidence,
   enrichPrimaryDeckWithThemeConnections,
   explainThemeLink,
+  mapSectorRadarThemeToThemeKey,
   matchCandidateThemeBinding,
   normalizeThemeKey,
+  truncateThemeConnectionMap,
 } from "./themeConnectionMap";
 
 describe("themeConnectionMap EVO-007", () => {
@@ -116,7 +119,68 @@ describe("themeConnectionMap EVO-007", () => {
     expect(summary.confidenceCounts.low).toBe(1);
   });
 
-  it("enrichPrimaryDeckWithThemeConnections attaches themeConnection", () => {
+  it("mapSectorRadarThemeToThemeKey maps buckets and falls back", () => {
+    expect(mapSectorRadarThemeToThemeKey("ai_power_infra")).toBe("ai_power_infra");
+    expect(mapSectorRadarThemeToThemeKey("nuclear_smr")).toBe("k_nuclear");
+    expect(mapSectorRadarThemeToThemeKey("shipbuilding")).toBe("shipbuilding");
+    expect(mapSectorRadarThemeToThemeKey("bio_healthcare")).toBe("biotech");
+    expect(mapSectorRadarThemeToThemeKey("  AI_POWER_INFRA  ")).toBe("ai_power_infra");
+  });
+
+  it("explainThemeLink watchlist uses direct-connection copy", () => {
+    const s = explainThemeLink({
+      themeLabel: "조선",
+      source: "watchlist",
+      confidence: "medium",
+    });
+    expect(s).toContain("관심종목 직접 연결");
+    expect(s).toContain("후보 수를 늘리지");
+  });
+
+  it("truncateThemeConnectionMap flags truncated when over limits", () => {
+    const full = Array.from({ length: 6 }, (_, i) => ({
+      themeKey: `t${i}`,
+      themeLabel: `T${i}`,
+      linkedInstruments: Array.from({ length: 10 }, (_, j) => ({
+        symbol: `KR:${i}${j}`,
+        type: "stock" as const,
+        source: "today_candidate" as const,
+        confidence: "low" as const,
+        reason: "r",
+        market: "KR" as const,
+      })),
+      confidence: "low" as const,
+    }));
+    const { map, truncated } = truncateThemeConnectionMap(full as never, 5, 8);
+    expect(truncated).toBe(true);
+    expect(map.length).toBe(5);
+    expect(map[0]?.linkedInstruments.length).toBeLessThanOrEqual(8);
+  });
+
+  it("buildThemeLinkSourceHistogram counts sources", () => {
+    const h = buildThemeLinkSourceHistogram([
+      {
+        themeKey: "a",
+        themeLabel: "A",
+        representativeEtf: {
+          symbol: "US:SMH",
+          type: "etf",
+          source: "sector_radar",
+          confidence: "high",
+          reason: "r",
+          market: "ETF",
+        },
+        linkedInstruments: [
+          { symbol: "KR:1", type: "stock", source: "watchlist", confidence: "medium", reason: "r", market: "KR" },
+        ],
+        confidence: "high",
+      },
+    ] as never);
+    expect(h.sector_radar).toBeGreaterThanOrEqual(1);
+    expect(h.watchlist).toBe(1);
+  });
+
+  it("enrichPrimaryDeckWithThemeConnections preserves deck length", () => {
     const deck: TodayStockCandidate[] = [
       {
         candidateId: "1",
@@ -145,8 +209,25 @@ describe("themeConnectionMap EVO-007", () => {
       usMarketKrCandidates: [],
       usSignals: [],
     });
+    expect(out.deck.length).toBe(deck.length);
+    expect(out.themeConnectionMapFull.length).toBeGreaterThanOrEqual(out.themeConnectionMap.length);
     expect(out.themeConnectionSummary.mappedThemeCount).toBeGreaterThanOrEqual(0);
     expect(out.deck[0].themeConnection?.themeKey).toBeDefined();
+  });
+
+  it("buildThemeConnectionMap includes watchlist keyword matches", () => {
+    const items = buildThemeConnectionMap({
+      sectorRadarSectors: [],
+      holdingRows: [],
+      userContextCandidates: [],
+      usMarketKrCandidates: [],
+      usSignals: [],
+      watchlistRows: [{ symbol: "000660", market: "KR", name: "SK하이닉스", sector: "반도체" }],
+      watchlistSourceAvailable: true,
+    });
+    const ai = items.find((x) => x.themeKey === "ai_power_infra");
+    expect(ai?.linkedInstruments.some((x) => x.source === "watchlist")).toBe(true);
+    expect(ai?.linkedInstruments.find((x) => x.source === "watchlist")?.reason).toContain("관심종목 직접 연결");
   });
 
   it("matchCandidateThemeBinding picks biotech keywords", () => {

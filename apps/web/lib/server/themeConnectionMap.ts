@@ -8,7 +8,7 @@ import type {
   ThemeLinkConfidence,
   ThemeLinkSource,
 } from '@office-unify/shared-types';
-import type { SectorRadarSummarySector } from '@/lib/sectorRadarContract';
+import type { SectorRadarEtfThemeBucket, SectorRadarSummarySector } from '@/lib/sectorRadarContract';
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
 import type { UsKrSignalDiagnostics } from '@/lib/server/usSignalCandidateDiagnostics';
 import { THEME_CONNECTION_REGISTRY, type ThemeRegistryEntry } from '@/lib/server/themeConnectionRegistry';
@@ -18,6 +18,54 @@ const CONF_RANK: Record<ThemeLinkConfidence, number> = {
   medium: 3,
   low: 2,
   missing: 1,
+};
+
+/** Today Brief `themeConnectionMap` — 최대 테마 수. */
+export const THEME_CONNECTION_BRIEF_MAX_THEMES = 5;
+/** Today Brief — 테마당 `linkedInstruments` 최대 개수(대표 ETF 제외). */
+export const THEME_CONNECTION_BRIEF_MAX_LINKED_PER_THEME = 8;
+/** GET /api/dashboard/theme-connections — 테마당 linked 상한. */
+export const THEME_CONNECTION_DETAIL_MAX_LINKED_PER_THEME = 20;
+
+const SECTOR_RADAR_BUCKET_TO_REGISTRY: Partial<Record<SectorRadarEtfThemeBucket, string>> = {
+  ai_power_infra: 'ai_power_infra',
+  nuclear_smr: 'k_nuclear',
+  bio_healthcare: 'biotech',
+  shipbuilding: 'shipbuilding',
+  semiconductor: 'ai_power_infra',
+  battery: 'ai_power_infra',
+  defense: 'shipbuilding',
+  robot: 'ai_power_infra',
+  aerospace: 'shipbuilding',
+};
+
+/**
+ * Sector Radar ETF theme bucket 또는 섹터 key/name을 registry `themeKey`로 정렬.
+ * 명시 매핑이 없으면 `normalizeThemeKey` 후 registry 키와 비교한다.
+ */
+export function mapSectorRadarThemeToThemeKey(labelOrBucket: string | undefined | null): string | undefined {
+  if (!labelOrBucket) return undefined;
+  const raw = labelOrBucket.trim();
+  if (raw in SECTOR_RADAR_BUCKET_TO_REGISTRY) {
+    return SECTOR_RADAR_BUCKET_TO_REGISTRY[raw as SectorRadarEtfThemeBucket];
+  }
+  const nk = normalizeThemeKey(raw);
+  for (const re of THEME_CONNECTION_REGISTRY) {
+    if (nk === re.themeKey) return re.themeKey;
+    if (nk.includes(re.themeKey) || re.themeKey.includes(nk)) return re.themeKey;
+  }
+  return undefined;
+}
+
+export type ThemeConnectionMapBuildInput = {
+  sectorRadarSectors: SectorRadarSummarySector[] | undefined;
+  holdingRows: Array<{ name?: string | null; sector?: string | null; symbol: string; market: string }>;
+  userContextCandidates: TodayStockCandidate[];
+  usMarketKrCandidates: TodayStockCandidate[];
+  usSignals: Array<{ label: string; signalKey: string }>;
+  watchlistRows?: Array<{ symbol: string; market: string; name?: string | null; sector?: string | null }>;
+  /** DB에서 관심 목록을 읽어 입력에 넣었는지(0건이면 false 권장). */
+  watchlistSourceAvailable?: boolean;
 };
 
 export function normalizeThemeKey(input: string): string {
@@ -63,6 +111,9 @@ export function explainThemeLink(input: {
             : input.source === 'us_signal'
               ? '미국 시장 신호'
               : '초기 테마 맵';
+  if (input.source === 'watchlist') {
+    return `관심종목 직접 연결 — 「${input.themeLabel}」 테마 키워드와 매칭했습니다. (설명·진단용, 후보 수를 늘리지 않습니다.)`;
+  }
   if (input.confidence === 'high') {
     return `${src}의 「${input.themeLabel}」 테마와 안정적으로 연결됩니다.`;
   }
@@ -104,6 +155,10 @@ function findRadarSectorForTheme(
 ): SectorRadarSummarySector | undefined {
   if (!sectors?.length) return undefined;
   for (const s of sectors) {
+    const mapped = mapSectorRadarThemeToThemeKey(s.key) ?? mapSectorRadarThemeToThemeKey(s.name);
+    if (mapped === re.themeKey) return s;
+  }
+  for (const s of sectors) {
     const nk = normalizeThemeKey(s.key);
     if (nk === re.themeKey || nk.includes(re.themeKey) || re.themeKey.includes(nk)) return s;
   }
@@ -131,7 +186,10 @@ function pickRepresentativeInstrument(
   const symSet = new Set((re.representativeEtfSymbols ?? []).map((x) => x.toUpperCase()));
   const preferred = anchors.find((a) => symSet.has(a.symbol.toUpperCase()));
   const anchor = preferred ?? anchors[0];
-  const keyMatch = normalizeThemeKey(sector.key) === re.themeKey;
+  const keyMatch =
+    mapSectorRadarThemeToThemeKey(sector.key) === re.themeKey ||
+    mapSectorRadarThemeToThemeKey(sector.name) === re.themeKey ||
+    normalizeThemeKey(sector.key) === re.themeKey;
   const labelMatch = textMatchesKeywords(sector.name, re.keywords);
   const conf = classifyThemeLinkConfidence({
     explicitRegistryKeyMatch: false,
@@ -154,13 +212,23 @@ function pickRepresentativeInstrument(
   };
 }
 
-export function buildThemeConnectionMap(input: {
-  sectorRadarSectors: SectorRadarSummarySector[] | undefined;
-  holdingRows: Array<{ name?: string | null; sector?: string | null; symbol: string; market: string }>;
-  userContextCandidates: TodayStockCandidate[];
-  usMarketKrCandidates: TodayStockCandidate[];
-  usSignals: Array<{ label: string; signalKey: string }>;
-}): ThemeConnectionMapItem[] {
+export function truncateThemeConnectionMap(
+  full: ThemeConnectionMapItem[],
+  maxThemes: number,
+  maxLinkedPerTheme: number,
+): { map: ThemeConnectionMapItem[]; truncated: boolean } {
+  let truncated = false;
+  const themes = full.slice(0, maxThemes);
+  if (full.length > maxThemes) truncated = true;
+  const map = themes.map((it) => {
+    const lim = it.linkedInstruments.slice(0, maxLinkedPerTheme);
+    if (it.linkedInstruments.length > maxLinkedPerTheme) truncated = true;
+    return { ...it, linkedInstruments: lim };
+  });
+  return { map, truncated };
+}
+
+export function buildThemeConnectionMap(input: ThemeConnectionMapBuildInput): ThemeConnectionMapItem[] {
   const sectors = input.sectorRadarSectors ?? [];
   const items: ThemeConnectionMapItem[] = [];
 
@@ -209,6 +277,21 @@ export function buildThemeConnectionMap(input: {
         source: 'us_signal',
         confidence: 'medium',
         reason: explainThemeLink({ themeLabel: re.themeLabel, source: 'us_signal', confidence: 'medium' }),
+      });
+    }
+
+    for (const w of input.watchlistRows ?? []) {
+      const blob = `${w.name ?? ''} ${w.sector ?? ''}`.toLowerCase();
+      if (!textMatchesKeywords(blob, re.keywords)) continue;
+      const sym = `${String(w.market).toUpperCase()}:${String(w.symbol).toUpperCase()}`;
+      push({
+        symbol: sym,
+        name: w.name ?? undefined,
+        market: w.market.toUpperCase() === 'US' ? 'US' : 'KR',
+        type: 'stock',
+        source: 'watchlist',
+        confidence: 'medium',
+        reason: explainThemeLink({ themeLabel: re.themeLabel, source: 'watchlist', confidence: 'medium' }),
       });
     }
 
@@ -263,6 +346,19 @@ export function buildThemeConnectionMap(input: {
   return items;
 }
 
+/** 진단·qualityMeta용 — 맵 전체 기준으로 ThemeLinkSource 건수를 집계한다. */
+export function buildThemeLinkSourceHistogram(items: ThemeConnectionMapItem[]): Record<string, number> {
+  const acc: Record<string, number> = {};
+  for (const it of items) {
+    const pool = [...it.linkedInstruments];
+    if (it.representativeEtf) pool.unshift(it.representativeEtf);
+    for (const li of pool) {
+      acc[li.source] = (acc[li.source] ?? 0) + 1;
+    }
+  }
+  return acc;
+}
+
 export function buildThemeConnectionSummary(items: ThemeConnectionMapItem[]): ThemeConnectionSummary {
   const confidenceCounts = { high: 0, medium: 0, low: 0, missing: 0 };
   let linkedInstrumentCount = 0;
@@ -293,9 +389,12 @@ export function matchCandidateThemeBinding(
         (s) => blob.includes(s.name.toLowerCase()) || (candidate.sector && candidate.sector.includes(s.name)),
       );
       if (sec) {
-        const keyMatch = normalizeThemeKey(sec.key) === re.themeKey;
+        const mapped = mapSectorRadarThemeToThemeKey(sec.key) ?? mapSectorRadarThemeToThemeKey(sec.name);
         const labelHit = textMatchesKeywords(sec.name, re.keywords);
-        if (keyMatch) {
+        if (mapped === re.themeKey) {
+          score += 55;
+          conf = maxConf(conf, 'high');
+        } else if (normalizeThemeKey(sec.key) === re.themeKey) {
           score += 50;
           conf = maxConf(conf, 'high');
         } else if (labelHit) {
@@ -330,26 +429,35 @@ export function matchCandidateThemeBinding(
 
 export function enrichPrimaryDeckWithThemeConnections(
   deck: TodayStockCandidate[],
-  input: {
-    sectorRadarSectors: SectorRadarSummarySector[] | undefined;
-    holdingRows: Array<{ name?: string | null; sector?: string | null; symbol: string; market: string }>;
-    userContextCandidates: TodayStockCandidate[];
-    usMarketKrCandidates: TodayStockCandidate[];
-    usSignals: Array<{ label: string; signalKey: string }>;
-  },
+  input: ThemeConnectionMapBuildInput,
 ): {
   deck: TodayStockCandidate[];
   themeConnectionMap: ThemeConnectionMapItem[];
   themeConnectionSummary: ThemeConnectionSummary;
+  /** bridgeHint·내부 진단용 — HTTP 응답에 넣지 않음 */
+  themeConnectionMapFull: ThemeConnectionMapItem[];
 } {
-  const themeConnectionMap = buildThemeConnectionMap(input);
-  const themeConnectionSummary = buildThemeConnectionSummary(themeConnectionMap);
+  const themeConnectionMapFull = buildThemeConnectionMap(input);
+  const baseSummary = buildThemeConnectionSummary(themeConnectionMapFull);
+  const { map: briefMap, truncated } = truncateThemeConnectionMap(
+    themeConnectionMapFull,
+    THEME_CONNECTION_BRIEF_MAX_THEMES,
+    THEME_CONNECTION_BRIEF_MAX_LINKED_PER_THEME,
+  );
+  const watchlistSourceAvailable =
+    input.watchlistSourceAvailable ??
+    (Array.isArray(input.watchlistRows) && input.watchlistRows.length > 0);
+  const themeConnectionSummary: ThemeConnectionSummary = {
+    ...baseSummary,
+    truncated,
+    watchlistSourceAvailable,
+  };
   const sectors = input.sectorRadarSectors;
   const deckOut = deck.map((c) => {
     const themeConnection = matchCandidateThemeBinding(c, sectors);
     return themeConnection ? { ...c, themeConnection } : c;
   });
-  return { deck: deckOut, themeConnectionMap, themeConnectionSummary };
+  return { deck: deckOut, themeConnectionMap: briefMap, themeConnectionSummary, themeConnectionMapFull };
 }
 
 export function buildUsKrEmptyThemeBridgeHint(input: {

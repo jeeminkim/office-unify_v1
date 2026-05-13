@@ -9,7 +9,7 @@
 - read-only route에서 Research Center 개별 warning DB write를 늘리지 않는다.
 - secret/token/API key/prompt 원문은 ops detail에 저장하지 않는다(요약 preview + 길이 제한만 허용).
 - **PB 주간 점검(EVO-004):** `GET /api/private-banker/weekly-review`가 동일 사용자의 follow-up(open/tracking, stale 14일+ 집계)을 주간 미리보기에 포함한다. 미리보기·sanitize 경로에서 **detail_json·userNote 원문은 노출하지 않는다**(집계·제목·상태·코드만). **GET 응답의 `recommendedIdempotencyKey`**는 weekOf+sanitize만으로 SHA-256 기반 권장 멱등 키이며, `POST`에 동일 값을 넣으면 동일 미리보기 컨텍스트에서 멱등이 맞춰진다(민감 원문·user_key는 해시 입력에 포함하지 않음).
-- **판단 복기(EVO-008):** Follow-up 추적함에서 `POST /api/decision-retrospectives/from-followup/[id]`로 **판단 과정 복기** 초안을 만들 수 있다(수익률 평가·자동매매 아님). Today 카드에서 `POST /api/decision-retrospectives/from-today-candidate`는 **허용 필드 화이트리스트·문자열·요인 개수·본문 상한**을 두고, 초과 시 **400**과 `actionHint`로 안내한다(`detail_json`에 후보 원문 전체를 넣지 않음). `web_decision_retrospectives` 미적용 시 **503**·`decision_retrospective_table_missing`·`actionHint`(`append_decision_retrospectives.sql`).
+- **판단 복기(EVO-008):** Follow-up 추적함에서 `POST /api/decision-retrospectives/from-followup/[id]`로 **판단 과정 복기** 초안을 만들 수 있다(수익률 평가·자동매매 아님). Today 카드에서 `POST /api/decision-retrospectives/from-today-candidate`는 **허용 필드 화이트리스트·문자열·요인 개수·본문 상한**을 두고, 초과 시 **400**과 `actionHint`로 안내한다(`detail_json`에 후보 원문 전체를 넣지 않음). 대시보드 **`POST /api/decision-retrospectives/coach`**는 PB **초안만** 제안(`qualityMeta.autoSaved: false`, DB 자동 insert 없음); 저장은 사용자가 `POST /api/decision-retrospectives`로만. `web_decision_retrospectives` 미적용 시 **503**·`decision_retrospective_table_missing`·`actionHint`(`append_decision_retrospectives.sql`).
 
 ## 실패/품질 계약
 

@@ -3,6 +3,7 @@ import type { SectorRadarSummaryResponse } from "@/lib/sectorRadarContract";
 import type { TodayStockCandidate, UsMarketMorningSummary } from "@/lib/todayCandidatesContract";
 import { composeTodayBriefCandidates, buildSectorRadarEtfCandidate } from "./todayBriefCandidateComposer";
 import { buildTodayCandidateDisplayMetrics } from "./todayBriefCandidateDisplay";
+import { enrichPrimaryDeckWithThemeConnections } from "./themeConnectionMap";
 import { diagnoseUsKrSignalCandidates } from "./usSignalCandidateDiagnostics";
 import { enrichPrimaryCandidateDeckScoreExplanations } from "./todayBriefScoreExplanation";
 
@@ -140,6 +141,78 @@ describe("composeTodayBriefCandidates", () => {
     expect(enriched[0]?.displayMetrics?.scoreExplanationDetail?.finalScore).toBe(
       enriched[0]?.displayMetrics?.observationScore,
     );
+  });
+
+  it("EVO-007: theme enrich preserves deck length when usToKrMappingEmpty", () => {
+    const radar: SectorRadarSummaryResponse = {
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      sectors: [
+        {
+          key: "s1",
+          name: "AI/전력",
+          score: 80,
+          adjustedScore: 80,
+          zone: "greed",
+          actionHint: "hold",
+          narrativeHint: "n",
+          warnings: [],
+          anchors: [
+            {
+              symbol: "SOXX",
+              name: "SOXX ETF",
+              googleTicker: "NASDAQ:SOXX",
+              sourceLabel: "seed",
+              dataStatus: "ok",
+              etfDisplayGroup: "scored",
+              etfQuoteQualityStatus: "ok",
+              changePct: 1.2,
+            },
+          ],
+          components: {},
+        },
+      ],
+      warnings: [],
+      fearCandidatesTop3: [],
+      greedCandidatesTop3: [],
+    };
+    const out = composeTodayBriefCandidates({
+      userContextCandidates: [interest("a", 50), interest("b", 60), interest("c", 40)],
+      sectorRadarSummary: radar,
+      usMarketSummary: {
+        asOfKst: "",
+        available: true,
+        conclusion: "risk_on",
+        summary: "",
+        signals: [{ signalKey: "x", label: "L", direction: "positive", confidence: "low", evidence: [] }],
+        warnings: [],
+        diagnostics: { yahooQuoteResultCount: 8, anchorSymbolsRequested: 10, fetchFailed: false },
+      },
+      usMarketKrCandidates: [],
+    });
+    const diag = diagnoseUsKrSignalCandidates({
+      usMarketSummary: {
+        asOfKst: "",
+        available: true,
+        conclusion: "risk_on",
+        summary: "",
+        signals: [{ signalKey: "x", label: "L", direction: "positive", confidence: "low", evidence: [] }],
+        warnings: [],
+        diagnostics: { yahooQuoteResultCount: 8, anchorSymbolsRequested: 10, fetchFailed: false },
+      },
+      usMarketKrCandidates: [],
+    });
+    expect(diag?.primaryReason).toBe("usToKrMappingEmpty");
+    const themed = enrichPrimaryDeckWithThemeConnections(out.deck, {
+      sectorRadarSectors: radar.sectors as never,
+      holdingRows: [],
+      userContextCandidates: [interest("a", 50), interest("b", 60), interest("c", 40)],
+      usMarketKrCandidates: [],
+      usSignals: [{ label: "L", signalKey: "x" }],
+      watchlistRows: [],
+      watchlistSourceAvailable: false,
+    });
+    expect(themed.deck.length).toBe(out.deck.length);
   });
 
   it("falls back to interest top3 when no ETF", () => {

@@ -51,3 +51,37 @@ export type DecisionRetrospectivesQualityMeta = {
   staleDraftCount: number;
   learnedCount: number;
 };
+
+/** PB 복기 코치가 제안하는 단일 복기 초안(저장 전, 확정 아님). */
+export type DecisionRetroCoachSuggestion = {
+  sourceType: DecisionRetroSourceType;
+  sourceId?: string;
+  title: string;
+  summary: string;
+  suggestedOutcome: DecisionRetroOutcome;
+  suggestedQualitySignals: DecisionRetroQualitySignal[];
+  suggestedWhatWorked?: string;
+  suggestedWhatDidNotWork?: string;
+  suggestedNextRule?: string;
+  caveat: string;
+};
+
+/** GET coach 미리보기(suggestions 비어 있음) 또는 파싱 결과에 suggestions를 채운 형태. */
+export type DecisionRetroCoachPreview = {
+  suggestions: DecisionRetroCoachSuggestion[];
+  qualityMeta: {
+    sourceCount: number;
+    suggestionCount: number;
+    sanitized: true;
+    autoSaved: false;
+  };
+};
+
+/** POST /api/decision-retrospectives/coach 응답 qualityMeta(additive). */
+export type DecisionRetroCoachPostQualityMeta = {
+  autoSaved: false;
+  parseStatus: 'ok' | 'partial' | 'failed';
+  responseGuard?: {
+    policyPhraseWarnings?: string[];
+  };
+};

@@ -45,4 +45,8 @@ export type ThemeConnectionSummary = {
   confidenceCounts: { high: number; medium: number; low: number; missing: number };
   /** registry 대비 linked가 비어 있거나 confidence가 missing인 테마 수 */
   missingThemeCount: number;
+  /** Today Brief 등에서 `themeConnectionMap`을 maxItems로 잘랐을 때 true */
+  truncated?: boolean;
+  /** 관심종목 원천 행을 맵 입력으로 사용했는지(0건이면 false). */
+  watchlistSourceAvailable?: boolean;
 };

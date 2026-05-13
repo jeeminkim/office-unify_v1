@@ -172,6 +172,17 @@ export type WatchlistSectorMatchApiResponse = {
       lowConfidence: number;
       manualProtected: number;
     };
+    /** additive: 미리보기 vs 적용 결과·매핑 버전(원문 없음) */
+    keywordMatch?: {
+      previewCount: number;
+      appliedCount: number;
+      skippedCount: number;
+      unmatchedCount: number;
+      lastAppliedAt?: string;
+      mappingVersion: string;
+      mode: 'preview' | 'apply';
+      reason: string;
+    };
     opsLogging?: {
       attempted: boolean;
       savedCount?: number;

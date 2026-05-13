@@ -254,9 +254,11 @@ export {
   parseResearchCenterTotalTimeoutMs,
 } from './researchCenterTimeoutConstants';
 export type {
+  ObservationScoreDiagnostics,
   ObservationScoreExplanation,
   ObservationScoreFactor,
   ObservationScoreFactorCode,
+  ObservationScoreRepeatExposure,
   TodayCandidateConfidenceLabel,
   TodayCandidateDisplayMetrics,
   TodayCandidateScoreLabel,
@@ -315,6 +317,9 @@ export type {
   PbWeeklyReviewResponseGuardMeta,
 } from './privateBankerWeeklyReview';
 export type {
+  DecisionRetroCoachPostQualityMeta,
+  DecisionRetroCoachPreview,
+  DecisionRetroCoachSuggestion,
   DecisionRetroOutcome,
   DecisionRetroQualitySignal,
   DecisionRetrospective,

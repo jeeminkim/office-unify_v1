@@ -4,6 +4,14 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05 대시보드·원장 안정화 (Today Brief / resolve / ticker timeout / 섹터 매칭 / 보유 간편)
+
+- **Today Brief:** `scoreExplanationDetail`에 진단(`diagnostics`)·반복 노출(`repeatExposure`, 7일 `today_candidate_detail_opened` read-only)·`userReadableSummary`·`data_default_hold` 요인 추가; `qualityMeta.todayCandidates.scoreExplanationSummary`에 `repeatedCandidateCount`, `neutralScoreCount`, `scoreDefaultReasonCounts`, `diversityPolicy`. 보유는 **수량·평단이 모두 양수인 행만** 브리핑 집계(간편 등록만 있으면 `HOLDINGS_INCOMPLETE` 안내).
+- **관심 resolve:** `POST /api/portfolio/watchlist/resolve` — Sector Radar 시드·US→KR 규칙·원장 `tickerSuggestFromInput` 조합; `DashboardClient`·원장 「관심 정보 자동 채움」이 resolve 우선.
+- **Ticker resolver:** `GET …/status`에 `startedAt`·`elapsedMs`·`timeoutMs`(기본 120s, `TICKER_RESOLVER_TIMEOUT_MS`)·`status`(pending/ready/partial/timeout/failed/stale)·행 `timeout`; `qualityMeta.tickerResolver`; fingerprint 기반 `ticker_resolver_timeout` ops(쿨다운). 원장 UI: 모바일 카드 fallback·timeout 안내.
+- **섹터 키워드 매칭:** `POST …/watchlist/sector-match` 응답 `qualityMeta.keywordMatch`(preview/apply 구분, applied/skipped/unmatched, mappingVersion). 적용 후 배너에 건수 요약.
+- **보유 간편:** `POST /api/portfolio/holdings`에 `incomplete`·null qty/avg; `PATCH …/holdings/[id]`에서 기존 미입력 행 활성화; 원장 「보유 간편 등록」·미입력 행 상단·배지.
+
 ### 2026-05 테마 연결 맵 1차 (EVO-007)
 
 - **목적:** Sector Radar 대표 ETF·관심/보유·Today 후보·미국 신호를 **공통 theme key**로 설명·진단(후보 강제 생성·매수 추천·자동매매·자동 주문 없음).
@@ -12,6 +20,14 @@
 - **Server:** `themeConnectionMap.ts` — `normalizeThemeKey`, `buildThemeConnectionMap`, `enrichPrimaryDeckWithThemeConnections`, `buildUsKrEmptyThemeBridgeHint`(`usToKrMappingEmpty` + 얇은 맵일 때 안내).
 - **Today Brief:** `primaryCandidateDeck`에 `themeConnection` additive; `qualityMeta.todayCandidates.themeConnectionSummary` / `themeConnectionMap` / `usKrEmptyThemeBridgeHint`; 집중도 `themeMappingConfidence`는 **themeConnection**이 더 높으면 상향.
 - **UI:** 대시보드 「테마 연결 맵」`<details>` + 카드별 테마 한 줄.
+
+### 2026-05 테마 연결 맵 안정화 (EVO-007)
+
+- **Today Brief `themeConnectionMap`:** 응답 크기 — 최대 **5** 테마·테마당 `linkedInstruments` **8**건(`truncateThemeConnectionMap`); 잘리면 **`themeConnectionSummary.truncated`**. 요약·`buildUsKrEmptyThemeBridgeHint`는 **전체 맵** 기준(브리핑 본문의 맵만 잘림).
+- **`loadThemeConnectionMapInput`:** `reuseTodayCandidates` + `holdingRows`로 Today Brief에서 **후보 재조회 없이** 동일 컨텍스트 조립; `watchlistRows`·`watchlistSourceAvailable`(관심 DB 0건이면 false).
+- **API:** `GET /api/dashboard/theme-connections?range=7d` — read-only·DB write 없음; 테마당 링크 상한 **20**; `qualityMeta.readOnly`·`sourceCounts`·`confidenceCounts`·`truncated`·`watchlistSourceAvailable`.
+- **Sector Radar 정렬:** `mapSectorRadarThemeToThemeKey`(bucket→registry 우선, 없으면 `normalizeThemeKey` fallback).
+- **기타:** `buildThemeLinkSourceHistogram`; 테스트로 덱 길이 유지·truncate·Sector 매핑·`theme_link` 요인 **points 없음** 고정.
 
 ### 2026-05 미국 신호 empty reason 히스토그램 (EVO-006)
 
@@ -29,6 +45,16 @@
 - **Server:** `decisionRetrospective.ts` / `decisionRetrospectiveSanitize.ts` — 시드(follow-up·주간·Today 후보), 입력 sanitize, `qualityMeta` 집계·stale draft(30일+).
 - **API:** `GET`/`POST` `/api/decision-retrospectives`, `PATCH …/[id]`, `POST …/from-followup/[id]`, `POST …/from-weekly-review`, `POST …/from-today-candidate`(additive). **GET은 read-only**; 테이블 미적용 시 `503` + `decision_retrospective_table_missing` + `actionHint`.
 - **UI:** 대시보드 「판단 복기」`<details>`(필터·outcome·신호·nextRule·Today 첫 덱 복기); PB 주간 「이번 주 점검 복기 만들기」; Research 추적함 「복기 만들기」.
+
+### 2026-05 PB 복기 코치 (EVO-008 2차)
+
+- **목적:** PB가 **복기 초안만** 제안하고, **자동 저장·자동 주문 없음**; 사용자가 확인·수정 후 `POST /api/decision-retrospectives`로만 반영.
+- **Shared types:** `DecisionRetroCoachSuggestion` / `DecisionRetroCoachPreview` / `DecisionRetroCoachPostQualityMeta` (`decisionRetrospective.ts`).
+- **Server:** `decisionRetrospectiveCoach.ts` — `buildDecisionRetroCoachContext`, `buildDecisionRetroCoachPrompt`, `parseDecisionRetroCoachSuggestions`, `sanitizeDecisionRetroCoachSuggestion`, 금액 패턴 제거.
+- **API:** `GET /api/decision-retrospectives/coach` — read-only 컨텍스트·`recommendedCoachIdempotencyKey`. `POST …/coach` — PB 멱등 파이프라인, `qualityMeta.autoSaved: false`, `parseStatus`, `auditRetroCoachPolicyWarnings`.
+- **`POST /api/decision-retrospectives`:** additive `detailSeed: pb_coach`·`whatWorked`/`whatDidNotWork`/`nextRule` 생성 시 저장.
+- **responseGuard:** `auditRetroCoachPolicyWarnings`(필수 섹션 검사 생략, 지시형·수익 보장·자동 주문 문맥만).
+- **UI:** 대시보드 「판단 복기」—「PB 복기 초안 받기」·편집·「이 복기 저장」(`data-testid`).
 
 ### 2026-05 판단 복기 안정화 (EVO-008)
 

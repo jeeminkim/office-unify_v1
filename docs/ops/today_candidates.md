@@ -24,10 +24,10 @@
 ### 메인 3카드 덱 (additive)
 
 - **`primaryCandidateDeck`**: 관심사 후보 상위 **2** + Sector Radar에서 고른 **대표 ETF 1** (ETF 없으면 관심 후보 **top 3** fallback, `qualityMeta.todayCandidates.composition.fallbackReason`).
-- **판단 복기(EVO-008, 선택):** 대시보드 「판단 복기」에서 메인 덱 **첫 후보**를 `POST /api/decision-retrospectives/from-today-candidate`로 시드 저장할 수 있다(서버가 요약 시드만 저장; 수익률 평가·자동 주문 아님). 요청은 **JSON 본문 길이 상한**·**허용 필드 화이트리스트**·관찰 요인 수·요인 메시지 길이 제한을 통과해야 하며, 위반 시 **400** + `actionHint`.
+- **판단 복기(EVO-008, 선택):** 대시보드 「판단 복기」에서 메인 덱 **첫 후보**를 `POST /api/decision-retrospectives/from-today-candidate`로 시드 저장할 수 있다(서버가 요약 시드만 저장; 수익률 평가·자동 주문 아님). 요청은 **JSON 본문 길이 상한**·**허용 필드 화이트리스트**·관찰 요인 수·요인 메시지 길이 제한을 통과해야 하며, 위반 시 **400** + `actionHint`. **`GET|POST /api/decision-retrospectives/coach`**는 PB **초안 제안**만(`autoSaved: false`); 실제 행 저장은 사용자가 **`POST /api/decision-retrospectives`**로만 한다.
 - 카드 표시는 내부 raw `score` 대신 **`displayMetrics`**(`관찰 점수 n/100`, 신뢰도·데이터 품질 등). 원본 배열 `candidates.*`는 유지.
 - 미국 신호→한국 후보가 비면 **`usKrSignalDiagnostics`**·`usMarketSummary.diagnostics`로 원인 코드를 노출; ops **`us_signal_candidates_empty`**(budget/cooldown·fingerprint).
-- **EVO-007 테마 연결 맵(1차):** `primaryCandidateDeck` 항목에 **`themeConnection`**(themeKey·신뢰도·설명); `qualityMeta.todayCandidates.themeConnectionSummary` / `themeConnectionMap`(소량 registry 기반); `usKrEmptyThemeBridgeHint`는 **`usToKrMappingEmpty`**이면서 테마→국내 연결이 얇을 때만. **낮은 신뢰도는 후보 생성에 사용하지 않음.** 금액·원문 노트 미포함.
+- **EVO-007 테마 연결 맵(1차+안정화):** `primaryCandidateDeck` 항목에 **`themeConnection`**(themeKey·신뢰도·설명); `qualityMeta.todayCandidates.themeConnectionSummary`(**`truncated`**, **`watchlistSourceAvailable`**) / **`themeConnectionMap`(Brief 본문: 최대 5테마·테마당 링크 8건)** / `usKrEmptyThemeBridgeHint`는 **`usToKrMappingEmpty`**이면서 테마→국내 연결이 얇을 때만(힌트 계산은 **full map** 기준). **낮은 신뢰도·missing은 후보 생성에 사용하지 않음**; 테마 enrich는 **덱 길이를 바꾸지 않음**. `theme_link` 점수 요인은 **설명용**(가산 points 없음). 상세 맵: **`GET /api/dashboard/theme-connections?range=7d`**(read-only, 테마당 링크 최대 20, `qualityMeta.readOnly`·`sourceCounts`). Sector Radar ETF theme bucket→registry는 서버 **`mapSectorRadarThemeToThemeKey`**. 관심종목 원천은 `watchlistRows`로 맵에 반영(0건이면 `watchlistSourceAvailable: false`); 키워드 매칭은 후속 정교화 가능. 금액·원문 노트 미포함.
 
 ### 투자자 프로필 · 적합성 게이트 (additive)
 

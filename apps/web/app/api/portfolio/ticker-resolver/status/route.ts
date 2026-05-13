@@ -11,7 +11,10 @@ import {
 } from '@/lib/server/googleFinanceSheetQuoteService';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { listWebPortfolioHoldingsForUser } from '@office-unify/supabase-access';
-import { buildTickerResolverDtos, type TickerResolverQuoteContext } from '@/lib/server/tickerResolverRecommendations';
+import type { TickerResolverQuoteContext } from '@/lib/server/tickerResolverRecommendations';
+import { buildTickerResolverStatusPayload } from '@/lib/server/tickerResolverStatusEnvelope';
+import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
+import { OPS_LOG_MAX_WRITES_PER_REQUEST, shouldWriteOpsEvent } from '@/lib/server/opsLogBudget';
 
 export async function GET(req: Request) {
   const auth = await requirePersonaChatAuth();
@@ -53,21 +56,79 @@ export async function GET(req: Request) {
         }
       }
     }
-    const { rows, recommendations } = buildTickerResolverDtos(parsed, { quoteContextByKey });
-    const autoApplicableCount = recommendations.filter((r) => r.applyState.autoApplicable && r.recommendedGoogleTicker).length;
-    const manualRequiredCount = recommendations.filter((r) => r.applyState.manualRequired).length;
-    const defaultApplicableCount = recommendations.filter((r) => r.canApplyDefaultBeforeVerification).length;
+    const payload = buildTickerResolverStatusPayload({
+      requestId,
+      parsed,
+      quoteContextByKey,
+    });
+
+    if (supabase && (payload.status === 'timeout' || payload.summary.timeoutCandidateCount > 0)) {
+      const fingerprint = `ticker_resolver:${auth.userKey}:${requestId}:timeout`;
+      const { data: existing } = await supabase
+        .from('web_ops_events')
+        .select('last_seen_at')
+        .eq('fingerprint', fingerprint)
+        .maybeSingle<{ last_seen_at: string }>();
+      const decision = shouldWriteOpsEvent({
+        domain: 'portfolio_ticker_resolver',
+        code: 'ticker_resolver_timeout',
+        severity: 'warning',
+        fingerprint,
+        isReadOnlyRoute: false,
+        isCritical: false,
+        lastSeenAt: existing?.last_seen_at ?? null,
+        cooldownMinutes: 120,
+        writesUsed: 0,
+        maxWritesPerRequest: OPS_LOG_MAX_WRITES_PER_REQUEST,
+      });
+      if (decision.shouldWrite) {
+        await upsertOpsEventByFingerprint({
+          userKey: String(auth.userKey),
+          domain: 'portfolio_ticker_resolver',
+          eventType: 'warning',
+          severity: 'warning',
+          code: 'ticker_resolver_timeout',
+          message: 'Ticker resolver sheet calculation exceeded client timeout window',
+          detail: {
+            requestId,
+            elapsedMs: payload.elapsedMs,
+            timeoutMs: payload.timeoutMs,
+            pendingCandidateCount: payload.summary.pendingCandidateCount,
+            readyCandidateCount: payload.summary.readyCandidateCount,
+          },
+          fingerprint,
+          status: 'open',
+          route: '/api/portfolio/ticker-resolver/status',
+          component: 'ticker-resolver-status',
+        });
+      }
+    }
+
+    const autoApplicableCount = payload.recommendations.filter((r) => r.applyState.autoApplicable && r.recommendedGoogleTicker).length;
+    const manualRequiredCount = payload.recommendations.filter((r) => r.applyState.manualRequired).length;
+    const defaultApplicableCount = payload.recommendations.filter((r) => r.canApplyDefaultBeforeVerification).length;
+
     return NextResponse.json({
       ok: true,
-      requestId,
-      rows,
-      recommendations,
+      requestId: payload.requestId,
+      startedAt: payload.startedAt,
+      lastCheckedAt: payload.lastCheckedAt,
+      elapsedMs: payload.elapsedMs,
+      timeoutMs: payload.timeoutMs,
+      status: payload.status,
+      rows: payload.rows,
+      recommendations: payload.recommendations,
       summary: {
-        totalSymbols: recommendations.length,
+        totalSymbols: payload.recommendations.length,
         autoApplicableCount,
         manualRequiredCount,
         defaultApplicableCount,
+        pendingCandidateCount: payload.summary.pendingCandidateCount,
+        readyCandidateCount: payload.summary.readyCandidateCount,
+        timeoutCandidateCount: payload.summary.timeoutCandidateCount,
+        failedCandidateCount: payload.summary.failedCandidateCount,
       },
+      qualityMeta: payload.qualityMeta,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';

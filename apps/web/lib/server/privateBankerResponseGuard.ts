@@ -90,6 +90,57 @@ export function auditPrivateBankerStructuredResponse(text: string): PbWeeklyRevi
   };
 }
 
+/** Retro coach / weekly-style 응답에서 필수 섹션 없이 정책 위험 문구만 검사한다. */
+export function auditRetroCoachPolicyWarnings(text: string): { policyPhraseWarnings?: string[] } {
+  const policyPhraseWarnings: string[] = [];
+  const seen = new Set<string>();
+  const push = (code: string) => {
+    if (seen.has(code)) return;
+    seen.add(code);
+    policyPhraseWarnings.push(code);
+  };
+
+  const imperativeAlways: Array<{ re: RegExp; code: string }> = [
+    { re: /매수하세요/g, code: 'imperative_buy_instruction' },
+    { re: /매도하세요/g, code: 'imperative_sell_instruction' },
+    { re: /비중을\s*줄이세요/g, code: 'imperative_reduce_weight' },
+    { re: /리밸런싱\s*하세요/g, code: 'imperative_rebalance' },
+    { re: /리밸런싱하세요/g, code: 'imperative_rebalance' },
+  ];
+  for (const { re, code } of imperativeAlways) {
+    if (re.test(text)) push(code);
+  }
+
+  const profitGuarantee = /수익\s*보장|무조건\s*수익|원금\s*보장|손실\s*없음|확실한\s*수익/i;
+  if (profitGuarantee.test(text)) push('profit_guarantee_language');
+
+  const contextSensitive: Array<{ re: RegExp; code: string }> = [
+    { re: /자동\s*주문/g, code: 'risky_auto_order_mention' },
+    { re: /주문\s*실행/g, code: 'risky_order_execution_mention' },
+  ];
+  for (const { re, code } of contextSensitive) {
+    let m: RegExpExecArray | null;
+    const r = new RegExp(re.source, 'g');
+    while ((m = r.exec(text)) !== null) {
+      const start = m.index;
+      const end = m.index + m[0].length;
+      const head = text.slice(Math.max(0, start - 400), start);
+      if (/\[하면 안 되는 행동\]/.test(head)) {
+        const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+        const lineEnd = text.indexOf('\n', start);
+        const line = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
+        if (/하세요|하십시오|설정\s*하|활성화|실행하세요/.test(line)) continue;
+        const trimmed = line.trim();
+        if (/^[-*•]/.test(trimmed) || /^\d+\./.test(trimmed)) continue;
+      }
+      const w = text.slice(Math.max(0, start - 48), Math.min(text.length, end + 72));
+      if (!SAFE_POLICY_WINDOW.test(w)) push(code);
+    }
+  }
+
+  return policyPhraseWarnings.length ? { policyPhraseWarnings } : {};
+}
+
 export function mergePbWeeklyReviewQualityMetaWithGuard(
   base: PbWeeklyReviewQualityMeta,
   guard: PbWeeklyReviewResponseGuardMeta,
