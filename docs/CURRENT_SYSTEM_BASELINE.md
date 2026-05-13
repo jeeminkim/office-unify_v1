@@ -50,6 +50,7 @@
 - Research Center
   - explicit generation action with requestId trace (`/api/research-center/generate`)
   - “다음에 확인할 것” 섹션 추출 + 추적함 UI + PB 연계 API(`followups/*`, **PATCH** 상태·`userNote`·**GET** `qualityMeta.followups.summary`); DB `web_research_followup_items` (SQL `append_research_followup_items.sql`, 선택 `append_research_followup_items_dedupe_index.sql`). 중복 키는 정규화 title 기준(앱·선택 unique index 정렬); **GET followups는 read-only**. PB 후 `discussed`/`tracking`. 자동매매 없음.
+  - **PB 주간 점검(EVO-004):** 홈 대시보드·`GET /api/private-banker/weekly-review`에서 동일 사용자의 open/tracking follow-up·Today Brief 덱 요약·집중도·적합성을 주간 단위로 묶어 미리보기(민감 필드 제외). `POST`는 PB 판단 보조 메시지 생성 전용(멱등); 자동 실행 없음.
   - failed/degraded stage split (`provider`/`finalizer`/`sheets`/`context_cache`/`response_parse`); Chief Editor 실패 시 데스크 초안 병합 fallback(`fallback_editor_synthesis`), 자동 매매 없음
   - transient provider errors: 엔진 전체 최대 1회 재시도; timeout env: `RESEARCH_CENTER_TOTAL_TIMEOUT_MS`(호환 `RESEARCH_CENTER_ROUTE_TIMEOUT_MS`), `RESEARCH_CENTER_PROVIDER_TIMEOUT_MS`, `RESEARCH_CENTER_FINALIZER_TIMEOUT_MS`, `RESEARCH_CENTER_SHEETS_TIMEOUT_MS`, `RESEARCH_CENTER_CONTEXT_CACHE_TIMEOUT_MS`
   - client shows `errorCode`/`requestId`/`actionHint` instead of plain `Failed to fetch`

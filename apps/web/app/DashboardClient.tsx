@@ -15,6 +15,7 @@ import {
 } from "@/lib/sectorRadarWarningMessages";
 import { buildConcentrationRiskCardHint } from "@office-unify/shared-types";
 import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from "@/lib/todayCandidatesContract";
+import type { PbWeeklyReview } from "@office-unify/shared-types";
 import { filterCandidatesByConfidence } from "@/lib/todayCandidateDataQuality";
 
 type StatusSection = {
@@ -177,6 +178,19 @@ export function DashboardClient() {
   const [investorSaveMsg, setInvestorSaveMsg] = useState<string | null>(null);
   const [investorSaving, setInvestorSaving] = useState(false);
   const [openedScoreExplanationId, setOpenedScoreExplanationId] = useState<string | null>(null);
+  const [weeklyPreview, setWeeklyPreview] = useState<PbWeeklyReview | null>(null);
+  const [weeklyPreviewLoading, setWeeklyPreviewLoading] = useState(false);
+  const [weeklyGenLoading, setWeeklyGenLoading] = useState(false);
+  const [weeklyGenError, setWeeklyGenError] = useState<string | null>(null);
+  const [weeklyGenResult, setWeeklyGenResult] = useState<{
+    preview: PbWeeklyReview;
+    assistantPreview: string;
+    pbSessionId?: string;
+    pbTurnId?: string;
+    deduplicated?: boolean;
+    missingSections: string[];
+    policyPhraseWarnings?: string[];
+  } | null>(null);
 
   const watchQueueTop5 = useMemo(() => {
     const rows = watchQueue?.candidates ?? [];
@@ -243,6 +257,17 @@ export function DashboardClient() {
         setWatchQueue(null);
         setDecisionReviewDueCount(null);
         setOpsOpenErrorCount(null);
+      }
+      setWeeklyPreviewLoading(true);
+      try {
+        const wRes = await fetch("/api/private-banker/weekly-review", { credentials: "same-origin" });
+        const wj = (await wRes.json()) as { ok?: boolean; preview?: PbWeeklyReview; error?: string };
+        if (wRes.ok && wj.ok && wj.preview) setWeeklyPreview(wj.preview);
+        else setWeeklyPreview(null);
+      } catch {
+        setWeeklyPreview(null);
+      } finally {
+        setWeeklyPreviewLoading(false);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "대시보드 로드 실패");
@@ -1180,6 +1205,139 @@ export function DashboardClient() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="mb-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
+        <details className="group">
+          <summary className="cursor-pointer text-sm font-semibold text-violet-950">
+            PB 주간 점검 (미리보기)
+          </summary>
+          <p className="mt-2 text-[11px] leading-relaxed text-violet-950/90">
+            매수 추천이 아니라 이번 주 확인할 질문입니다. 자동 주문·자동 리밸런싱을 실행하지 않습니다.
+          </p>
+          {weeklyPreviewLoading ? (
+            <p className="mt-2 text-xs text-violet-800">불러오는 중…</p>
+          ) : weeklyPreview ? (
+            <div className="mt-3 space-y-3 text-xs text-violet-950">
+              <p className="text-[11px] text-violet-900/90">
+                주간 시작(월요일, KST): <span className="font-mono">{weeklyPreview.weekOf}</span> · 프로필 상태:{" "}
+                {weeklyPreview.profileStatus} · 데이터 품질: {weeklyPreview.qualityMeta.dataQuality}
+              </p>
+              <p className="rounded border border-violet-100 bg-white/80 px-2 py-1.5 text-[11px] text-violet-900">{weeklyPreview.caveat}</p>
+              <div className="grid gap-2 md:grid-cols-2">
+                <div>
+                  <p className="font-medium text-violet-900">이번 주 후보 · 관찰 요약</p>
+                  <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px]">
+                    {(weeklyPreview.sections.candidates ?? []).slice(0, 6).map((c) => (
+                      <li key={c.id}>{c.title}: {c.summary.slice(0, 120)}{c.summary.length > 120 ? "…" : ""}</li>
+                    ))}
+                    {(weeklyPreview.sections.candidates ?? []).length === 0 ? <li>덱 후보 없음</li> : null}
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-medium text-violet-900">stale follow-up / 집중도 / 질문</p>
+                  <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px]">
+                    <li>stale(14일+ tracking): {weeklyPreview.qualityMeta.staleFollowupCount}건</li>
+                    <li>집중도 medium/high: {weeklyPreview.qualityMeta.concentrationRiskCount}건</li>
+                    <li>적합성 경고 카드: {weeklyPreview.qualityMeta.suitabilityWarningCount}건</li>
+                  </ul>
+                  <p className="mt-2 font-medium text-violet-900">사용자에게 물어볼 질문 후보</p>
+                  <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px]">
+                    {(weeklyPreview.sections.questions ?? []).slice(0, 5).map((q) => (
+                      <li key={q.id}>{q.title}</li>
+                    ))}
+                    {(weeklyPreview.sections.questions ?? []).length === 0 ? <li>없음</li> : null}
+                  </ul>
+                </div>
+              </div>
+              <div>
+                <p className="font-medium text-violet-900">집중도 리스크(참고)</p>
+                <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px]">
+                  {(weeklyPreview.sections.risks ?? []).slice(0, 5).map((r) => (
+                    <li key={r.id}>{r.title} — {r.summary}</li>
+                  ))}
+                  {(weeklyPreview.sections.risks ?? []).length === 0 ? <li>없음</li> : null}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-violet-800">미리보기를 불러오지 못했습니다.</p>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={weeklyGenLoading || !weeklyPreview}
+              className="rounded border border-violet-400 bg-violet-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              onClick={async () => {
+                if (!weeklyPreview) return;
+                setWeeklyGenLoading(true);
+                setWeeklyGenError(null);
+                try {
+                  const idempotencyKey = `weekly-review:${weeklyPreview.weekOf}:${crypto.randomUUID()}`;
+                  const res = await fetch("/api/private-banker/weekly-review", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "same-origin",
+                    body: JSON.stringify({ idempotencyKey, requestId: idempotencyKey }),
+                  });
+                  const j = (await res.json()) as {
+                    error?: string;
+                    report?: {
+                      preview?: PbWeeklyReview;
+                      qualityMeta?: PbWeeklyReview["qualityMeta"];
+                      assistantPreview?: string;
+                    };
+                    assistantMessage?: { content?: string };
+                    pbSessionId?: string;
+                    pbTurnId?: string;
+                    deduplicated?: boolean;
+                  };
+                  if (!res.ok) {
+                    setWeeklyGenError(j.error ?? `HTTP ${res.status}`);
+                    return;
+                  }
+                  const guard = j.report?.qualityMeta?.privateBanker?.responseGuard;
+                  setWeeklyGenResult({
+                    preview: j.report?.preview ?? weeklyPreview,
+                    assistantPreview: j.report?.assistantPreview ?? j.assistantMessage?.content ?? "",
+                    pbSessionId: j.pbSessionId,
+                    pbTurnId: j.pbTurnId,
+                    deduplicated: j.deduplicated,
+                    missingSections: guard?.missingSections ?? [],
+                    policyPhraseWarnings: guard?.policyPhraseWarnings,
+                  });
+                  if (j.report?.preview) setWeeklyPreview(j.report.preview);
+                } catch (e: unknown) {
+                  setWeeklyGenError(e instanceof Error ? e.message : "생성 요청 실패");
+                } finally {
+                  setWeeklyGenLoading(false);
+                }
+              }}
+            >
+              {weeklyGenLoading ? "생성 중…" : "PB 주간 점검 생성"}
+            </button>
+            <Link href="/private-banker" className="text-xs text-violet-800 underline underline-offset-2">
+              PB 화면으로 이동
+            </Link>
+          </div>
+          {weeklyGenError ? <p className="mt-2 text-xs text-red-700">{weeklyGenError}</p> : null}
+          {weeklyGenResult ? (
+            <div className="mt-3 rounded border border-violet-100 bg-white/90 p-2 text-[11px] text-violet-950">
+              <p className="font-medium">PB 응답 요약</p>
+              {weeklyGenResult.deduplicated ? <p className="mt-1 text-amber-800">멱등 캐시에서 재사용된 응답입니다.</p> : null}
+              {weeklyGenResult.missingSections.length > 0 ? (
+                <p className="mt-1 text-amber-800">일부 섹션 누락: {weeklyGenResult.missingSections.join(", ")}</p>
+              ) : null}
+              {(weeklyGenResult.policyPhraseWarnings ?? []).length > 0 ? (
+                <p className="mt-1 text-amber-800">정책 문구 점검: {(weeklyGenResult.policyPhraseWarnings ?? []).join(", ")}</p>
+              ) : null}
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[10px] leading-snug text-slate-800">
+                {weeklyGenResult.assistantPreview.slice(0, 3500)}
+                {weeklyGenResult.assistantPreview.length > 3500 ? "…" : ""}
+              </pre>
+            </div>
+          ) : null}
+        </details>
       </section>
 
       <section className="grid gap-3 lg:grid-cols-2">

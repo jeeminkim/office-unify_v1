@@ -4,6 +4,13 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05 PB 주간 점검 리포트 (EVO-004 1차)
+
+- **Shared types:** `PbWeeklyReview` / `PbWeeklyReviewItem` / `PbWeeklyReviewQualityMeta`(+additive `privateBanker.responseGuard`).
+- **Server:** `privateBankerWeeklyReview.ts` — `user_key`만 사용, read-only 덱 구성(today-brief와 동일 파이프라인·**ops DB write 없음**), follow-up stale(tracking·14일+), 집중도 medium/high·적합성 경고를 섹션별로 조립; `sanitizeWeeklyReviewContext`(금액·userNote·detail 원문 제외); `privateBankerResponseGuard.ts` — 필수 섹션 헤더·정책 문구 누락 시 경고만(재요청 없음).
+- **API:** `GET /api/private-banker/weekly-review` — preview+sanitized context, **read-only**; `POST /api/private-banker/weekly-review` — `runPrivateBankerMessageWithDbIdempotency` 재사용, `pbSessionId`/`pbTurnId`/`report` additive.
+- **UI:** 대시보드 하단 「PB 주간 점검」`<details>` — 미리보기·생성 버튼·멱등·일부 섹션 누락 경고.
+
 ### 2026-05 보유 집중도·테마 리스크 참고 (EVO-005 1차)
 
 - **Shared types:** `ConcentrationRiskAssessment` / `TodayBriefConcentrationRiskSummary` / `buildConcentrationRiskCardHint`; `ObservationScoreFactorCode.portfolio_concentration`.

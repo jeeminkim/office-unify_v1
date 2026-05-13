@@ -8,6 +8,7 @@
 - 부가 단계 실패는 가능한 `degraded`로 처리하고 본문 생성 성공을 우선 유지한다.
 - read-only route에서 Research Center 개별 warning DB write를 늘리지 않는다.
 - secret/token/API key/prompt 원문은 ops detail에 저장하지 않는다(요약 preview + 길이 제한만 허용).
+- **PB 주간 점검(EVO-004):** `GET /api/private-banker/weekly-review`가 동일 사용자의 follow-up(open/tracking, stale 14일+ 집계)을 주간 미리보기에 포함한다. 미리보기·sanitize 경로에서 **detail_json·userNote 원문은 노출하지 않는다**(집계·제목·상태·코드만).
 
 ## 실패/품질 계약
 

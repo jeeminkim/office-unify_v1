@@ -9,12 +9,12 @@
 | EVO-001 | 투자자 프로필/적합성 게이트 | `#pb` `#today-brief` `#research-center` | discussing · scaffold shipped | `web_investor_profiles`(SQL), `/api/investor-profile`, Today Brief 덱·PB 맥락 연결 1차 반영. 고도화·운영 확정은 진행 중. 자동매매 없음. |
 | EVO-002 | Today Brief 개인화 점수 설명 강화 | `#today-brief` `#ux` | discussing · 1차 shipped | `scoreExplanationDetail`·`qualityMeta.todayCandidates.scoreExplanationSummary`, 덱 카드 「왜 이 후보?」. 고도화(산식 설명·요인 가중 시각화)는 진행 중. 매수 권유·자동 실행 없음. |
 | EVO-003 | Research Center follow-up 추적함 | `#research-center` `#pb` | discussing · 1차 shipped | PATCH·GET summary·정규화 dedupe·선택 DB unique index·archived/메모 UI·GET read-only 테스트·ops에 note 원문 미저장. 자동매매 없음. |
+| EVO-004 | PB 주간 점검 리포트 | `#pb` `#dashboard` | discussing · 1차 shipped | `GET|POST /api/private-banker/weekly-review`: GET 미리보기만(read-only); POST PB 멱등. Today Brief 덱·follow-up(stale 14일+)·집중도·적합성. `responseGuard`는 경고만. 자동 주문·리밸런싱 없음. |
 
 ## 아이디어 풀 (미정)
 
 | ID | 요약 | 영역 | 상태 | 메모 |
 |----|------|------|------|------|
-| EVO-004 | PB 주간 점검 리포트 | `#pb` `#ops` | draft | 이번 주 후보, follow-up, 리스크, 확인 질문 요약. |
 | EVO-005 | 보유 비중/테마 집중도 리스크 경고 | `#portfolio` `#pb` `#risk` | discussing · 1차 shipped + 안정화 | Today Brief 덱·`exposureBasis`·`themeMappingConfidence`·점수 설명·`qualityMeta` 요약; PB/Research send-to-pb `[보유 집중도 점검]` 질문형. `country_overweight`=시장 노출 휴리스틱. 임계는 `concentrationLimit`. 집중도는 점검 질문이며 매도·리밸런싱 지시 아님. 자동 실행 없음. |
 | EVO-006 | 미국 신호 empty reason 7일 히스토그램 | `#today-brief` `#ops` | draft | `us_signal_candidates_empty`의 primaryReason을 7일 단위로 집계. |
 | EVO-007 | 관심 테마별 ETF/국내주식 연결 맵 | `#sector-radar` `#today-brief` | draft | Sector Radar 대표 ETF와 국내 관심종목을 연결. |

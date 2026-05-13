@@ -291,6 +291,16 @@ export type {
 } from './concentrationRisk';
 export { buildConcentrationRiskCardHint } from './concentrationRisk';
 export type {
+  PbWeeklyReview,
+  PbWeeklyReviewDataQuality,
+  PbWeeklyReviewItem,
+  PbWeeklyReviewItemSeverity,
+  PbWeeklyReviewItemType,
+  PbWeeklyReviewProfileStatus,
+  PbWeeklyReviewQualityMeta,
+  PbWeeklyReviewResponseGuardMeta,
+} from './privateBankerWeeklyReview';
+export type {
   TrendAnalysisGenerateRequestBody,
   TrendAnalysisGenerateResponseBody,
   TrendAnalysisMeta,

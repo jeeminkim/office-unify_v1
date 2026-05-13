@@ -87,6 +87,13 @@
 - **대안:** 점수 산식 전체 공개
 - **링크:** 추후 기입
 
+### 2026-05-13 — PB 주간 점검은 read-only 미리보기와 PB 멱등 생성을 분리 (EVO-004 1차)
+
+- **결정:** 채택
+- **이유:** 매주 “이번 주 확인할 것”을 한 화면에서 정리하되, **조회 API에서 DB write·PB 호출을 하지 않는다.** POST만 기존 `web_persona_chat_requests` 멱등으로 PB 메시지를 남긴다. 응답 형식은 `responseGuard`로 누락 섹션·정책 문구를 경고만 한다(1차는 자동 재요청 없음). 금액·userNote·민감 메모는 sanitize/qualityMeta에 넣지 않는다.
+- **대안:** Today Brief GET에 주간 블록을 직접 합치기(단일 경로 ops write 위험·경계 혼동)
+- **링크:** `docs/ops/today_candidates.md`, `GET|POST /api/private-banker/weekly-review`
+
 ---
 
 (아래에 시간순으로 쌓는다.)

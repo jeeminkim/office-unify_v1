@@ -63,6 +63,10 @@
 - `primaryReason`이 없거나 구형 payload면 **`unknown`** 으로 집계.
 - **read-only** 경로에서 별도 DB write 없음.
 
+### PB 주간 점검과의 연결 (EVO-004)
+
+- `GET /api/private-banker/weekly-review`는 Today Brief와 동일한 **read-only** 후보 덱 파이프라인(내부 서버 유틸)으로 `primaryCandidateDeck` 요약·`scoreExplanationDetail.summary`·집중도·적합성을 주간 미리보기에 넣되, **`GET /api/dashboard/today-brief`의 ops write 경로는 호출하지 않는다.**
+
 ## 관심종목 추가
 
 - API: `POST /api/portfolio/watchlist/add-candidate`

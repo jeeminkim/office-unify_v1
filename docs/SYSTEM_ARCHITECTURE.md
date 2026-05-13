@@ -143,6 +143,7 @@
   - 운영 로그(`web_ops_events`, domain `portfolio_watchlist`) 적재
 - 기존 투자 도구 API
   - `/api/private-banker/message` — 요청 본문 앞에 투자자 프로필 맥락 + **보유 집중도 점검** 블록 additive(데이터 기준·KR/US 시장 노출·질문형; 자동매매·자동주문·자동 리밸런싱 금지; 금액·원문 미포함)
+  - `/api/private-banker/weekly-review` — **GET** 주간 점검 미리보기(`PbWeeklyReview`+sanitize context, read-only, PB 호출·DB write 없음); **POST** 동일 컨텍스트로 PB 멱등 생성(`idempotencyKey` 필수), 응답에 `weekOf`·`pbSessionId`·`pbTurnId`·`report`(preview+`qualityMeta.privateBanker.responseGuard` 경고만)
   - `/api/committee-discussion/*`
   - `/api/trend/generate`
   - `/api/research-center/generate`
