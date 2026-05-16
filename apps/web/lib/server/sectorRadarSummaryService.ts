@@ -30,6 +30,7 @@ import type {
 import {
   buildSectorRadarSummaryBatchDegradedDetail,
   buildSectorRadarSummaryBatchDegradedFingerprint,
+  collectSectorRadarBatchDegradedReasonCodes,
   OPS_AGGREGATE_WARNING_CODES,
   shouldLogSectorRadarSummaryBatchDegraded,
 } from '@/lib/server/opsAggregateWarnings';
@@ -177,9 +178,16 @@ export async function buildSectorRadarSummaryForUser(
     veryLowConfidenceCount: qualityMeta.sectorRadar.veryLowConfidence,
   });
   if (shouldAggregate) {
+    const batchReasonCodes = collectSectorRadarBatchDegradedReasonCodes({
+      noDataCount: qualityMeta.sectorRadar.noDataCount,
+      quoteMissingSectors: qualityMeta.sectorRadar.quoteMissingSectors,
+      veryLowConfidenceCount: qualityMeta.sectorRadar.veryLowConfidence,
+    });
+    const primaryReasonCode = batchReasonCodes[0] ?? "unknown";
     const fingerprint = buildSectorRadarSummaryBatchDegradedFingerprint({
       userKey: String(userKey),
       ymdKst,
+      reasonCode: primaryReasonCode,
     });
     opsLogging.attempted += 1;
     try {
@@ -197,7 +205,7 @@ export async function buildSectorRadarSummaryForUser(
         isExplicitRefresh: options?.isExplicitRefresh ?? false,
         isCritical: true,
         lastSeenAt: existing?.last_seen_at ?? null,
-        cooldownMinutes: 60 * 24,
+        cooldownMinutes: 60 * 6,
         writesUsed,
         maxWritesPerRequest: options?.maxOpsWritesPerRequest,
       });
@@ -217,6 +225,7 @@ export async function buildSectorRadarSummaryForUser(
           quoteMissingSectors: qualityMeta.sectorRadar.quoteMissingSectors,
           veryLowConfidenceCount: qualityMeta.sectorRadar.veryLowConfidence,
           totalSectors: qualityMeta.sectorRadar.totalSectors,
+          reasonCode: primaryReasonCode,
         });
         const write = await upsertOpsEventByFingerprint({
           userKey: String(userKey),

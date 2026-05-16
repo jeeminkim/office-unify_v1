@@ -136,7 +136,7 @@ describe("composeTodayBriefCandidates", () => {
       usKrSignalDiagnostics: diag ?? null,
       usMarketKrCount: 0,
     });
-    expect(enriched[0]?.displayMetrics?.scoreExplanation).toContain("매수 권유가 아닌");
+    expect(enriched[0]?.displayMetrics?.scoreExplanation).toMatch(/매수 권유가 아님|자동 주문이나 매수 권유/);
     expect(enriched[0]?.displayMetrics?.scoreExplanationDetail?.factors?.length).toBeGreaterThan(0);
     expect(enriched[0]?.displayMetrics?.scoreExplanationDetail?.finalScore).toBe(
       enriched[0]?.displayMetrics?.observationScore,

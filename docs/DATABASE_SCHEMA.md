@@ -1,5 +1,5 @@
 # 데이터베이스 스키마 (웹 앱 요약)
-SQL 적용 상태/우선순위는 `docs/ops/sql-application-status.md`를 함께 참고한다.
+SQL 적용 상태/우선순위는 `docs/ops/sql-application-status.md` 및 **`docs/sql/APPLY_ORDER.md`(append 스크립트 권장 순서·증상·인덱스 사전 점검)**를 함께 참고한다.
 
 
 웹 앱이 Supabase(Postgres)에 기대는 **문서화된 DDL 조각**과의 대응 관계를 정리한다. 전체 레거시(Discord 등) 스키마는 이 저장소 범위를 넘을 수 있다.
@@ -197,6 +197,8 @@ where routine_schema = 'public'
   - `today_candidates:${userKey}:${yyyyMMdd}:${candidateId}:detail_opened`
   - `today_candidates:${userKey}:${stockCode}:postprocess_success|postprocess_partial|postprocess_failed`
   - `today_candidates:${userKey}:${yyyyMMdd}:ops_summary_unavailable`
+  - **`today_candidate_snapshot:${userKey}:${yyyyMMdd}`** — Today Brief `primaryCandidateDeck` 노출 스냅샷(후보 `candidateId`·심볼·이름만). 일 단위 fingerprint upsert, 요청당 ops budget 준수. 7일 반복 노출 추정의 우선 신호.
+  - `today_candidate_exposed` — 단일 심볼 확장용(호환)
 - read-only 경로(`GET /api/dashboard/today-brief`)는 warning을 `qualityMeta`로 유지하고, 동일 no_data write는 날짜 단위(cooldown)로 제한한다.
 
 ## Decision Journal (비거래 의사결정 일지)
@@ -278,6 +280,7 @@ where routine_schema = 'public'
 - `/portfolio`는 `web_portfolio_holdings`를 읽어 현황(평가/비중/경고)을 보여주는 점검 화면이다.
 - **EVO-005:** `GET /api/dashboard/today-brief`는 동일 보유 테이블을 **read-only**로 읽어 후보별 `concentrationRiskAssessment`에 반영한다(신규 컬럼 없음; `sector`·시세 가용성은 휴리스틱에 사용).
 - `/portfolio-ledger`는 동일 테이블/`web_portfolio_watchlist`를 수정하는 관리 화면이다.
+- **간편 등록 보유(incomplete):** `qty`/`avg_price`가 NULL이거나 비양수일 수 있다(운영 DDL 메모: `docs/sql/append_portfolio_holdings_incomplete.sql`). `GET /api/portfolio/summary`·브리핑 등 금액 기반 집계는 해당 행을 제외하고 null을 ‘0주 활성 보유’로 오인하지 않는다.
 - `apply-trade`는 실제 주문 실행이 아닌 사후 기록 반영:
   - buy: 수량 증가 + 가중평균 단가 재계산
   - sell: 수량 감소(전량 시 삭제, 옵션으로 watchlist 이동) + 실현손익 이벤트 저장

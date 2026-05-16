@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "selfcheck": "node scripts/self-check.mjs",
     "research-center-smoke": "tsx scripts/research-center-smoke.ts",
+    "pre-live-smoke": "tsx scripts/pre-live-smoke.ts",
     "clean:win": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (Test-Path .next) { Remove-Item .next -Recurse -Force }; if (Test-Path node_modules) { Remove-Item node_modules -Recurse -Force }\""
   },
   "dependencies": {

@@ -35,6 +35,11 @@ export type ObservationScoreFactor = {
   message: string;
 };
 
+export type ObservationScoreRepeatExposureSource =
+  | 'exposed_event'
+  | 'detail_opened_fallback'
+  | 'none';
+
 export type ObservationScoreRepeatExposure = {
   candidateRepeatCount7d: number;
   lastShownAt?: string;
@@ -42,6 +47,8 @@ export type ObservationScoreRepeatExposure = {
   repeatReason: string;
   /** 저신뢰 후보를 강제로 끌어올리지 않고, 반복 노출만 진단·힌트로 남긴다. */
   diversityPolicyNote?: string;
+  /** 7일 반복 카운트 산출 경로: 브리핑 덱 노출 스냅샷 이벤트 우선, 없으면 상세 열람 로그. */
+  source?: ObservationScoreRepeatExposureSource;
 };
 
 export type ObservationScoreDiagnostics = {
@@ -55,6 +62,32 @@ export type ObservationScoreDiagnostics = {
   /** 데이터 부족으로 강한 조정을 하지 않았는지 */
   defaultScoreHold?: boolean;
 };
+
+/** 관찰 점수 산출 분해(매수 권유·자동 실행과 무관). additive */
+export type TodayCandidateScoreBreakdown = {
+  baseScore: number;
+  watchlistBoost: number;
+  sectorBoost: number;
+  usSignalBoost: number;
+  quoteQualityPenalty: number;
+  repeatExposurePenalty: number;
+  corporateActionPenalty: number;
+  riskPenalty: number;
+  finalScore: number;
+};
+
+export type TodayCandidateCardKind =
+  | 'watchlist_observation'
+  | 'sector_representative'
+  | 'us_signal_mapped'
+  | 'risk_review';
+
+/** 카드 상단 데이터 상태(요약 라벨). */
+export type TodayCandidateDataStatusUi =
+  | 'ok'
+  | 'partial_sparse'
+  | 'us_data_missing'
+  | 'quote_verify_needed';
 
 export type ObservationScoreExplanation = {
   /** 적합성 등 조정 전 관찰 점수(가능할 때만) */
@@ -81,10 +114,26 @@ export type TodayCandidateDisplayMetrics = {
   scoreExplanation: string;
   /** Additive: 요인별 관찰 점수 맥락(EVO-002). */
   scoreExplanationDetail?: ObservationScoreExplanation;
+  /** Additive: 점수 분해(품질·반복·리스크 감점 추적). */
+  scoreBreakdown?: TodayCandidateScoreBreakdown;
+  /** Additive: 후보 유형(관찰·복기용). */
+  candidateCardKind?: TodayCandidateCardKind;
+  /** Additive: 데이터 상태 요약. */
+  dataStatusUi?: TodayCandidateDataStatusUi;
+  /** Additive: 반복 노출(7일 스냅샷·노출 이벤트 기준). */
+  repeatedExposure?: boolean;
+  /** Additive: 주요 감점·주의 한 줄(중복 문구 제거 후). */
+  mainDeductionLabels?: string[];
+  /** Additive: 중립 관찰대(추천 톤 완화). */
+  neutralObservationCopy?: string;
 };
 
-/** 메인 3카드 슬롯(관심사 2 + Sector ETF 1). */
-export type TodayBriefDeckSlot = 'interest_stock' | 'sector_etf';
+/** 메인 3카드 슬롯(관심 + 섹터 ETF + 미국 신호 매핑·리스크 점검). */
+export type TodayBriefDeckSlot =
+  | 'interest_stock'
+  | 'sector_etf'
+  | 'us_signal_kr'
+  | 'risk_review';
 
 /**
  * 미국장 신호 → 한국 후보가 비었을 때 진단 코드(qualityMeta / ops).

@@ -22,7 +22,8 @@
 
 ## 로그 코드
 
-- `watchlist_sector_match_preview_success`
+- **미리보기(`preview`)** 경로에서는 운영 DB write와 **함께 쓰이는 `watchlist_sector_match_*` ops 기록을 남기지 않습니다**(읽기 전용). 실패 시 HTTP 본문 `actionHint`로만 안내합니다.
+- **적용(`apply`)** 시에만 아래 코드 등이 기록될 수 있습니다.
 - `watchlist_sector_match_apply_success`
 - `watchlist_sector_match_no_match`
 - `watchlist_sector_match_needs_review`

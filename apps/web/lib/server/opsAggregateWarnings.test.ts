@@ -5,6 +5,7 @@ import {
   buildTodayCandidatesSummaryBatchDegradedDetail,
   buildTodayCandidatesSummaryBatchDegradedFingerprint,
   buildTodayCandidatesUsMarketNoDataDetail,
+  buildTodayCandidatesUsMarketNoDataFingerprint,
   isReadOnlyCriticalWhitelistCode,
   OPS_READ_ONLY_CRITICAL_WHITELIST_CODES,
   OPS_TODAY_CANDIDATES_EVENT_CODES,
@@ -22,12 +23,13 @@ describe("opsAggregateWarnings whitelist + detail schema", () => {
     expect(isReadOnlyCriticalWhitelistCode("today_candidates_us_market_no_data")).toBe(true);
   });
 
-  it("builds stable sector_radar_summary_batch_degraded fingerprint (KST ymd + userKey)", () => {
+  it("builds stable sector_radar_summary_batch_degraded fingerprint (KST ymd + userKey + reasonCode)", () => {
     const fp = buildSectorRadarSummaryBatchDegradedFingerprint({
       userKey: "user123",
       ymdKst: "20260507",
+      reasonCode: "no_data_count_ge_3",
     });
-    expect(fp).toBe("sector_radar:user123:20260507:summary_batch_degraded");
+    expect(fp).toBe("sector_radar:user123:20260507:summary_batch_degraded:no_data_count_ge_3");
   });
 
   it("builds stable today_candidates_summary_batch_degraded fingerprint", () => {
@@ -38,7 +40,16 @@ describe("opsAggregateWarnings whitelist + detail schema", () => {
     expect(fp).toBe("today_candidates:user123:20260507:summary_batch_degraded");
   });
 
-  it("sector aggregate detail includes required fields", () => {
+  it("builds stable today_candidates_us_market_no_data fingerprint with slug", () => {
+    const fp = buildTodayCandidatesUsMarketNoDataFingerprint({
+      userKey: "user123",
+      ymdKst: "20260507",
+      emptyReasonSlug: "fetch_failed",
+    });
+    expect(fp).toBe("today_candidates:user123:20260507:us_market_no_data:fetch_failed");
+  });
+
+  it("sector aggregate detail includes reasonCode", () => {
     const d = buildSectorRadarSummaryBatchDegradedDetail({
       yyyyMMdd: "20260507",
       noDataCount: 4,
@@ -57,6 +68,7 @@ describe("opsAggregateWarnings whitelist + detail schema", () => {
     expect(d.reasonCodes.length > 0).toBe(true);
     expect(d.skippedIndividualWarnings).toBe(true);
     expect(d.reason).toBe("read_only_aggregate_degraded");
+    expect(d.reasonCode).toBe(d.reasonCodes[0]);
   });
 
   it("today candidates aggregate detail includes required fields", () => {

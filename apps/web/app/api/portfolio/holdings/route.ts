@@ -7,6 +7,24 @@ import {
   upsertPortfolioHolding,
 } from '@office-unify/supabase-access';
 import { logOpsEvent } from '@/lib/server/opsEventLogger';
+import {
+  isPortfolioHoldingsIncompleteNotNullViolation,
+  isPortfolioHoldingsTableMissingError,
+  portfolioHoldingsIncompleteSchemaJson,
+  portfolioHoldingsTableMissingJson,
+} from '@/lib/server/portfolioHoldingsSupabaseErrors';
+
+function extractSupabaseLikeError(e: unknown): { message?: string; code?: string } | null {
+  if (e && typeof e === 'object') {
+    const o = e as { message?: unknown; code?: unknown };
+    return {
+      message: typeof o.message === 'string' ? o.message : undefined,
+      code: typeof o.code === 'string' ? o.code : undefined,
+    };
+  }
+  if (e instanceof Error) return { message: e.message };
+  return null;
+}
 
 export async function GET() {
   const auth = await requirePersonaChatAuth();
@@ -38,8 +56,12 @@ export async function GET() {
     }
     return NextResponse.json({ ok: true, holdings, watchlist });
   } catch (e: unknown) {
+    const payload = extractSupabaseLikeError(e);
+    if (isPortfolioHoldingsTableMissingError(payload)) {
+      return NextResponse.json(portfolioHoldingsTableMissingJson(), { status: 503 });
+    }
     const message = e instanceof Error ? e.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, actionHint: '잠시 후 다시 시도하거나 운영 로그를 확인하세요.' }, { status: 500 });
   }
 }
 
@@ -172,6 +194,13 @@ export async function POST(req: Request) {
       recommendQuoteRefresh: !wantIncomplete,
     });
   } catch (e: unknown) {
+    const payload = extractSupabaseLikeError(e);
+    if (isPortfolioHoldingsTableMissingError(payload)) {
+      return NextResponse.json(portfolioHoldingsTableMissingJson(), { status: 503 });
+    }
+    if (isPortfolioHoldingsIncompleteNotNullViolation(payload)) {
+      return NextResponse.json(portfolioHoldingsIncompleteSchemaJson(), { status: 503 });
+    }
     const message = e instanceof Error ? e.message : 'Unknown error';
     void logOpsEvent({
       userKey: auth.userKey,
@@ -183,7 +212,7 @@ export async function POST(req: Request) {
       code: 'portfolio_holding_create_failed',
       symbol: `${market}:${symbol}`,
     });
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, actionHint: '입력값·스키마·중복 여부를 확인한 뒤 다시 시도하세요.' }, { status: 500 });
   }
 }
 

@@ -52,3 +52,31 @@ export function pickRulesFromUsSummary(summary: UsMarketMorningSummary): UsMarke
   const keys = new Set(summary.signals.map((s) => s.signalKey));
   return US_TO_KR_RULES.filter((r) => keys.has(r.usSignalKey));
 }
+
+export function collectUsKrSkippedReasons(
+  summary: UsMarketMorningSummary,
+  rulesMatched: UsMarketToKrCandidateRule[],
+  mappedKrCandidateCount: number,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if ((summary.signals?.length ?? 0) === 0) out.no_us_signals = (out.no_us_signals ?? 0) + 1;
+  if ((summary.signals?.length ?? 0) > 0 && rulesMatched.length === 0) {
+    out.no_rule_match_for_signals = (out.no_rule_match_for_signals ?? 0) + 1;
+  }
+  if (rulesMatched.length > 0 && mappedKrCandidateCount === 0) {
+    out.kr_candidates_filtered_to_zero = (out.kr_candidates_filtered_to_zero ?? 0) + 1;
+  }
+  return out;
+}
+
+export function usSignalMappingSourceEtfs(summary: UsMarketMorningSummary): string[] {
+  const keys = new Set<string>();
+  for (const a of summary.diagnostics?.representativeAnchors ?? []) {
+    keys.add((a.quoteSymbol ?? a.key ?? '').toUpperCase());
+  }
+  return [...keys].filter(Boolean).slice(0, 32);
+}
+
+export function usSignalMappingSourceIndexes(): string[] {
+  return ['SPY', 'QQQ', 'IWM'];
+}

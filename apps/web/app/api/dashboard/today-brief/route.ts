@@ -31,6 +31,15 @@ import {
   enrichPrimaryCandidateDeckScoreExplanations,
 } from '@/lib/server/todayBriefScoreExplanation';
 import { fetchTodayCandidateRepeatStats7d } from '@/lib/server/todayCandidateRepeatExposure';
+import { recordTodayCandidateDeckSnapshotIfNeeded } from '@/lib/server/todayCandidateDeckExposureOps';
+import { isHoldingCompleteForValuation } from '@/lib/server/portfolioHoldingValuation';
+import {
+  collectUsKrSkippedReasons,
+  pickRulesFromUsSummary,
+  usSignalMappingSourceEtfs,
+  usSignalMappingSourceIndexes,
+} from '@/lib/server/todayCandidateRules';
+import { applyRepeatExposurePenaltiesToDeck } from '@/lib/server/todayCandidateScoring';
 import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
 import {
   appendQualityMetaOpsEventTrace,
@@ -43,6 +52,7 @@ import {
   buildTodayCandidatesSummaryBatchDegradedFingerprint,
   buildTodayCandidatesUsMarketNoDataDetail,
   buildTodayCandidatesUsMarketNoDataFingerprint,
+  buildUsSignalCandidatesEmptyFingerprint,
   OPS_AGGREGATE_WARNING_CODES,
   OPS_TODAY_CANDIDATES_EVENT_CODES,
   shouldLogTodayCandidatesSummaryBatchDegraded,
@@ -103,12 +113,8 @@ export async function GET() {
         .limit(4),
     ]);
 
-    const holdingActiveForValuation = (h: (typeof holdings)[0]) => {
-      const qty = toNum(h.qty);
-      const avg = toNum(h.avg_price);
-      return qty > 0 && avg > 0;
-    };
-    const valuationHoldings = holdings.filter(holdingActiveForValuation);
+    const valuationHoldings = holdings.filter((h) => isHoldingCompleteForValuation(h.qty, h.avg_price));
+    const incompleteHoldingCount = Math.max(0, holdings.length - valuationHoldings.length);
 
     if (holdings.length === 0) {
       return NextResponse.json({
@@ -298,11 +304,22 @@ export async function GET() {
       limitPerSection: 5,
     });
 
+    const poolRepeatIds = [
+      ...todayCandidates.userContextCandidates.map((c) => c.candidateId),
+      ...todayCandidates.usMarketKrCandidates.map((c) => c.candidateId),
+    ];
+    const repeatByCandidateIdPool = await fetchTodayCandidateRepeatStats7d(
+      supabase,
+      String(auth.userKey),
+      poolRepeatIds,
+    );
+
     const composedDeck = composeTodayBriefCandidates({
       userContextCandidates: todayCandidates.userContextCandidates,
       sectorRadarSummary: todayCandidates.sectorRadarSummary,
       usMarketSummary: todayCandidates.usMarketSummary,
       usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
+      repeatByCandidateId: repeatByCandidateIdPool,
     });
 
     const themeConnectionInput = await loadThemeConnectionMapInput(supabase, auth.userKey, {
@@ -359,12 +376,15 @@ export async function GET() {
     primaryCandidateDeck = applyConcentrationRiskToPrimaryDeck(primaryCandidateDeck, profileForConcentration, exposureSnapshot);
     const concentrationRiskSummary = buildTodayBriefConcentrationRiskSummary(primaryCandidateDeck, exposureSnapshot);
 
+    primaryCandidateDeck = applyRepeatExposurePenaltiesToDeck(primaryCandidateDeck, repeatByCandidateIdPool);
+
     const profileStatusForScoreExplanation: 'missing' | 'partial' | 'complete' =
       suitabilitySummary && 'profileStatus' in suitabilitySummary ? suitabilitySummary.profileStatus : 'missing';
 
     const usKrSignalDiagnostics = diagnoseUsKrSignalCandidates({
       usMarketSummary: todayCandidates.usMarketSummary,
       usMarketKrCandidates: todayCandidates.usMarketKrCandidates,
+      rulesKrRawCount: todayCandidates.usKrMappedRawCount,
     });
 
     const usKrEmptyThemeBridgeHint = buildUsKrEmptyThemeBridgeHint({
@@ -373,17 +393,10 @@ export async function GET() {
       themeConnectionMap: themeConnectionMapFull,
     });
 
-    const repeatIds = primaryCandidateDeck.map((c) => c.candidateId);
-    const repeatByCandidateId = await fetchTodayCandidateRepeatStats7d(
-      supabase,
-      String(auth.userKey),
-      repeatIds,
-    );
-
     primaryCandidateDeck = enrichPrimaryCandidateDeckScoreExplanations(primaryCandidateDeck, {
       usKrSignalDiagnostics,
       usMarketKrCount: todayCandidates.usMarketKrCandidates.length,
-      repeatByCandidateId,
+      repeatByCandidateId: repeatByCandidateIdPool,
     });
     const scoreExplanationSummary = buildTodayBriefScoreExplanationSummary(
       primaryCandidateDeck,
@@ -407,9 +420,14 @@ export async function GET() {
       warnings: [],
     };
     if (!todayCandidates.usMarketSummary.available) {
+      const diag = todayCandidates.usMarketSummary.diagnostics;
+      const emptySlug = String(diag?.emptyReason ?? 'unknown')
+        .replace(/[^a-zA-Z0-9_-]+/g, '_')
+        .slice(0, 96);
       const fingerprint = buildTodayCandidatesUsMarketNoDataFingerprint({
         userKey: String(auth.userKey),
         ymdKst: ymd,
+        emptyReasonSlug: emptySlug || 'unknown',
       });
       const { data: existing } = await supabase
         .from('web_ops_events')
@@ -424,7 +442,7 @@ export async function GET() {
         isReadOnlyRoute: true,
         isCritical: true,
         lastSeenAt: existing?.last_seen_at ?? null,
-        cooldownMinutes: 60 * 24,
+        cooldownMinutes: 60 * 6,
         writesUsed: opsLogging.written,
         maxWritesPerRequest: OPS_LOG_MAX_WRITES_PER_REQUEST,
       });
@@ -443,6 +461,13 @@ export async function GET() {
           yyyyMMdd: ymd,
           usMarketWarnings: todayCandidates.usMarketSummary.warnings,
           loggingDecisionReason: decision.reason,
+          provider: diag?.provider,
+          requestedAt: diag?.requestedAt,
+          upstreamStatus: diag?.upstreamStatus ?? null,
+          emptyReason: diag?.emptyReason,
+          envMissing: diag?.envMissing,
+          timeoutMs: diag?.timeoutMs,
+          fallbackUsed: diag?.fallbackUsed,
         });
         const write = await upsertOpsEventByFingerprint({
           userKey: String(auth.userKey),
@@ -532,7 +557,12 @@ export async function GET() {
     }
 
     if (usKrSignalDiagnostics && todayCandidates.usMarketKrCandidates.length === 0) {
-      const fingerprint = `today_candidates:${auth.userKey}:${ymd}:us_signal_empty:${usKrSignalDiagnostics.primaryReason}`;
+      const rulesMatchedForOps = pickRulesFromUsSummary(todayCandidates.usMarketSummary);
+      const fingerprint = buildUsSignalCandidatesEmptyFingerprint({
+        userKey: String(auth.userKey),
+        ymdKst: ymd,
+        primaryReason: usKrSignalDiagnostics.primaryReason,
+      });
       const { data: existingUs } = await supabase
         .from('web_ops_events')
         .select('last_seen_at')
@@ -572,6 +602,17 @@ export async function GET() {
             primaryReason: usKrSignalDiagnostics.primaryReason,
             reasonCodes: usKrSignalDiagnostics.reasonCodes,
             krCandidateCount: 0,
+            usSignalCount: todayCandidates.usMarketSummary.signals.length,
+            mappingRuleCount: rulesMatchedForOps.length,
+            mappedKrCandidateCount: todayCandidates.usMarketKrCandidates.length,
+            skippedReasons: collectUsKrSkippedReasons(
+              todayCandidates.usMarketSummary,
+              rulesMatchedForOps,
+              todayCandidates.usMarketKrCandidates.length,
+            ),
+            inputThemes: todayCandidates.usMarketSummary.signals.map((s) => s.label),
+            sourceEtfs: usSignalMappingSourceEtfs(todayCandidates.usMarketSummary),
+            sourceIndexes: usSignalMappingSourceIndexes(),
           },
           fingerprint,
           status: 'open',
@@ -615,6 +656,42 @@ export async function GET() {
         if (row.code === 'today_candidate_watchlist_add_postprocess_failed') postProcessFailed += 1;
       }
     }
+    await recordTodayCandidateDeckSnapshotIfNeeded({
+      supabase,
+      userKey: String(auth.userKey),
+      ymdKst: ymd,
+      deck: primaryCandidateDeck,
+      writesUsed: opsLogging.written,
+      opsLogging,
+    });
+
+    const usDiagForMeta = todayCandidates.usMarketSummary.diagnostics;
+    const usCoverage = {
+      status:
+        todayCandidates.usMarketSummary.available && usDiagForMeta?.coverageStatus !== 'degraded'
+          ? ('ok' as const)
+          : ('degraded' as const),
+      quoteFailure: usDiagForMeta?.fetchFailed === true || (usDiagForMeta?.yahooQuoteResultCount ?? 0) === 0,
+      krMappingFailure:
+        todayCandidates.usMarketKrCandidates.length === 0 && (todayCandidates.usMarketSummary.signals?.length ?? 0) > 0,
+      message:
+        todayCandidates.usMarketSummary.available && usDiagForMeta?.coverageStatus !== 'degraded'
+          ? undefined
+          : '미국 데이터가 부족합니다. 미국 신호 기반 후보는 제한되거나 비어 있을 수 있습니다.',
+    };
+    const scoreBreakdownSummary = {
+      avgFinalScore:
+        primaryCandidateDeck.length > 0
+          ? Math.round(
+              primaryCandidateDeck.reduce((acc, c) => acc + (c.scoreBreakdown?.finalScore ?? c.score), 0) /
+                primaryCandidateDeck.length,
+            )
+          : undefined,
+      repeatPenaltyAppliedCount: primaryCandidateDeck.filter((c) => (c.scoreBreakdown?.repeatExposurePenalty ?? 0) > 0)
+        .length,
+      corporateRiskGatedCount: primaryCandidateDeck.filter((c) => c.corporateActionRisk?.active).length,
+    };
+
     const response: TodayBriefWithCandidatesResponse = {
       ok: true,
       generatedAt: new Date().toISOString(),
@@ -634,6 +711,7 @@ export async function GET() {
       qualityMeta: {
         todayCandidates: {
           generatedAt: new Date().toISOString(),
+          incompleteHoldingCount,
           userContextCount: todayCandidates.userContextCandidates.length,
           usMarketKrCount: todayCandidates.usMarketKrCandidates.length,
           usMarketDataAvailable: todayCandidates.usMarketSummary.available,
@@ -660,15 +738,20 @@ export async function GET() {
           themeConnectionSummary,
           themeConnectionMap,
           ...(usKrEmptyThemeBridgeHint ? { usKrEmptyThemeBridgeHint } : {}),
+          usCoverage,
+          scoreBreakdownSummary,
         },
       },
     };
-    if (!todayCandidates.usMarketSummary.available || todayCandidates.usMarketSummary.conclusion === 'no_data') {
+    if (!todayCandidates.usMarketSummary.available || todayCandidates.usMarketSummary.conclusion === 'no_data' || usCoverage.status === 'degraded') {
       response.lines = [
         ...response.lines.slice(0, 2),
         {
           title: '미국시장 데이터 상태',
-          body: '미국시장 데이터가 충분하지 않아 미국장 기반 한국주식 후보는 제한적으로 표시합니다. 오늘은 기존 관심종목과 Sector Radar 신뢰도 중심으로 확인하세요.',
+          body:
+            usCoverage.status === 'degraded' && todayCandidates.usMarketSummary.available
+              ? '미국 데이터가 일부만 확인되어 미국 신호·한국 후보는 보수적으로 표시합니다. US 커버리지는 degraded입니다.'
+              : '미국시장 데이터가 충분하지 않아 미국장 기반 한국주식 후보는 제한적으로 표시합니다. 오늘은 기존 관심종목과 Sector Radar 신뢰도 중심으로 확인하세요.',
           severity: 'warn',
           source: ['us_market_morning'],
         },

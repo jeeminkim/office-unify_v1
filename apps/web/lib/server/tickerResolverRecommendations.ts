@@ -30,6 +30,8 @@ export type TickerResolverRowDto = {
   message?: string;
 };
 
+export type TickerResolverCandidateSheetStatus = CandidateReadStatus | 'timeout';
+
 export type TickerResolverRecommendationDto = {
   targetType: 'holding' | 'watchlist';
   market: string;
@@ -56,10 +58,12 @@ export type TickerResolverRecommendationDto = {
   };
   candidates: Array<{
     ticker: string;
-    status: CandidateReadStatus;
+    status: TickerResolverCandidateSheetStatus;
     parsedPrice?: number;
     googleName?: string;
     confidence: string;
+    /** timeout·실패 등으로 시트 적용이 막힌 이유(additive) */
+    applyDisabledReason?: string;
   }>;
 };
 

@@ -7,7 +7,6 @@ import { mapWatchlistRowToSectorMatchInput, matchWatchlistSector } from '@/lib/s
 import { listRelatedAnchorsBySectorName } from '@/lib/server/sectorRadarRegistry';
 
 const WATCHLIST_SECTOR_WARNING_CODES = {
-  SECTOR_MATCH_PREVIEW_SUCCESS: 'watchlist_sector_match_preview_success',
   SECTOR_MATCH_APPLY_SUCCESS: 'watchlist_sector_match_apply_success',
   SECTOR_MATCH_NO_MATCH: 'watchlist_sector_match_no_match',
   SECTOR_MATCH_NEEDS_REVIEW: 'watchlist_sector_match_needs_review',
@@ -36,10 +35,27 @@ type WatchlistDbRow = {
   sector_match_source?: string | null;
 };
 
+type UnmatchedReasonKey =
+  | 'keyword_confidence_low'
+  | 'registry_missing'
+  | 'sector_radar_no_data'
+  | 'quote_missing'
+  | 'already_applied_but_score_low'
+  | 'other';
+
+function classifyKeywordUnmatched(row: WatchlistDbRow, res: WatchlistSectorMatchResult, minConf: number): UnmatchedReasonKey {
+  if (!row.google_ticker?.trim()) return 'quote_missing';
+  if ((res.relatedAnchors?.length ?? 0) === 0) return 'sector_radar_no_data';
+  if (res.confidence < minConf) return 'keyword_confidence_low';
+  if (res.source === 'none') return 'registry_missing';
+  return 'other';
+}
+
 function empty(mode: Mode): WatchlistSectorMatchApiResponse {
   return {
     ok: true,
     mode,
+    ...(mode === 'preview' ? { previewReadOnly: true } : {}),
     total: 0,
     matched: 0,
     applied: 0,
@@ -91,6 +107,8 @@ export async function POST(req: Request) {
     const out = empty(mode);
     out.ok = false;
     out.warnings.push('watchlist_sector_match_failed: supabase not configured');
+    out.actionHint =
+      '데이터베이스 연결이 준비되지 않았습니다. 환경 변수를 확인하고, 스키마는 docs/sql/APPLY_ORDER.md의 순서대로 적용됐는지 점검해 보세요. (관찰·라벨 보정용 요청이며 자동 주문 없음)';
     return NextResponse.json(out, { status: 503 });
   }
   const opsState = { attempted: 0, saved: 0, failed: 0, warnings: [] as string[] };
@@ -128,6 +146,8 @@ export async function POST(req: Request) {
     let needsReview = 0;
     let lowConfidence = 0;
     let manualProtected = 0;
+    let applyPossibleCount = 0;
+    const unmatchedReasonCounts: Partial<Record<UnmatchedReasonKey, number>> = {};
     const warnings: string[] = [];
     for (const row of rows) {
       const hasAutoMeta = Boolean(row.sector_match_source || row.sector_match_confidence != null);
@@ -147,10 +167,29 @@ export async function POST(req: Request) {
       if (res.status === 'no_match') noMatch += 1;
       if (res.needsReview) needsReview += 1;
       if (res.confidence < minConfidenceToApply) lowConfidence += 1;
+
+      const manualProtectedPreview =
+        row.sector_is_manual === true || (Boolean(row.sector?.trim()) && !hasAutoMeta);
+      if (
+        mode === 'preview' &&
+        res.matchedSector &&
+        !res.needsReview &&
+        res.confidence >= minConfidenceToApply &&
+        !manualProtectedPreview
+      ) {
+        applyPossibleCount += 1;
+      }
+      if (!res.matchedSector) {
+        const ur = classifyKeywordUnmatched(row, res, minConfidenceToApply);
+        unmatchedReasonCounts[ur] = (unmatchedReasonCounts[ur] ?? 0) + 1;
+      }
+
       if (mode === 'apply') {
         const protectedManual = row.sector_is_manual === true || (Boolean(row.sector?.trim()) && !hasAutoMeta);
         if (protectedManual) {
           manualProtected += 1;
+          unmatchedReasonCounts.already_applied_but_score_low =
+            (unmatchedReasonCounts.already_applied_but_score_low ?? 0) + 1;
           await ops(
             WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_MANUAL_PROTECTED,
             'manual sector protected; auto match skipped',
@@ -210,62 +249,64 @@ export async function POST(req: Request) {
           );
         }
       }
-      if (res.status === 'no_match') {
-        await ops(
-          WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_NO_MATCH,
-          'watchlist sector no match',
-          { feature: 'watchlist_sector_match', mode, symbol: `${row.market}:${row.symbol}`, name: row.name },
-          `watchlist_sector:${auth.userKey}:${row.market}:${row.symbol}:${WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_NO_MATCH}`,
-        );
-      } else if (res.needsReview) {
-        await ops(
-          WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_NEEDS_REVIEW,
-          'watchlist sector needs review',
-          { feature: 'watchlist_sector_match', mode, symbol: `${row.market}:${row.symbol}`, name: row.name, confidence: res.confidence },
-          `watchlist_sector:${auth.userKey}:${row.market}:${row.symbol}:${WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_NEEDS_REVIEW}`,
-        );
-      } else if (res.matchedSector && res.confidence < minConfidenceToApply) {
-        await ops(
-          WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_LOW_CONFIDENCE,
-          'watchlist sector low confidence',
-          { feature: 'watchlist_sector_match', mode, symbol: `${row.market}:${row.symbol}`, name: row.name, confidence: res.confidence },
-          `watchlist_sector:${auth.userKey}:${row.market}:${row.symbol}:${WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_LOW_CONFIDENCE}`,
-        );
-      }
-      if (res.matchedSector) {
-        const hasAnchors = (res.relatedAnchors?.length ?? 0) > 0;
-        await logOpsEvent({
-          userKey: auth.userKey,
-          eventType: hasAnchors ? 'info' : 'warning',
-          severity: hasAnchors ? 'info' : 'warn',
-          domain: hasAnchors ? 'sector_radar' : 'portfolio_watchlist',
-          route: '/api/portfolio/watchlist/sector-match',
-          component: 'watchlist-sector-match',
-          code: hasAnchors ? SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_ATTACHED : SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_EMPTY,
-          message: hasAnchors ? 'related anchors attached for matched sector' : 'related anchors empty for matched sector',
-          detail: {
-            feature: 'watchlist_sector_match',
-            mode,
-            symbol: `${row.market}:${row.symbol}`,
-            name: row.name,
-            matchedSector: res.matchedSector,
-            anchorCount: res.relatedAnchors?.length ?? 0,
-          },
-          fingerprint: hasAnchors
-            ? `portfolio_watchlist:${auth.userKey}:${row.market}:${row.symbol}:related_anchors:${SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_ATTACHED}`
-            : `portfolio_watchlist:${auth.userKey}:${row.market}:${row.symbol}:related_anchors:${SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_EMPTY}`,
-        }).catch(() => undefined);
+      if (mode === 'apply') {
+        if (res.status === 'no_match') {
+          await ops(
+            WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_NO_MATCH,
+            'watchlist sector no match',
+            { feature: 'watchlist_sector_match', mode, symbol: `${row.market}:${row.symbol}`, name: row.name },
+            `watchlist_sector:${auth.userKey}:${row.market}:${row.symbol}:${WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_NO_MATCH}`,
+          );
+        } else if (res.needsReview) {
+          await ops(
+            WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_NEEDS_REVIEW,
+            'watchlist sector needs review',
+            { feature: 'watchlist_sector_match', mode, symbol: `${row.market}:${row.symbol}`, name: row.name, confidence: res.confidence },
+            `watchlist_sector:${auth.userKey}:${row.market}:${row.symbol}:${WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_NEEDS_REVIEW}`,
+          );
+        } else if (res.matchedSector && res.confidence < minConfidenceToApply) {
+          await ops(
+            WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_LOW_CONFIDENCE,
+            'watchlist sector low confidence',
+            { feature: 'watchlist_sector_match', mode, symbol: `${row.market}:${row.symbol}`, name: row.name, confidence: res.confidence },
+            `watchlist_sector:${auth.userKey}:${row.market}:${row.symbol}:${WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_LOW_CONFIDENCE}`,
+          );
+        }
+        if (res.matchedSector) {
+          const hasAnchors = (res.relatedAnchors?.length ?? 0) > 0;
+          await logOpsEvent({
+            userKey: auth.userKey,
+            eventType: hasAnchors ? 'info' : 'warning',
+            severity: hasAnchors ? 'info' : 'warn',
+            domain: hasAnchors ? 'sector_radar' : 'portfolio_watchlist',
+            route: '/api/portfolio/watchlist/sector-match',
+            component: 'watchlist-sector-match',
+            code: hasAnchors ? SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_ATTACHED : SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_EMPTY,
+            message: hasAnchors ? 'related anchors attached for matched sector' : 'related anchors empty for matched sector',
+            detail: {
+              feature: 'watchlist_sector_match',
+              mode,
+              symbol: `${row.market}:${row.symbol}`,
+              name: row.name,
+              matchedSector: res.matchedSector,
+              anchorCount: res.relatedAnchors?.length ?? 0,
+            },
+            fingerprint: hasAnchors
+              ? `portfolio_watchlist:${auth.userKey}:${row.market}:${row.symbol}:related_anchors:${SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_ATTACHED}`
+              : `portfolio_watchlist:${auth.userKey}:${row.market}:${row.symbol}:related_anchors:${SECTOR_RADAR_WARNING_CODES.RELATED_ANCHORS_EMPTY}`,
+          }).catch(() => undefined);
+        }
       }
     }
-    const code = mode === 'preview'
-      ? WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_PREVIEW_SUCCESS
-      : WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_APPLY_SUCCESS;
-    await ops(
-      code,
-      `watchlist sector match ${mode} completed`,
-      { feature: 'watchlist_sector_match', mode, total: rows.length, matched, applied, needsReview, noMatch },
-      `watchlist_sector:${auth.userKey}:batch:${mode}:${code}`,
-    );
+    if (mode === 'apply') {
+      const code = WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_APPLY_SUCCESS;
+      await ops(
+        code,
+        `watchlist sector match ${mode} completed`,
+        { feature: 'watchlist_sector_match', mode, total: rows.length, matched, applied, needsReview, noMatch },
+        `watchlist_sector:${auth.userKey}:batch:${mode}:${code}`,
+      );
+    }
     const out = empty(mode);
     out.total = rows.length;
     out.matched = matched;
@@ -278,12 +319,24 @@ export async function POST(req: Request) {
       mode === 'apply'
         ? Math.max(0, matched - applied) + manualProtected + needsReview + lowConfidence
         : Math.max(0, rows.length - matched);
+    const appliedAtIso = mode === 'apply' ? new Date().toISOString() : undefined;
+    const unmatchedReasonFiltered: NonNullable<
+      NonNullable<WatchlistSectorMatchApiResponse['qualityMeta']>['keywordMatch']
+    >['unmatchedReasonCounts'] = {};
+    for (const [k, v] of Object.entries(unmatchedReasonCounts)) {
+      if ((v ?? 0) > 0) {
+        (unmatchedReasonFiltered as Record<string, number>)[k] = v!;
+      }
+    }
     const keywordMatch = {
       previewCount: mode === 'preview' ? rows.length : 0,
+      ...(mode === 'preview' ? { applyPossibleCount } : {}),
+      needsReviewCount: needsReview,
       appliedCount: mode === 'apply' ? applied : 0,
       skippedCount,
       unmatchedCount: noMatch,
-      ...(mode === 'apply' ? { lastAppliedAt: new Date().toISOString() } : {}),
+      stillUnmatchedCount: noMatch,
+      ...(appliedAtIso ? { lastAppliedAt: appliedAtIso, appliedAt: appliedAtIso } : {}),
       mappingVersion: 'watchlist_sector_matcher_v1',
       mode,
       reason:
@@ -292,6 +345,7 @@ export async function POST(req: Request) {
           : applied > 0
             ? 'apply_success'
             : 'apply_noop_or_skipped',
+      ...(Object.keys(unmatchedReasonFiltered).length ? { unmatchedReasonCounts: unmatchedReasonFiltered } : {}),
     };
     out.qualityMeta = {
       sectorMatch: {
@@ -313,15 +367,24 @@ export async function POST(req: Request) {
     };
     return NextResponse.json(out satisfies WatchlistSectorMatchApiResponse);
   } catch (e: unknown) {
-    await ops(
-      WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_FAILED,
-      'watchlist sector match failed',
-      { feature: 'watchlist_sector_match', mode, reason: e instanceof Error ? e.message : 'unknown' },
-      `watchlist_sector:${auth.userKey}:batch:${mode}:${WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_FAILED}`,
-    );
+    const errMsg = e instanceof Error ? e.message : 'unknown';
+    if (mode === 'apply') {
+      await ops(
+        WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_FAILED,
+        'watchlist sector match failed',
+        { feature: 'watchlist_sector_match', mode, reason: errMsg },
+        `watchlist_sector:${auth.userKey}:batch:${mode}:${WATCHLIST_SECTOR_WARNING_CODES.SECTOR_MATCH_FAILED}`,
+      );
+    } else if (process.env.NODE_ENV !== 'production') {
+      console.warn('[watchlist-sector-match] preview failed (no ops write)', errMsg);
+    }
     const out = empty(mode);
     out.ok = false;
     out.warnings.push(`watchlist_sector_match_failed:${e instanceof Error ? e.message.slice(0, 200) : 'unknown'}`);
+    out.actionHint =
+      mode === 'preview'
+        ? `섹터 키워드 미리보기를 마치지 못했습니다. 네트워크와 로그인 상태를 확인한 뒤 다시 시도해 보세요. (${errMsg.slice(0, 120)})`
+        : `섹터 키워드 적용 중 오류가 있었습니다. 잠시 후 다시 시도하거나 docs/sql/APPLY_ORDER.md와 DB 스키마를 확인해 보세요. (${errMsg.slice(0, 120)})`;
     out.qualityMeta = {
       sectorMatch: {
         total: out.total,

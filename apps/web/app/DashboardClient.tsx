@@ -15,6 +15,8 @@ import {
 } from "@/lib/sectorRadarWarningMessages";
 import {
   buildConcentrationRiskCardHint,
+  type TodayCandidateCardKind,
+  type TodayCandidateDataStatusUi,
   usKrEmptyReasonHistogramReasonLabel,
 } from "@office-unify/shared-types";
 import type {
@@ -29,6 +31,37 @@ import type {
 } from "@office-unify/shared-types";
 import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import { filterCandidatesByConfidence } from "@/lib/todayCandidateDataQuality";
+import { readLastTickerResolverRequestId } from "@/lib/lastTickerResolverRequestId";
+
+function candidateCardKindLabel(k: TodayCandidateCardKind | undefined): string {
+  switch (k) {
+    case "watchlist_observation":
+      return "관심종목";
+    case "sector_representative":
+      return "섹터 대표";
+    case "us_signal_mapped":
+      return "미국 신호";
+    case "risk_review":
+      return "리스크 점검";
+    default:
+      return "관찰";
+  }
+}
+
+function candidateDataStatusLabel(s: TodayCandidateDataStatusUi | undefined): string {
+  switch (s) {
+    case "ok":
+      return "정상";
+    case "partial_sparse":
+      return "일부 부족";
+    case "us_data_missing":
+      return "미국 데이터 없음";
+    case "quote_verify_needed":
+      return "시세 확인 필요";
+    default:
+      return "—";
+  }
+}
 
 type StatusSection = {
   key: string;
@@ -229,6 +262,18 @@ export function DashboardClient() {
   const [weeklyPreview, setWeeklyPreview] = useState<PbWeeklyReview | null>(null);
   const [weeklyRecommendedIdempotencyKey, setWeeklyRecommendedIdempotencyKey] = useState<string | null>(null);
   const [weeklyPreviewLoading, setWeeklyPreviewLoading] = useState(false);
+  const [weeklySqlReadiness, setWeeklySqlReadiness] = useState<{
+    investorProfileTableMissing?: boolean;
+    researchFollowupTableMissing?: boolean;
+    actionHints?: string[];
+  } | null>(null);
+  const [portfolioHealth, setPortfolioHealth] = useState<{ incompleteHoldingCount: number } | null>(null);
+  const [liveOpsOpen, setLiveOpsOpen] = useState(false);
+  const [liveOpsTickerJson, setLiveOpsTickerJson] = useState<Record<string, unknown> | null>(null);
+  const [liveOpsTickerErr, setLiveOpsTickerErr] = useState<string | null>(null);
+  const [liveOpsHoldingsHint, setLiveOpsHoldingsHint] = useState<string | null>(null);
+  const [liveOpsRetroHint, setLiveOpsRetroHint] = useState<string | null>(null);
+  const liveOpsTickerReqId = readLastTickerResolverRequestId();
   const [weeklyGenLoading, setWeeklyGenLoading] = useState(false);
   const [weeklyGenError, setWeeklyGenError] = useState<string | null>(null);
   const [weeklyGenResult, setWeeklyGenResult] = useState<{
@@ -327,16 +372,26 @@ export function DashboardClient() {
       setTodayOpsSummary(todayOpsJson);
       setError(null);
       try {
-        const [sectorRes, watchRes, djRes, opsSumRes] = await Promise.all([
+        const [sectorRes, watchRes, djRes, opsSumRes, portfolioSummaryRes] = await Promise.all([
           fetch("/api/sector-radar/summary", { credentials: "same-origin" }),
           fetch("/api/sector-radar/watchlist-candidates", { credentials: "same-origin" }),
           fetch("/api/decision-journal/review-due", { credentials: "same-origin" }),
           fetch("/api/ops/summary", { credentials: "same-origin" }),
+          fetch("/api/portfolio/summary", { credentials: "same-origin" }),
         ]);
         const sectorJson = (await sectorRes.json()) as SectorRadarSummaryResponse;
         const watchJson = (await watchRes.json()) as SectorWatchlistCandidateResponse;
         const djJson = (await djRes.json()) as { count?: number; items?: unknown[] };
         const opsSumJson = (await opsSumRes.json()) as { openErrorCount?: number };
+        const portfolioSummaryJson = (await portfolioSummaryRes.json()) as {
+          ok?: boolean;
+          dataQuality?: { incompleteHoldingCount?: number };
+        };
+        if (portfolioSummaryRes.ok && portfolioSummaryJson.ok === true && typeof portfolioSummaryJson.dataQuality?.incompleteHoldingCount === "number") {
+          setPortfolioHealth({ incompleteHoldingCount: portfolioSummaryJson.dataQuality.incompleteHoldingCount });
+        } else {
+          setPortfolioHealth(null);
+        }
         if (Array.isArray(sectorJson?.sectors)) setSectorRadar(sectorJson);
         else setSectorRadar(null);
         if (watchRes.ok && Array.isArray(watchJson?.candidates)) setWatchQueue(watchJson);
@@ -350,6 +405,7 @@ export function DashboardClient() {
         setWatchQueue(null);
         setDecisionReviewDueCount(null);
         setOpsOpenErrorCount(null);
+        setPortfolioHealth(null);
       }
       setWeeklyPreviewLoading(true);
       try {
@@ -359,6 +415,12 @@ export function DashboardClient() {
           preview?: PbWeeklyReview;
           recommendedIdempotencyKey?: string;
           error?: string;
+          sqlReadiness?: {
+            investorProfileTableMissing?: boolean;
+            researchFollowupTableMissing?: boolean;
+            actionHints?: string[];
+          };
+          context?: { investorProfileTableMissing?: boolean; followupTableMissing?: boolean };
         };
         if (wRes.ok && wj.ok && wj.preview) {
           setWeeklyPreview(wj.preview);
@@ -367,13 +429,26 @@ export function DashboardClient() {
               ? wj.recommendedIdempotencyKey
               : null,
           );
+          if (wj.sqlReadiness) {
+            setWeeklySqlReadiness(wj.sqlReadiness);
+          } else if (wj.context) {
+            setWeeklySqlReadiness({
+              investorProfileTableMissing: Boolean(wj.context.investorProfileTableMissing),
+              researchFollowupTableMissing: Boolean(wj.context.followupTableMissing),
+              actionHints: [],
+            });
+          } else {
+            setWeeklySqlReadiness(null);
+          }
         } else {
           setWeeklyPreview(null);
           setWeeklyRecommendedIdempotencyKey(null);
+          setWeeklySqlReadiness(null);
         }
       } catch {
         setWeeklyPreview(null);
         setWeeklyRecommendedIdempotencyKey(null);
+        setWeeklySqlReadiness(null);
       } finally {
         setWeeklyPreviewLoading(false);
       }
@@ -383,6 +458,68 @@ export function DashboardClient() {
       setReloading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!liveOpsOpen) return;
+    let cancelled = false;
+    setLiveOpsTickerErr(null);
+    setLiveOpsHoldingsHint(null);
+    setLiveOpsRetroHint(null);
+    void (async () => {
+      const rid = readLastTickerResolverRequestId();
+      if (rid) {
+        try {
+          const res = await fetch(`/api/portfolio/ticker-resolver/status?requestId=${encodeURIComponent(rid)}`, {
+            credentials: "same-origin",
+          });
+          const j = (await res.json()) as Record<string, unknown>;
+          if (cancelled) return;
+          if (res.ok) {
+            setLiveOpsTickerJson(j);
+            setLiveOpsTickerErr(null);
+          } else {
+            setLiveOpsTickerJson(null);
+            setLiveOpsTickerErr(typeof j.error === "string" ? j.error : `HTTP ${res.status}`);
+          }
+        } catch (e: unknown) {
+          if (!cancelled) {
+            setLiveOpsTickerJson(null);
+            setLiveOpsTickerErr(e instanceof Error ? e.message : "status fetch failed");
+          }
+        }
+      } else {
+        setLiveOpsTickerJson(null);
+        setLiveOpsTickerErr(null);
+      }
+      try {
+        const hr = await fetch("/api/portfolio/holdings", { credentials: "same-origin" });
+        const hj = (await hr.json()) as { code?: string; actionHint?: string };
+        if (cancelled) return;
+        if (!hr.ok && hj.code === "portfolio_holdings_table_missing") {
+          setLiveOpsHoldingsHint(hj.actionHint ?? "보유 테이블 미적용 가능성");
+        } else {
+          setLiveOpsHoldingsHint(null);
+        }
+      } catch {
+        if (!cancelled) setLiveOpsHoldingsHint(null);
+      }
+      try {
+        const dr = await fetch("/api/decision-retrospectives", { credentials: "same-origin" });
+        const dj = (await dr.json()) as { code?: string; actionHint?: string };
+        if (cancelled) return;
+        if (!dr.ok && dj.code === "decision_retrospective_table_missing") {
+          setLiveOpsRetroHint(dj.actionHint ?? "판단 복기 테이블 미적용 가능성");
+        } else {
+          setLiveOpsRetroHint(null);
+        }
+      } catch {
+        if (!cancelled) setLiveOpsRetroHint(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [liveOpsOpen]);
 
   const loadDecisionRetrospectives = useCallback(async (f: DecisionRetroFilter) => {
     setRetroLoading(true);
@@ -831,8 +968,15 @@ export function DashboardClient() {
         ) : null}
         {(todayBrief?.primaryCandidateDeck?.length ?? 0) > 0 ? (
           <div className="mt-3">
-            <p className="text-xs font-semibold text-violet-950">오늘의 관찰 후보 (관심 상위 2 · 섹터 대표 ETF 1)</p>
-            <p className="mt-0.5 text-[10px] text-violet-800/90">매수 권유 아님 · 관찰 후보입니다.</p>
+            <p className="text-xs font-semibold text-violet-950">오늘의 관찰 후보 (다양성 · 관찰 전용)</p>
+            <p className="mt-0.5 text-[10px] text-violet-800/90">매수 권유 아님 · 관찰·복기·리스크 점검용입니다.</p>
+            {todayBrief?.qualityMeta?.todayCandidates?.usCoverage?.status === "degraded" ? (
+              <p className="mt-2 rounded border border-amber-200 bg-amber-50/90 p-2 text-[11px] text-amber-950">
+                미국 데이터 없음·부분 확인:{" "}
+                {todayBrief.qualityMeta.todayCandidates.usCoverage.message ??
+                  "미국 ETF·지수 커버리지가 제한됩니다. 미국 신호 연동 후보는 비거나 보수적으로 표시될 수 있습니다."}
+              </p>
+            ) : null}
             {todayBrief?.qualityMeta?.todayCandidates?.concentrationRiskSummary ? (
               <details className="mt-2 rounded border border-amber-100 bg-amber-50/60 p-2 text-[10px] text-amber-950">
                 <summary className="cursor-pointer select-none font-medium text-amber-950">
@@ -928,6 +1072,31 @@ export function DashboardClient() {
                   <p className="mt-1 text-[11px] text-slate-800">
                     관찰 점수 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
                   </p>
+                  {c.displayMetrics?.candidateCardKind ? (
+                    <p className="mt-0.5 text-[10px] text-slate-600">
+                      유형: {candidateCardKindLabel(c.displayMetrics.candidateCardKind)} · 데이터 상태:{" "}
+                      {candidateDataStatusLabel(c.displayMetrics.dataStatusUi)}
+                      {c.displayMetrics.repeatedExposure ? " · 반복 노출 감점 적용" : ""}
+                    </p>
+                  ) : null}
+                  {c.displayMetrics?.neutralObservationCopy ? (
+                    <p className="mt-0.5 text-[10px] text-slate-600">{c.displayMetrics.neutralObservationCopy}</p>
+                  ) : null}
+                  {c.corporateActionRisk?.active ? (
+                    <div className="mt-1 rounded border border-amber-400 bg-amber-50 p-1.5 text-[10px] text-amber-950">
+                      기업 이벤트 리스크 점검: {c.corporateActionRisk.headline}
+                    </div>
+                  ) : null}
+                  {(c.displayMetrics?.mainDeductionLabels ?? []).length > 0 ? (
+                    <p className="mt-0.5 text-[10px] text-slate-600">
+                      주요 감점 참고: {(c.displayMetrics?.mainDeductionLabels ?? []).join(" · ")}
+                    </p>
+                  ) : null}
+                  {c.displayMetrics?.scoreExplanationDetail?.userReadableSummary ? (
+                    <p className="mt-1 text-[10px] leading-snug text-slate-800">
+                      {c.displayMetrics.scoreExplanationDetail.userReadableSummary}
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-[11px] text-slate-700">{c.reasonSummary}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {(c.dataQuality?.badges ?? []).map((b) => (
@@ -964,17 +1133,19 @@ export function DashboardClient() {
                       </button>
                       {openedScoreExplanationId === c.candidateId ? (
                         <div className="mt-1.5 space-y-1 border-t border-slate-200 pt-1.5 text-[10px] text-slate-700">
-                          {c.displayMetrics.scoreExplanationDetail.userReadableSummary ? (
-                            <p className="text-[10px] leading-snug text-slate-800">
-                              {c.displayMetrics.scoreExplanationDetail.userReadableSummary}
-                            </p>
-                          ) : null}
                           {c.displayMetrics.scoreExplanationDetail.repeatExposure ? (
                             <p className="text-[10px] text-slate-600">
-                              7일 상세 열람 {c.displayMetrics.scoreExplanationDetail.repeatExposure.candidateRepeatCount7d}회
+                              7일 반복 노출 {c.displayMetrics.scoreExplanationDetail.repeatExposure.candidateRepeatCount7d}회
                               {c.displayMetrics.scoreExplanationDetail.repeatExposure.lastShownAt
                                 ? ` · 최근 ${c.displayMetrics.scoreExplanationDetail.repeatExposure.lastShownAt}`
                                 : ""}
+                              {c.displayMetrics.scoreExplanationDetail.repeatExposure.source === "exposed_event"
+                                ? " · 반복 노출 근거: snapshot"
+                                : c.displayMetrics.scoreExplanationDetail.repeatExposure.source === "detail_opened_fallback"
+                                  ? " · 반복 노출 근거: detail_opened_fallback"
+                                  : c.displayMetrics.scoreExplanationDetail.repeatExposure.source === "none"
+                                    ? " · 반복 노출 근거: none"
+                                    : ""}
                             </p>
                           ) : null}
                           <ul className="list-inside list-disc space-y-0.5">
@@ -1866,6 +2037,174 @@ export function DashboardClient() {
             </ul>
           ) : null}
         </div>
+      </section>
+
+      <section className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+        <details className="group" onToggle={(e) => setLiveOpsOpen(e.currentTarget.open)}>
+          <summary className="cursor-pointer select-none text-sm font-semibold text-emerald-950">
+            실사용 점검 / 데이터 상태
+          </summary>
+          <div className="mt-3 space-y-3 border-t border-emerald-200 pt-3 text-[11px] leading-snug text-emerald-950">
+            <p className="rounded border border-emerald-100 bg-white/80 px-2 py-1.5 text-emerald-900">
+              이 패널은 <strong>매수 추천이 아니라</strong>, 실사용 전에 <strong>데이터·시세·스키마 연결 상태</strong>를 가볍게 확인하는 곳입니다.
+              자동매매·자동 주문 기능은 없습니다.
+            </p>
+            <ul className="list-inside list-disc space-y-1 text-emerald-900/95">
+              <li>
+                원장 ticker 조회가 <strong>pending</strong>으로 오래 머무르면, 설정된 <strong>제한 시간이 지난 뒤 timeout</strong>으로
+                끝납니다. timeout 이후에는 pending이 남지 않도록 설계되어 있습니다.
+              </li>
+              <li>
+                <strong>incomplete</strong> 상태의 보유 종목(수량·평단 미입력 등)은 <strong>평가금액·수익률·집중도·비중</strong> 같은
+                집계에서 <strong>제외</strong>됩니다. 나중에 값을 채우면 같은 화면 기준에 다시 포함됩니다.
+              </li>
+            </ul>
+
+            <div className="rounded border border-emerald-100 bg-white p-2">
+              <p className="font-semibold text-emerald-950">Today Brief 요약 점수·반복 노출</p>
+              {todayBrief?.qualityMeta?.todayCandidates?.scoreExplanationSummary ? (
+                <ul className="mt-1 list-inside list-disc space-y-0.5 text-emerald-900">
+                  <li>
+                    중립대 후보 수(점수 설명): {todayBrief.qualityMeta.todayCandidates.scoreExplanationSummary.neutralScoreCount ?? "—"}
+                  </li>
+                  <li>
+                    반복 노출 후보 수: {todayBrief.qualityMeta.todayCandidates.scoreExplanationSummary.repeatedCandidateCount ?? "—"}
+                  </li>
+                  {todayBrief.qualityMeta.todayCandidates.scoreExplanationSummary.scoreDefaultReasonCounts ? (
+                    <li>
+                      <span className="text-emerald-900">기본 점수 사유(개발용 코드·건수): </span>
+                      <span className="break-all font-mono text-[10px] text-emerald-800">
+                        {Object.entries(todayBrief.qualityMeta.todayCandidates.scoreExplanationSummary.scoreDefaultReasonCounts)
+                          .map(([k, v]) => `${k}:${v}`)
+                          .join(", ")}
+                      </span>
+                    </li>
+                  ) : (
+                    <li>기본 점수 사유 집계: —</li>
+                  )}
+                </ul>
+              ) : (
+                <p className="mt-1 text-emerald-800">브리핑 메타가 비어 있습니다.</p>
+              )}
+            </div>
+
+            <div className="rounded border border-emerald-100 bg-white p-2">
+              <p className="font-semibold text-emerald-950">Ticker resolver (원장 마지막 요청)</p>
+              {liveOpsTickerReqId ? (
+                <>
+                  <p className="mt-1 break-all font-mono text-[10px] text-emerald-900">
+                    requestId: {liveOpsTickerReqId}
+                  </p>
+                  {liveOpsTickerJson && typeof liveOpsTickerJson.status === "string" ? (
+                    <ul className="mt-1 list-inside list-disc space-y-0.5 text-emerald-900">
+                      <li>상태: {String(liveOpsTickerJson.status)}</li>
+                      <li>
+                        경과 {liveOpsTickerJson.elapsedMs != null ? Number(liveOpsTickerJson.elapsedMs) : "—"}ms / 한도{" "}
+                        {liveOpsTickerJson.timeoutMs != null ? Number(liveOpsTickerJson.timeoutMs) : "—"}ms
+                      </li>
+                      <li>
+                        후보 집계: pending{" "}
+                        {(liveOpsTickerJson.summary as { pendingCandidateCount?: number } | undefined)?.pendingCandidateCount ?? "—"} · timeout{" "}
+                        {(liveOpsTickerJson.summary as { timeoutCandidateCount?: number } | undefined)?.timeoutCandidateCount ?? "—"} · 실패{" "}
+                        {(liveOpsTickerJson.summary as { failedCandidateCount?: number } | undefined)?.failedCandidateCount ?? "—"}
+                      </li>
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-amber-900">{liveOpsTickerErr ?? "상태를 불러오는 중이거나 Sheets 미설정일 수 있습니다."}</p>
+                  )}
+                </>
+              ) : (
+                <p className="mt-1 text-emerald-800">
+                  원장에서 「추천 ticker 찾기」를 실행하면 여기에 최근 requestId가 연결됩니다.
+                </p>
+              )}
+            </div>
+
+            <div className="rounded border border-emerald-100 bg-white p-2">
+              <p className="font-semibold text-emerald-950">미국 신호 비어 있음 (히스토그램 상위 3개)</p>
+              {(todayOpsSummary?.usKrEmptyReasonHistogram ?? []).slice(0, 3).length ? (
+                <ul className="mt-1 space-y-0.5 text-emerald-900">
+                  {(todayOpsSummary?.usKrEmptyReasonHistogram ?? []).slice(0, 3).map((h) => (
+                    <li key={h.reason}>
+                      <span className="text-emerald-900">{usKrEmptyReasonHistogramReasonLabel(h.reason)} · {h.count}회</span>{" "}
+                      <span className="text-emerald-700/80">(원인 코드: {h.reason})</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-emerald-800">7일 요약에 비어 있음 원인 집계가 없습니다.</p>
+              )}
+            </div>
+
+            <div className="rounded border border-emerald-100 bg-white p-2">
+              <p className="font-semibold text-emerald-950">Sector Radar 키워드 매칭</p>
+              <p className="mt-1 text-emerald-900">
+                미리보기는 DB를 바꾸지 않고, <strong>적용</strong>을 눌렀을 때만 원장이 갱신됩니다.{" "}
+                <Link href="/sector-radar" className="underline underline-offset-2">
+                  Sector Radar
+                </Link>{" "}
+                화면에서 실행·결과를 확인할 수 있습니다(섹터 라벨 보정용·관찰 목적).
+              </p>
+            </div>
+
+            <div className="rounded border border-emerald-100 bg-white p-2">
+              <p className="font-semibold text-emerald-950">Portfolio incomplete</p>
+              <p className="mt-1 text-emerald-900">
+                간편 등록만 한 <strong>incomplete</strong> 보유 행 수입니다. 위 안내처럼 평가·집중도 계산에서는 빠질 수 있습니다.
+                현재 건수: {portfolioHealth?.incompleteHoldingCount ?? "—"}
+              </p>
+            </div>
+
+            <div className="rounded border border-amber-200 bg-amber-50/80 p-2">
+              <p className="font-semibold text-amber-950">SQL 적용 필요 신호</p>
+              <p className="mb-1 text-amber-950">
+                테이블이 없거나 스키마가 맞지 않으면 API가 안내 코드를 돌려줄 수 있습니다. 저장소의{" "}
+                <code className="rounded bg-amber-100/90 px-1 text-[10px] text-amber-950">docs/sql/APPLY_ORDER.md</code>{" "}
+                에 적힌 <strong>적용 순서</strong>를 확인하세요.
+              </p>
+              <ul className="mt-1 list-inside list-disc space-y-1 text-amber-950">
+                {weeklySqlReadiness?.investorProfileTableMissing ? (
+                  <li>
+                    <span className="text-amber-950">투자자 프로필 테이블이 감지되지 않았습니다.</span>{" "}
+                    <span className="font-mono text-[10px] text-amber-900">(investor_profile_table_missing 등)</span>
+                  </li>
+                ) : null}
+                {weeklySqlReadiness?.researchFollowupTableMissing ? (
+                  <li>
+                    <span className="text-amber-950">Research follow-up 테이블이 감지되지 않았습니다.</span>{" "}
+                    <span className="font-mono text-[10px] text-amber-900">(research_followup_table_missing 등)</span>
+                  </li>
+                ) : null}
+                {liveOpsHoldingsHint ? (
+                  <li>
+                    <span className="text-amber-950">보유 종목 테이블·스키마 점검이 필요할 수 있습니다.</span>{" "}
+                    <span className="break-words font-mono text-[10px] text-amber-900">{liveOpsHoldingsHint}</span>
+                  </li>
+                ) : null}
+                {liveOpsRetroHint ? (
+                  <li>
+                    <span className="text-amber-950">판단 복기 테이블 점검:</span>{" "}
+                    <span className="break-words font-mono text-[10px] text-amber-900">{liveOpsRetroHint}</span>
+                  </li>
+                ) : null}
+                {(weeklySqlReadiness?.actionHints ?? []).map((h) => (
+                  <li key={h}>
+                    <span className="break-words text-amber-950">{h}</span>
+                  </li>
+                ))}
+                {!weeklySqlReadiness?.investorProfileTableMissing &&
+                !weeklySqlReadiness?.researchFollowupTableMissing &&
+                !liveOpsHoldingsHint &&
+                !liveOpsRetroHint &&
+                (weeklySqlReadiness?.actionHints?.length ?? 0) === 0 ? (
+                  <li className="list-none text-emerald-900">
+                    이 세션에서 눈에 띄는 SQL 누락 신호는 없습니다. 배포 환경까지 확인하려면 문서의 순서를 한 번 더 점검해 주세요.
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+          </div>
+        </details>
       </section>
 
       <details

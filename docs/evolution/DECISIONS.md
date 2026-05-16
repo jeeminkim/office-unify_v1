@@ -14,13 +14,22 @@
 
 ---
 
+### 2026-05-16 — 운영 append SQL은 APPLY_ORDER로 묶고 배포 전 pre-live 스모크를 둔다 (EVO-010)
+
+- **결정:** 채택
+- **이유:** 테이블 미적용 시 503/`table_missing`이 기능별로 흩어져 보인다. 순서·증상·사전 점검을 한 문서에 두고, 인증 쿠키 기반 스모크로 회귀를 줄인다.
+- **대안:** 문서 없이 운영자 메모만 유지(누락 위험).
+- **링크:** (이번 변경)
+
 ### 템플릿 (복사용)
 
+```
 ### YYYY-MM-DD —
 - **결정:**
 - **이유:**
 - **대안:**
 - **링크:**
+```
 
 ---
 
@@ -151,6 +160,13 @@
 - **이유:** 동일 주·동일 sanitize 미리보기 컨텍스트면 POST가 예측 가능하게 dedupe되도록 `weekOf`+결정적 JSON만 SHA-256한 권장 키를 GET에 additive로 내려준다. responseGuard는 “키워드 누락”이 아니라 **지시형·부정 없는 위험 언급**만 경고하고, “~하지 않습니다”류 안전 고지는 경고 대상에서 제외한다.
 - **대안:** 클라이언트가 매 요청 UUID로 멱등 키 생성
 - **링크:** `privateBankerResponseGuard.ts`, `privateBankerWeeklyReview.ts`
+
+### 2026-05-16 — Today Brief 반복 노출은 스냅샷 우선·상세 열람 폴백
+
+- **결정:** 채택
+- **이유:** 상세 패널을 열지 않은 사용자도 같은 덱 후보가 반복되면 진단이 필요하다. 브리핑 성공 시 **제한된 필드**(`candidateId`, 시장·심볼, 짧은 이름)만으로 일 단위 `today_candidate_snapshot`을 기록하고, 7일 카운트는 스냅샷·`today_candidate_exposed`를 우선한 뒤 `today_candidate_detail_opened`로 폴백한다. 요청당 ops budget·cooldown을 지킨다.
+- **대안:** 상세 열람만 카운트(노출 과소 추정)
+- **링크:** `docs/ops/today_candidates.md`, `apps/web/lib/server/todayCandidateDeckExposureOps.ts`
 
 ---
 

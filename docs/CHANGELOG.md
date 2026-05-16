@@ -4,6 +4,35 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-16 실사용 전 소규모 보강 (preview read-only·모바일 ticker·회귀 테스트)
+
+- **Sector-match 미리보기:** `POST …/sector-match` `mode=preview`에서 **DB update·ops 로그 write 없음**(성공/실패 공통). 응답 additive: `previewReadOnly`, `actionHint`. 적용(`apply`)은 기존처럼 DB·ops 허용.
+- **원장 ticker UI:** 모바일 카드에 googleTicker·적용 시 quote·경과/한도·상태 뱃지·비활성 사유/`ok`만 적용. 데스크톱 테이블 유지·컬럼 보강, requestId 축약·복사.
+- **대시보드 점검 패널·pre-live-smoke:** 사용자 안내 문구·PASS/WARN/FAIL 요약·actionHint 안내 정리.
+- **문서:** `docs/ops/pre_live_checklist.md` 수동 체크리스트.
+- **테스트:** `sector-match/route.test.ts`, `todayBriefContractRegression.test.ts`.
+
+### 2026-05-16 Today Brief 점수·미국 커버리지·기업 이벤트 리스크 하네스
+
+- **점수:** `scoreBreakdown`(base/부스트/감점/최종) additive; 희소 데이터 기본대는 45–55 분산(60 고정 제거). `qualityMeta.todayCandidates.scoreBreakdownSummary`·`usCoverage`(ok/degraded, quote/KR 매핑 실패 힌트).
+- **반복 노출:** 풀 후보 7일 스냅샷 집계로 컴포즈 시 랭킹 반영 + 덱에 `repeatExposurePenalty` 가산(적합성 조정 후 `displayMetrics`와 함께 보정).
+- **다양성 덱:** 관심 최대 2 · 미국 신호 KR 최대 1 · 섹터 ETF 1 · `corporateActionRisk` 시 리스크 점검 슬롯 예약.
+- **기업 이벤트:** `corporateActionRiskRegistry.ts` 수동 레지스트리(예: 028300 HLB 유상증자 예시), 활성 시 점수 상한 50·`candidateAction: review_required`·`primaryRisk: corporate_event_risk`.
+- **미국 시세:** 시드 ETF/지수 확장(SPY·QQQ·IWM·SMH·섹터 XLV/XLE/XLF/XLY/XLP/XLI/XLU 등), 사용자 US 관심 심볼 merge, `diagnostics`에 provider/timeout/upstream/emptyReason 등; 실패 시 저하 요약 유지.
+- **Ops:** `today_candidates_us_market_no_data`·`us_signal_candidates_empty` detail 확장; `sector_radar_summary_batch_degraded`에 `reasonCode`, fingerprint에 reasonCode suffix; read-only degraded/미국 no-data **6시간** 쿨다운.
+- **UI:** Today 카드에 유형·데이터 상태·감점·기업 리스크 박스; Trade Journal 단계형 복기 입력·한글 라벨·보유/오늘 후보 프리셋.
+- **테스트:** `todayBriefHarness.test.ts`(HLB 게이트·반복 감점·fingerprint).
+
+### 2026-05-16 Today Brief·반복 노출·Resolver·Sector Radar·incomplete holdings 마무리
+
+- **Today Brief:** 후보 카드 기본 영역에 `userReadableSummary` 한 줄 고정; 「왜 이 후보?」에는 요인·반복 노출만(요약 중복 제거); 중립대(약 58–62) 필수 문구(데이터 부족 기본 유지 / 시세·섹터 확인 제한 / 반복 노출 시 저품질 대체 금지); `repeatExposure.source` = `exposed_event` | `detail_opened_fallback` | `none`. 브리핑 성공 경로에서 일 1회 `today_candidate_snapshot` ops(덱 `candidateId`·심볼·이름만, fingerprint+budget); 7일 반복 카운트는 스냅샷·`today_candidate_exposed` 우선, 없으면 상세 열람 폴백.
+- **`qualityMeta.todayCandidates.incompleteHoldingCount`:** 브리핑 계열 메타.
+- **Portfolio summary (`GET /api/portfolio/summary`):** 수량·평단 양수 미만 보유는 평가·비중·노출 배지 집계에서 제외; `dataQuality.incompleteHoldingCount` 및 안내 경고.
+- **Ticker resolver:** `GET …/status`의 `recommendations[].candidates[]`가 행과 동일하게 `timeout`/실패 반영; `applyDisabledReason`; pending 표시는 경과 시간이 제한 시간 미만일 때만 “계산 중”.
+- **Sector Radar 페이지:** `POST …/watchlist/sector-match` 미리보기·적용 UI, 적용 후 요약 reload, 90초 Abort 타임아웃, `keywordMatch` 세부 카운트·`unmatchedReasonCounts`.
+- **원장:** ticker 추천 요청 시 KR 종목명-only면 `watchlist/resolve` 선행; 자동 채움 단계(1단계 resolve / 2단계 suggest) 배너.
+- **실사용 안정화:** `docs/sql/APPLY_ORDER.md`(운영 SQL 적용 순서·사전 점검·확인 쿼리); `GET /api/portfolio/holdings` 테이블·스키마 오류 시 `actionHint`/`portfolio_holdings_*` 코드; `GET /api/private-banker/weekly-review`에 `sqlReadiness`; ticker resolver 요약 상태 **`timeout` 데드 브랜치 제거**(전부 pending-timeout 시 `stale`로 떨어지던 문제); 대시보드 **실사용 점검** 접기 패널; `apps/web/scripts/pre-live-smoke.ts` + `npm run pre-live-smoke`.
+
 ### 2026-05 대시보드·원장 안정화 (Today Brief / resolve / ticker timeout / 섹터 매칭 / 보유 간편)
 
 - **Today Brief:** `scoreExplanationDetail`에 진단(`diagnostics`)·반복 노출(`repeatExposure`, 7일 `today_candidate_detail_opened` read-only)·`userReadableSummary`·`data_default_hold` 요인 추가; `qualityMeta.todayCandidates.scoreExplanationSummary`에 `repeatedCandidateCount`, `neutralScoreCount`, `scoreDefaultReasonCounts`, `diversityPolicy`. 보유는 **수량·평단이 모두 양수인 행만** 브리핑 집계(간편 등록만 있으면 `HOLDINGS_INCOMPLETE` 안내).

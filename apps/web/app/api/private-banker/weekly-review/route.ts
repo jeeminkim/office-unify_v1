@@ -15,6 +15,8 @@ import {
   sanitizeWeeklyReviewContext,
 } from '@/lib/server/privateBankerWeeklyReview';
 import { auditPrivateBankerStructuredResponse, mergePbWeeklyReviewQualityMetaWithGuard } from '@/lib/server/privateBankerResponseGuard';
+import { INVESTOR_PROFILE_TABLE_ACTION_HINT } from '@/lib/server/investorProfileSupabaseErrors';
+import { RESEARCH_FOLLOWUP_TABLE_ACTION_HINT } from '@/lib/server/researchFollowupSupabaseErrors';
 
 /**
  * GET /api/private-banker/weekly-review
@@ -36,12 +38,20 @@ export async function GET() {
     const preview = buildPbWeeklyReviewFromContext(ctx);
     const context = sanitizeWeeklyReviewContext(ctx);
     const recommendedIdempotencyKey = buildRecommendedWeeklyReviewIdempotencyKey(ctx.weekOf, context);
+    const sqlReadinessHints: string[] = [];
+    if (ctx.investorProfileTableMissing) sqlReadinessHints.push(INVESTOR_PROFILE_TABLE_ACTION_HINT);
+    if (ctx.followupTableMissing) sqlReadinessHints.push(RESEARCH_FOLLOWUP_TABLE_ACTION_HINT);
     return NextResponse.json({
       ok: true,
       weekOf: ctx.weekOf,
       preview,
       context,
       recommendedIdempotencyKey,
+      sqlReadiness: {
+        investorProfileTableMissing: ctx.investorProfileTableMissing,
+        researchFollowupTableMissing: ctx.followupTableMissing,
+        actionHints: sqlReadinessHints,
+      },
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';

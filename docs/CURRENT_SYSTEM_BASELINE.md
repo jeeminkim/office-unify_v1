@@ -7,6 +7,7 @@
 - Google Sheets는 read-back/운영 보조 계층
 - LLM 결과는 판단 보조이며 확정 수익률을 보장하지 않음
 - `qualityMeta`(화면 상태)와 `web_ops_events`(운영 누적) 역할 분리
+- 운영 SQL 적용 순서·점검: `docs/sql/APPLY_ORDER.md` · 배포 전 API 스모크 `npm run pre-live-smoke --workspace=apps/web`(dry-run 기본)
 
 ## 주요 화면
 
@@ -25,7 +26,7 @@
 - Today Candidates
   - `today-brief` optional `candidates`(`userContext`/`usMarketKr`) + **`primaryCandidateDeck`**(관심 top2 + Sector Radar 대표 ETF 1; ETF 없으면 관심 top3 fallback); **EVO-005** `concentrationRiskAssessment`(`exposureBasis`, `themeMappingConfidence`)·`qualityMeta.todayCandidates.concentrationRiskSummary`(동일 메타·건수 집계; 금액·`userNote` 원문 없음; KR/US는 시장 노출 휴리스틱; 집중도는 점검 질문이며 자동 주문·자동 리밸런싱 아님); **EVO-007** `themeConnection`·`themeConnectionSummary`·**크기 제한된** `themeConnectionMap`·`themeConnectionSummary.truncated`·`watchlistSourceAvailable`·`usKrEmptyThemeBridgeHint`; 상세 맵 전용 **`GET /api/dashboard/theme-connections`**. 초기 registry 휴리스틱, 후보 강제 생성 아님.
   - **투자자 프로필**(선택 SQL `web_investor_profiles`): 미설정 시 기존과 동일하게 동작; 설정 시 덱 후보에 **`suitabilityAssessment`**·`qualityMeta.todayCandidates.suitability` additive. 자동 실행 없음.
-  - 사용자 표시: **`displayMetrics`**(관찰 점수/신뢰도 등 + **`scoreExplanationDetail`** 요인 설명); **`qualityMeta.todayCandidates.scoreExplanationSummary`** 집계; 미국 신호→KR 후보 없을 때 **`usKrSignalDiagnostics`**
+  - 사용자 표시: **`displayMetrics`**(관찰 점수/신뢰도 등 + **`scoreExplanationDetail`** 요인 설명 + 카드 기본 **`userReadableSummary`** + **`repeatExposure.source`**); **`qualityMeta.todayCandidates.scoreExplanationSummary`** 집계; 미국 신호→KR 후보 없을 때 **`usKrSignalDiagnostics`**; **`qualityMeta.todayCandidates.incompleteHoldingCount`**
   - `isBuyRecommendation=false`, 관찰·판단 보조 UX
   - `dataQuality.summary/reasonItems/primaryRisk`(additive)
   - add-candidate + best-effort postprocess
@@ -33,6 +34,7 @@
   - `rawScore`/`adjustedScore`/`scoreExplanation`
   - ETF `theme eligibility` 우선 게이트(strict/adjacent/exclude/unknown)
   - ETF 표시 그룹 `scored`/`watch_only`/`excluded`
+  - **Sector Radar UI:** `/sector-radar`에서 관심종목 섹터 라벨 키워드 **`POST /api/portfolio/watchlist/sector-match`** 미리보기·적용(후보 생성 아님, 자동 주문 없음).
   - AI/전력 인프라와 조선 테마 분리(조선 ETF hard exclude)
   - 미디어/콘텐츠 ETF universe 확장(웹툰/드라마/K콘텐츠/K-POP/K컬처)
   - ETF quote alias/resolver 기반(`quoteAlias`)으로 특수 코드 대응 준비

@@ -7,13 +7,31 @@ import { pickRulesFromUsSummary } from './todayCandidateRules';
 import type { TodayStockCandidate, UsMarketMorningSummary } from '../todayCandidatesContract';
 import { buildCandidateDataQuality } from '../todayCandidateDataQuality';
 import type { SectorRadarSummarySector } from '../sectorRadarContract';
+import { resolveCorporateActionRiskForStockCode } from '@/lib/server/corporateActionRiskRegistry';
+import { applyCorporateActionRiskGate, clampObservationScore, sparseDataBaseScore } from '@/lib/server/todayCandidateScoring';
 
 function clampScore(n: number): number {
-  return Math.max(0, Math.min(100, Math.round(n)));
+  return clampObservationScore(n);
 }
 
-export function scoreCandidate(input: { base: number; watchlistBoost?: number; usBoost?: number; confidencePenalty?: number; riskPenalty?: number }): number {
-  return clampScore(input.base + (input.watchlistBoost ?? 0) + (input.usBoost ?? 0) - (input.confidencePenalty ?? 0) - (input.riskPenalty ?? 0));
+function scoreCandidate(input: {
+  base: number;
+  watchlistBoost?: number;
+  sectorBoost?: number;
+  usBoost?: number;
+  confidencePenalty?: number;
+  quoteQualityPenalty?: number;
+  riskPenalty?: number;
+}): number {
+  return clampScore(
+    input.base +
+      (input.watchlistBoost ?? 0) +
+      (input.sectorBoost ?? 0) +
+      (input.usBoost ?? 0) -
+      (input.confidencePenalty ?? 0) -
+      (input.quoteQualityPenalty ?? 0) -
+      (input.riskPenalty ?? 0),
+  );
 }
 
 function buildEtfThemeBriefForToday(sectorInfo: SectorRadarSummarySector | undefined): string | null {
@@ -63,15 +81,17 @@ export async function buildTodayStockCandidates(input: {
     low: number;
     very_low: number;
   };
+  /** 빈 KR 매핑 ops용 */
+  usKrRulesMatchedCount: number;
+  usKrMappedRawCount: number;
 }> {
   const limit = Math.max(1, Math.min(5, input.limitPerSection ?? 3));
   const warnings: string[] = [];
 
-  const [watchlist, holdings, sectorRadar, usSummary, trendSignalsRes] = await Promise.all([
+  const [watchlist, holdings, sectorRadar, trendSignalsRes] = await Promise.all([
     listWebPortfolioWatchlistForUser(input.supabase, input.userKey).catch(() => []),
     listWebPortfolioHoldingsForUser(input.supabase, input.userKey).catch(() => []),
     buildSectorRadarSummaryForUser(input.supabase, input.userKey, { isReadOnlyRoute: true }).catch(() => null),
-    buildUsMarketMorningSummary(),
     input.supabase
       .from('trend_memory_signals_v2')
       .select('topic_key,signal_name,confidence')
@@ -79,6 +99,13 @@ export async function buildTodayStockCandidates(input: {
       .order('last_seen_at', { ascending: false })
       .limit(20),
   ]);
+
+  const usWatchSymbols = watchlist
+    .filter((w) => w.market === 'US')
+    .map((w) => String(w.symbol ?? '').trim())
+    .filter(Boolean);
+
+  const usSummary = await buildUsMarketMorningSummary({ extraQuoteSymbols: usWatchSymbols });
 
   const trendTopics = (trendSignalsRes.data ?? []).map((x) => `${x.topic_key ?? ''} ${x.signal_name ?? ''}`.toLowerCase());
 
@@ -90,10 +117,24 @@ export async function buildTodayStockCandidates(input: {
       const sectorInfo = sectorRadar?.sectors.find((s) => (w.sector ?? '').includes(s.name));
       const etfThemeBrief = buildEtfThemeBriefForToday(sectorInfo);
       const sectorConfidence = sectorInfo?.scoreExplanation?.confidence;
-      const confidencePenalty = sectorConfidence === 'very_low' || sectorConfidence === 'low' ? 12 : 0;
+      const quoteReady = Boolean(w.quote_symbol || w.google_ticker);
+      const sparse = !quoteReady || !sectorInfo || sectorConfidence === 'very_low' || sectorConfidence === 'low';
+      const baseScore = sparse ? sparseDataBaseScore(`${w.symbol}-${w.sector ?? ''}`) : 52;
+      const confidencePenalty = sectorConfidence === 'very_low' || sectorConfidence === 'low' ? 12 : sparse ? 4 : 0;
+      const quoteQualityPenalty = quoteReady ? 0 : 10;
       const riskPenalty = sectorInfo?.zone === 'extreme_greed' ? 8 : 0;
-      const score = scoreCandidate({ base: 50, watchlistBoost: 10, confidencePenalty, riskPenalty });
-      return {
+      const sectorBoost = sectorConfidence === 'high' ? 6 : sectorConfidence === 'medium' ? 3 : 0;
+      const watchlistBoost = 8;
+      const finalScore = scoreCandidate({
+        base: baseScore,
+        watchlistBoost,
+        sectorBoost,
+        confidencePenalty,
+        quoteQualityPenalty,
+        riskPenalty,
+      });
+
+      let cand: TodayStockCandidate = {
         candidateId: `user-context-${w.market}-${w.symbol}`,
         name: w.name,
         market: w.quote_symbol?.endsWith('.KQ') ? 'KOSDAQ' : 'KOSPI',
@@ -104,10 +145,10 @@ export async function buildTodayStockCandidates(input: {
         quoteSymbol: w.quote_symbol ?? undefined,
         sector: w.sector ?? undefined,
         source: 'user_context',
-        score,
-        confidence: confidencePenalty > 0 ? 'low' : 'medium',
+        score: finalScore,
+        confidence: confidencePenalty > 0 ? 'low' : sparse ? 'low' : 'medium',
         riskLevel: riskPenalty > 0 ? 'high' : 'medium',
-        reasonSummary: '내 관심종목/섹터 관심 흐름과 연결된 관찰 후보입니다.',
+        reasonSummary: '내 관심종목·섹터 흐름과 연결된 관찰 후보입니다.',
         reasonDetails: [
           '관심종목에 이미 포함된 종목입니다.',
           sectorInfo ? `Sector Radar ${sectorInfo.name} 신뢰도 ${sectorInfo.scoreExplanation?.confidence ?? 'unknown'}` : '섹터 레이더 연결 정보는 제한적입니다.',
@@ -120,9 +161,20 @@ export async function buildTodayStockCandidates(input: {
         relatedWatchlistSymbols: [`${w.market}:${w.symbol}`],
         isBuyRecommendation: false,
         alreadyInWatchlist: true,
+        scoreBreakdown: {
+          baseScore,
+          watchlistBoost,
+          sectorBoost,
+          usSignalBoost: 0,
+          quoteQualityPenalty,
+          repeatExposurePenalty: 0,
+          corporateActionPenalty: 0,
+          riskPenalty: riskPenalty + confidencePenalty,
+          finalScore,
+        },
         dataQuality: buildCandidateDataQuality({
-          confidence: confidencePenalty > 0 ? 'low' : 'medium',
-          quoteReady: Boolean(w.quote_symbol || w.google_ticker),
+          confidence: confidencePenalty > 0 ? 'low' : sparse ? 'low' : 'medium',
+          quoteReady,
           sectorConfidence: sectorConfidence ?? 'unknown',
           usMarketDataAvailable: usSummary.available,
           hasWatchlistLink: true,
@@ -130,51 +182,103 @@ export async function buildTodayStockCandidates(input: {
           source: 'user_context',
         }),
       };
+
+      const corp = resolveCorporateActionRiskForStockCode(w.symbol);
+      if (corp?.active) {
+        cand = { ...cand, corporateActionRisk: corp };
+        cand = applyCorporateActionRiskGate(cand);
+      }
+      return cand;
     });
 
   const usRules = pickRulesFromUsSummary(usSummary);
-  if (!usSummary.available) warnings.push('us_market_no_data');
-  const usMarketKrCandidates: TodayStockCandidate[] = (!usSummary.available || usSummary.conclusion === 'no_data' ? [] : usRules)
+  const mappedRawAll = usRules.flatMap((r) => r.krCandidates);
+  const usKrMappedRawCount = mappedRawAll.length;
+
+  if (!usSummary.available && (usSummary.signals?.length ?? 0) === 0) warnings.push('us_market_no_data');
+  if (usSummary.diagnostics?.coverageStatus === 'degraded') warnings.push('us_market_coverage_degraded');
+
+  const mappingConfidence: TodayStockCandidate['confidence'] =
+    usSummary.available && usSummary.diagnostics?.coverageStatus !== 'degraded'
+      ? 'medium'
+      : usSummary.available
+        ? 'low'
+        : 'very_low';
+
+  const usMarketKrCandidates: TodayStockCandidate[] = usRules
     .flatMap((r) =>
       r.krCandidates.map((c) => {
-        const confidence: TodayStockCandidate['confidence'] = usSummary.available ? 'medium' : 'very_low';
-        return ({
-        candidateId: `us-${r.usSignalKey}-${c.stockCode}`,
-        name: c.name,
-        market: c.market,
-        country: 'KR' as const,
-        symbol: `KR:${c.stockCode}`,
-        stockCode: c.stockCode,
-        googleTicker: c.googleTicker,
-        quoteSymbol: c.quoteSymbol,
-        sector: c.sector,
-        source: 'us_market_morning' as const,
-        score: scoreCandidate({ base: 52, usBoost: 12, confidencePenalty: usSummary.available ? 0 : 12 }),
-        confidence,
-        riskLevel: 'medium' as const,
-        reasonSummary: `${r.label} 신호를 참고한 한국 상장 관찰 후보입니다. 매수 점수가 아닌 관찰 우선순위입니다.`,
-        reasonDetails: [r.conditionHint, c.reason, '미국 신호가 한국 종목 상승을 보장하지 않습니다.'],
-        positiveSignals: [r.label],
-        cautionNotes: ['매수 권유 아님', c.caution, '장 초반 급등 추격 주의'],
-        relatedUserContext: [],
-        relatedWatchlistSymbols: watchlist.filter((w) => w.market === 'KR').map((w) => `${w.market}:${w.symbol}`),
-        relatedUsMarketSignals: [r.usSignalKey],
-        isBuyRecommendation: false as const,
-        alreadyInWatchlist: watchlist.some((w) => w.market === 'KR' && (w.symbol === c.stockCode || (w.google_ticker ?? '') === c.googleTicker)),
-        dataQuality: buildCandidateDataQuality({
-          confidence,
-          quoteReady: Boolean(c.quoteSymbol || c.googleTicker),
-          sectorConfidence: 'unknown',
-          usMarketDataAvailable: usSummary.available,
-          hasWatchlistLink: watchlist.some((w) => w.market === 'KR' && w.symbol === c.stockCode),
-          cautionNotes: ['매수 권유 아님', c.caution, '장 초반 급등 추격 주의'],
+        const quoteReadyKr = Boolean(c.quoteSymbol || c.googleTicker);
+        const sparse = !quoteReadyKr || mappingConfidence === 'very_low';
+        const baseScore = sparse ? sparseDataBaseScore(c.stockCode) : 50;
+        const usBoost = usSummary.signals.length > 0 ? 10 : 4;
+        const confidencePenalty = mappingConfidence === 'very_low' ? 14 : mappingConfidence === 'low' ? 6 : 0;
+        const quoteQualityPenalty = quoteReadyKr ? 0 : 8;
+        const finalScore = scoreCandidate({
+          base: baseScore,
+          usBoost,
+          confidencePenalty,
+          quoteQualityPenalty,
+        });
+
+        let cand: TodayStockCandidate = {
+          candidateId: `us-${r.usSignalKey}-${c.stockCode}`,
+          name: c.name,
+          market: c.market,
+          country: 'KR',
+          symbol: `KR:${c.stockCode}`,
+          stockCode: c.stockCode,
+          googleTicker: c.googleTicker,
+          quoteSymbol: c.quoteSymbol,
+          sector: c.sector,
           source: 'us_market_morning',
-        }),
-      })}),
+          score: finalScore,
+          confidence: mappingConfidence,
+          riskLevel: 'medium',
+          reasonSummary: `${r.label} 신호를 참고한 한국 상장 관찰 후보입니다.`,
+          reasonDetails: [r.conditionHint, c.reason, '미국 신호가 한국 종목 움직임을 보장하지 않습니다.'],
+          positiveSignals: [r.label],
+          cautionNotes: ['매수 권유 아님', c.caution, '장 초반 급등 추격 주의'],
+          relatedUserContext: [],
+          relatedWatchlistSymbols: watchlist.filter((w) => w.market === 'KR').map((w) => `${w.market}:${w.symbol}`),
+          relatedUsMarketSignals: [r.usSignalKey],
+          isBuyRecommendation: false,
+          alreadyInWatchlist: watchlist.some((w) => w.market === 'KR' && (w.symbol === c.stockCode || (w.google_ticker ?? '') === c.googleTicker)),
+          scoreBreakdown: {
+            baseScore,
+            watchlistBoost: 0,
+            sectorBoost: 0,
+            usSignalBoost: usBoost,
+            quoteQualityPenalty,
+            repeatExposurePenalty: 0,
+            corporateActionPenalty: 0,
+            riskPenalty: confidencePenalty,
+            finalScore,
+          },
+          dataQuality: buildCandidateDataQuality({
+            confidence: mappingConfidence,
+            quoteReady: quoteReadyKr,
+            sectorConfidence: 'unknown',
+            usMarketDataAvailable: usSummary.available,
+            hasWatchlistLink: watchlist.some((w) => w.market === 'KR' && w.symbol === c.stockCode),
+            cautionNotes: ['매수 권유 아님', c.caution, '장 초반 급등 추격 주의'],
+            source: 'us_market_morning',
+          }),
+        };
+
+        const corp = resolveCorporateActionRiskForStockCode(c.stockCode);
+        if (corp?.active) {
+          cand = { ...cand, corporateActionRisk: corp };
+          cand = applyCorporateActionRiskGate(cand);
+        }
+        return cand;
+      }),
     )
     .slice(0, Math.max(3, limit));
 
-  if (usSummary.available && usSummary.conclusion !== 'no_data' && usMarketKrCandidates.length === 0) warnings.push('us_market_candidates_empty');
+  if (usRules.length > 0 && mappedRawAll.length > 0 && usMarketKrCandidates.length === 0) warnings.push('us_market_candidates_empty_after_trim');
+  if ((usSummary.signals?.length ?? 0) > 0 && usMarketKrCandidates.length === 0) warnings.push('us_market_candidates_empty');
+
   if (holdings.length === 0 && watchlist.length === 0) warnings.push('user_context_sparse');
   const all = [...userContextCandidates, ...usMarketKrCandidates];
   const confidenceCounts = {
@@ -191,5 +295,7 @@ export async function buildTodayStockCandidates(input: {
     sectorRadarSummary: sectorRadar,
     warnings,
     confidenceCounts,
+    usKrRulesMatchedCount: usRules.length,
+    usKrMappedRawCount,
   };
 }

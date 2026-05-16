@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { WatchlistSectorMatchApiResponse } from "@office-unify/shared-types";
 import type {
   SectorRadarSummaryAnchor,
   SectorRadarSummaryResponse,
@@ -118,6 +119,9 @@ export function SectorRadarClient() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [sectorKeywordBusy, setSectorKeywordBusy] = useState<null | "preview" | "apply">(null);
+  const [sectorKeywordError, setSectorKeywordError] = useState<string | null>(null);
+  const [sectorKeywordResult, setSectorKeywordResult] = useState<WatchlistSectorMatchApiResponse | null>(null);
   const [showSectorRadarRawWarnings, setShowSectorRadarRawWarnings] = useState(false);
   const [scoreExplainOpen, setScoreExplainOpen] = useState<Record<string, boolean>>({});
 
@@ -203,6 +207,80 @@ export function SectorRadarClient() {
     }
   }, []);
 
+  const runSectorKeywordPreview = useCallback(async () => {
+    setSectorKeywordBusy("preview");
+    setSectorKeywordError(null);
+    try {
+      const res = await fetch("/api/portfolio/watchlist/sector-match", {
+        method: "POST",
+        headers: jsonHeaders,
+        credentials: "same-origin",
+        body: JSON.stringify({ mode: "preview", onlyUnmatched: true }),
+      });
+      const data = (await res.json()) as WatchlistSectorMatchApiResponse & { error?: string };
+      setSectorKeywordResult(data);
+      if (!res.ok) {
+        setSectorKeywordError(
+          data.actionHint ??
+            data.warnings?.[0] ??
+            `연결에 문제가 있을 수 있습니다(HTTP ${res.status}). docs/sql/APPLY_ORDER.md와 로그인·환경 변수를 확인해 주세요.`,
+        );
+        return;
+      }
+      if (!data.ok) {
+        setSectorKeywordError(data.actionHint ?? data.warnings?.[0] ?? "미리보기를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+    } catch (e: unknown) {
+      setSectorKeywordError(e instanceof Error ? e.message : "미리보기 실패");
+      setSectorKeywordResult(null);
+    } finally {
+      setSectorKeywordBusy(null);
+    }
+  }, []);
+
+  const runSectorKeywordApply = useCallback(async () => {
+    setSectorKeywordBusy("apply");
+    setSectorKeywordError(null);
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 90_000);
+    try {
+      const res = await fetch("/api/portfolio/watchlist/sector-match", {
+        method: "POST",
+        headers: jsonHeaders,
+        credentials: "same-origin",
+        signal: ctrl.signal,
+        body: JSON.stringify({ mode: "apply", onlyUnmatched: true }),
+      });
+      const data = (await res.json()) as WatchlistSectorMatchApiResponse & { error?: string };
+      setSectorKeywordResult(data);
+      if (!res.ok) {
+        setSectorKeywordError(
+          data.actionHint ??
+            data.warnings?.[0] ??
+            `적용 요청이 거절되었을 수 있습니다(HTTP ${res.status}). DB 스키마와 docs/sql/APPLY_ORDER.md를 확인해 주세요.`,
+        );
+        return;
+      }
+      if (!data.ok) {
+        setSectorKeywordError(data.actionHint ?? data.warnings?.[0] ?? "적용을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        return;
+      }
+      await loadSummary();
+    } catch (e: unknown) {
+      setSectorKeywordError(
+        e instanceof Error
+          ? e.name === "AbortError"
+            ? "적용 요청이 시간 초과(90초)되었습니다. 다시 시도하세요."
+            : e.message
+          : "적용 실패",
+      );
+    } finally {
+      window.clearTimeout(timer);
+      setSectorKeywordBusy(null);
+    }
+  }, [loadSummary]);
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4 p-6 text-slate-900">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -236,6 +314,69 @@ export function SectorRadarClient() {
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
         시세는 Google Sheets의 <code className="rounded bg-amber-100 px-1">GOOGLEFINANCE</code> read-back이며 지연·누락·
         <code className="rounded bg-amber-100 px-1">#N/A</code>가 날 수 있습니다. 원장(Supabase)과 다른 ETF seed는 운영 중 보정하세요.
+      </div>
+
+      <div className="rounded-lg border border-teal-200 bg-teal-50/80 px-3 py-2 text-xs text-teal-950">
+        <p className="font-semibold">관심종목 섹터 라벨 키워드 보정</p>
+        <p className="mt-1 text-[11px] text-teal-900/95">
+          원장의 섹터 문자열을 Sector Radar registry·키워드 규칙에 맞추는 <strong>미리보기 / 적용</strong>입니다.{" "}
+          <strong>새 관찰 후보를 만들지 않으며 자동 주문·자동매매와 무관합니다.</strong> 미리보기는 DB를 변경하지 않습니다.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-md border border-teal-600 bg-white px-3 py-1.5 text-[11px] font-medium text-teal-900 disabled:opacity-50"
+            disabled={sectorKeywordBusy !== null}
+            onClick={() => void runSectorKeywordPreview()}
+          >
+            {sectorKeywordBusy === "preview" ? "미리보기 중…" : "키워드 미리보기 (DB 변경 없음)"}
+          </button>
+          <button
+            type="button"
+            className="rounded-md bg-teal-700 px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+            disabled={sectorKeywordBusy !== null}
+            onClick={() => void runSectorKeywordApply()}
+          >
+            {sectorKeywordBusy === "apply" ? "적용 중… (최대 90초)" : "키워드 적용 (원장 반영)"}
+          </button>
+        </div>
+        {sectorKeywordError ? (
+          <p className="mt-2 text-[11px] text-red-800">{sectorKeywordError}</p>
+        ) : null}
+        {sectorKeywordResult?.qualityMeta?.keywordMatch ? (
+          <div className="mt-2 rounded border border-teal-100 bg-white/90 p-2 text-[11px] text-teal-950">
+            <p className="font-medium text-teal-950">
+              {sectorKeywordResult.mode === "preview" ? "미리보기 결과" : "적용 결과"} · mapping{" "}
+              {sectorKeywordResult.qualityMeta.keywordMatch.mappingVersion}
+            </p>
+            {sectorKeywordResult.mode === "preview" ? (
+              <ul className="mt-1 list-inside list-disc space-y-0.5 text-teal-900">
+                <li>전체 {sectorKeywordResult.qualityMeta.keywordMatch.previewCount}건</li>
+                <li>적용 가능 추정 {sectorKeywordResult.qualityMeta.keywordMatch.applyPossibleCount ?? "—"}건</li>
+                <li>검토 필요 {sectorKeywordResult.qualityMeta.keywordMatch.needsReviewCount ?? sectorKeywordResult.needsReview}건</li>
+                <li>미매칭 {sectorKeywordResult.qualityMeta.keywordMatch.unmatchedCount}건</li>
+              </ul>
+            ) : (
+              <ul className="mt-1 list-inside list-disc space-y-0.5 text-teal-900">
+                <li>적용 {sectorKeywordResult.qualityMeta.keywordMatch.appliedCount}건</li>
+                <li>건너뜀 {sectorKeywordResult.qualityMeta.keywordMatch.skippedCount}건</li>
+                <li>여전히 미매칭 {sectorKeywordResult.qualityMeta.keywordMatch.stillUnmatchedCount ?? sectorKeywordResult.noMatch}건</li>
+                <li>
+                  적용 시각 {sectorKeywordResult.qualityMeta.keywordMatch.appliedAt ?? sectorKeywordResult.qualityMeta.keywordMatch.lastAppliedAt ?? "—"}
+                </li>
+              </ul>
+            )}
+            {sectorKeywordResult.qualityMeta.keywordMatch.unmatchedReasonCounts &&
+            Object.keys(sectorKeywordResult.qualityMeta.keywordMatch.unmatchedReasonCounts).length > 0 ? (
+              <p className="mt-2 text-[10px] text-teal-900/90">
+                미매칭/스킵 진단:{" "}
+                {Object.entries(sectorKeywordResult.qualityMeta.keywordMatch.unmatchedReasonCounts)
+                  .map(([k, v]) => `${k} ${v}`)
+                  .join(" · ")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-2">

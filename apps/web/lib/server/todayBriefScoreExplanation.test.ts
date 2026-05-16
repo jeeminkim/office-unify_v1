@@ -210,7 +210,16 @@ describe("enrichPrimaryCandidateDeckScoreExplanations + summary", () => {
     const enriched = enrichPrimaryCandidateDeckScoreExplanations(deck, {
       usKrSignalDiagnostics: null,
       usMarketKrCount: 2,
-      repeatByCandidateId: new Map([["a", { candidateRepeatCount7d: 3, lastShownAt: "2026-05-10T00:00:00.000Z" }]]),
+      repeatByCandidateId: new Map([
+        [
+          "a",
+          {
+            candidateRepeatCount7d: 3,
+            lastShownAt: "2026-05-10T00:00:00.000Z",
+            source: "detail_opened_fallback",
+          },
+        ],
+      ]),
     });
     expect(enriched[0]?.displayMetrics?.scoreExplanationDetail?.finalScore).toBe(61);
     expect(enriched[0]?.displayMetrics?.scoreExplanation).toBe("legacy");

@@ -7,9 +7,10 @@
 | ID | 요약 | 영역 | 상태 | 메모 |
 |----|------|------|------|------|
 | EVO-001 | 투자자 프로필/적합성 게이트 | `#pb` `#today-brief` `#research-center` | discussing · scaffold shipped | `web_investor_profiles`(SQL), `/api/investor-profile`, Today Brief 덱·PB 맥락 연결 1차 반영. 고도화·운영 확정은 진행 중. 자동매매 없음. |
-| EVO-002 | Today Brief 개인화 점수 설명 강화 | `#today-brief` `#ux` | discussing · 1차 shipped | `scoreExplanationDetail`·`qualityMeta.todayCandidates.scoreExplanationSummary`, 덱 카드 「왜 이 후보?」. 고도화(산식 설명·요인 가중 시각화)는 진행 중. 매수 권유·자동 실행 없음. |
+| EVO-002 | Today Brief 개인화 점수 설명 강화 | `#today-brief` `#ux` | discussing · 1차 shipped | 카드 기본 `userReadableSummary`, 중립대 필수 문구, `repeatExposure.source`(스냅샷 우선)·`today_candidate_snapshot` ops. 고도화는 진행 중. 매수 권유·자동 실행 없음. |
 | EVO-003 | Research Center follow-up 추적함 | `#research-center` `#pb` | discussing · 1차 shipped | PATCH·GET summary·정규화 dedupe·선택 DB unique index·archived/메모 UI·GET read-only 테스트·ops에 note 원문 미저장. 자동매매 없음. |
-| EVO-004 | PB 주간 점검 리포트 | `#pb` `#dashboard` | discussing · 1차 shipped + 안정화 | GET 미리보기+`recommendedIdempotencyKey`, POST 멱등. responseGuard는 지시형·위험 문맥만. 자동 주문·리밸런싱 없음. |
+| EVO-004 | PB 주간 점검 리포트 | `#pb` `#dashboard` | discussing · 1차 shipped + 안정화 | GET 미리보기+`recommendedIdempotencyKey`, POST 멱등. **`sqlReadiness`(테이블 미적용 actionHints)**. responseGuard는 지시형·위험 문맥만. 자동 주문·리밸런싱 없음. |
+| EVO-010 | 실사용 전 SQL 순서·스모크 | `#ops` `#dashboard` | shipped | `docs/sql/APPLY_ORDER.md`(append 순서·중복 인덱스 사전 점검). `npm run pre-live-smoke`(dry-run 기본). 홈 **실사용 점검** 패널. 자동매매 없음. |
 
 ## 아이디어 풀 (미정)
 

@@ -6,6 +6,7 @@ import type {
   ThemeConnectionMapItem,
   ThemeConnectionSummary,
   TodayCandidateDisplayMetrics,
+  TodayCandidateScoreBreakdown,
   TodayBriefConcentrationRiskSummary,
   TodayBriefDeckSlot,
   UsKrSignalEmptyReasonCode,
@@ -52,11 +53,36 @@ export interface TodayCandidatePrimaryRisk {
     | 'us_market_no_data'
     | 'sector_low_confidence'
     | 'low_confidence'
-    | 'very_low_confidence';
+    | 'very_low_confidence'
+    /** 기업 이벤트·공시 등 수동 레지스트리 기반 리스크 점검 */
+    | 'corporate_event_risk';
   label: string;
   message: string;
   severity: 'warning' | 'risk';
 }
+
+export type CorporateActionRiskType =
+  | 'rights_offering'
+  | 'capital_reduction'
+  | 'trading_halt'
+  | 'investment_warning'
+  | 'management_issue'
+  | 'cb_bw_overhang'
+  | 'earnings_shock'
+  | 'unknown_material_event';
+
+/** 수동 오버라이드 레지스트리 스냅샷(additive). */
+export type CorporateActionRiskSnapshot = {
+  active: boolean;
+  riskType: CorporateActionRiskType;
+  headline: string;
+  sourceLabel: string;
+  effectiveFrom: string;
+  expiresAt: string | null;
+  basisNote?: string;
+};
+
+export type TodayCandidateCandidateAction = 'observe_only' | 'review_required';
 
 export interface TodayCandidateDataQuality {
   overall: 'high' | 'medium' | 'low' | 'very_low';
@@ -108,6 +134,12 @@ export interface TodayStockCandidate {
   concentrationRiskAssessment?: ConcentrationRiskAssessment;
   /** EVO-007: 테마 연결 진단(관찰·설명용, 후보 강제 생성 아님). */
   themeConnection?: ThemeConnectionCandidateBinding;
+  /** Additive: 기업 이벤트 리스크(수동 레지스트리 우선). */
+  corporateActionRisk?: CorporateActionRiskSnapshot;
+  /** Additive: 관찰·복기 UX용 행동 힌트(자동 주문 없음). */
+  candidateAction?: TodayCandidateCandidateAction;
+  /** Additive: 관찰 점수 분해. */
+  scoreBreakdown?: TodayCandidateScoreBreakdown;
 }
 
 export interface UsMarketMorningSummary {
@@ -129,6 +161,19 @@ export interface UsMarketMorningSummary {
     anchorSymbolsRequested: number;
     fetchFailed: boolean;
     representativeAnchors?: Array<{ key: string; label: string; quoteSymbol: string }>;
+    /** Additive */
+    provider?: string;
+    route?: string;
+    requestedAt?: string;
+    upstreamStatus?: number | null;
+    emptyReason?: string;
+    envMissing?: boolean;
+    timeoutMs?: number;
+    fallbackUsed?: boolean;
+    /** 시세 일부만 성공했을 때 degraded */
+    coverageStatus?: 'ok' | 'degraded';
+    /** 사용자 관심 US 티커 포함 여부 */
+    userWatchlistAnchorsMerged?: number;
   };
 }
 
@@ -162,6 +207,8 @@ export interface TodayBriefWithCandidatesResponse {
   qualityMeta?: {
     todayCandidates: {
       generatedAt: string;
+      /** 브리핑 계산에서 평가 제외된 간편 등록(incomplete) 보유 행 수 */
+      incompleteHoldingCount?: number;
       userContextCount: number;
       usMarketKrCount: number;
       usMarketDataAvailable: boolean;
@@ -225,6 +272,19 @@ export interface TodayBriefWithCandidatesResponse {
       themeConnectionMap?: ThemeConnectionMapItem[];
       /** Additive: EVO-007 + EVO-006 — usToKrMappingEmpty일 때 테마 맵 얇음 안내. */
       usKrEmptyThemeBridgeHint?: string;
+      /** Additive: 미국 시세·매핑 커버리지(조용한 실패 방지). */
+      usCoverage?: {
+        status: 'ok' | 'degraded';
+        quoteFailure?: boolean;
+        krMappingFailure?: boolean;
+        message?: string;
+      };
+      /** Additive: 덱 점수 분해 요약 */
+      scoreBreakdownSummary?: {
+        avgFinalScore?: number;
+        repeatPenaltyAppliedCount?: number;
+        corporateRiskGatedCount?: number;
+      };
     };
   };
 }

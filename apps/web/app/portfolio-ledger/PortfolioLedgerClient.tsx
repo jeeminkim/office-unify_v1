@@ -10,9 +10,35 @@ import type {
   WatchlistSectorMatchResult,
 } from "@office-unify/shared-types";
 import type { SectorWatchlistCandidateItem } from "@/lib/sectorRadarContract";
+import { LAST_TICKER_RESOLVER_REQUEST_ID_KEY } from "@/lib/lastTickerResolverRequestId";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
 
 const jsonHeaders: HeadersInit = { "Content-Type": "application/json" };
+
+function shortenTickerResolverRequestId(id: string | null): { display: string; full: string } {
+  if (!id) return { display: "—", full: "" };
+  if (id.length <= 42) return { display: id, full: id };
+  return { display: `${id.slice(0, 14)}…${id.slice(-10)}`, full: id };
+}
+
+/** Sheets 후보 적용 시 본문과 동일 규칙으로 표시용 quote 심볼(참고·자동 주문 없음). */
+function ledgerTickerQuoteSymbolForApply(market: string, symbol: string): string {
+  const m = (market || "").toUpperCase();
+  if (m === "US") return (symbol || "").trim().toUpperCase() || "—";
+  const digits = (symbol || "").replace(/\D/g, "");
+  if (!digits) return "—";
+  return `${digits.padStart(6, "0")}.KS`;
+}
+
+function ledgerTickerStatusBadgeClass(status: string): string {
+  if (status === "ok") return "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200";
+  if (status === "pending") return "bg-slate-100 text-slate-800 ring-1 ring-slate-200";
+  if (status === "timeout") return "bg-amber-100 text-amber-950 ring-1 ring-amber-300";
+  if (status === "mismatch" || status === "parse_failed" || status === "empty") {
+    return "bg-rose-50 text-rose-900 ring-1 ring-rose-200";
+  }
+  return "bg-slate-50 text-slate-700 ring-1 ring-slate-200";
+}
 
 type TickerSuggestResponse = {
   ok: boolean;
@@ -144,6 +170,7 @@ export function PortfolioLedgerClient() {
       status: string;
       confidence: string;
       message?: string;
+      applyDisabledReason?: string;
     }>
   >([]);
   const [ledgerTickerPoll, setLedgerTickerPoll] = useState<{
@@ -199,7 +226,7 @@ export function PortfolioLedgerClient() {
   });
   const [applyTradeBusy, setApplyTradeBusy] = useState(false);
   const [ledgerTradeBanner, setLedgerTradeBanner] = useState<{
-    kind: "success" | "info";
+    kind: "success" | "info" | "partial";
     message: string;
     realizedEventId?: string;
   } | null>(null);
@@ -250,6 +277,15 @@ export function PortfolioLedgerClient() {
     if (typeof window === "undefined") return;
     window.localStorage.setItem("portfolioLedgerAdvancedMode", advancedMode ? "true" : "false");
   }, [advancedMode]);
+
+  useEffect(() => {
+    if (!ledgerTickerReqId || typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(LAST_TICKER_RESOLVER_REQUEST_ID_KEY, ledgerTickerReqId);
+    } catch {
+      /* ignore */
+    }
+  }, [ledgerTickerReqId]);
 
   const parseQty = (v: unknown): number => {
     const n = Number(String(v ?? "").replace(/,/g, ""));
@@ -463,9 +499,44 @@ export function PortfolioLedgerClient() {
       symbol: string,
       options?: { name?: string; origin?: LedgerTickerOrigin },
     ) => {
-      const sym = symbol.trim();
+      const symIn = symbol.trim();
+      const nam = options?.name?.trim() ?? "";
+      if (!symIn && !nam) {
+        setError("심볼 또는 종목명 중 하나는 입력해 주세요.");
+        return;
+      }
+      let sym = symIn;
+      if (!sym && nam && market === "KR") {
+        try {
+          const res = await fetch("/api/portfolio/watchlist/resolve", {
+            method: "POST",
+            headers: jsonHeaders,
+            credentials: "same-origin",
+            body: JSON.stringify({ market: "KR", name: nam }),
+          });
+          const data = (await res.json()) as {
+            ok?: boolean;
+            resolved?: { symbol: string };
+            failureCode?: string;
+            actionHint?: string;
+          };
+          if (data.ok && data.resolved?.symbol?.trim()) {
+            sym = data.resolved.symbol.trim();
+            setLedgerTradeBanner({
+              kind: "info",
+              message: `종목명 단계에서 심볼을 확정했습니다(${sym}). Sheets ticker 후보를 요청합니다.`,
+            });
+          } else if (!data.ok && data.actionHint) {
+            setLedgerTradeBanner({ kind: "partial", message: data.actionHint });
+            return;
+          }
+        } catch {
+          setError("종목명 → 심볼 매칭(resolve) 요청에 실패했습니다.");
+          return;
+        }
+      }
       if (!sym) {
-        setError("심볼 또는 종목명을 먼저 입력하세요.");
+        setError("심볼을 확정하지 못했습니다. 종목명·시장을 확인하거나 심볼을 직접 입력해 주세요.");
         return;
       }
       setLedgerTickerOrigin(options?.origin ?? null);
@@ -474,7 +545,7 @@ export function PortfolioLedgerClient() {
       setLedgerTickerRows([]);
       try {
         const payload: { market: "KR" | "US"; symbol: string; name?: string } = { market, symbol: sym };
-        if (options?.name?.trim()) payload.name = options.name.trim();
+        if (nam) payload.name = nam;
         const res = await fetch("/api/portfolio/ticker-resolver/refresh", {
           method: "POST",
           headers: jsonHeaders,
@@ -512,11 +583,11 @@ export function PortfolioLedgerClient() {
   );
 
   const fillHoldingFromSuggest = useCallback(async () => {
-    const sym = holdingCreateDraft.symbol.trim();
+    let sym = holdingCreateDraft.symbol.trim();
     const nam = holdingCreateDraft.name.trim();
     if (!sym && !nam) {
       setSuggestFormBanner(null);
-      setError("심볼 또는 종목명을 먼저 입력하세요.");
+      setError("심볼 또는 종목명 중 하나는 입력해 주세요.");
       return;
     }
     setSuggestFillHoldingBusy(true);
@@ -525,6 +596,63 @@ export function PortfolioLedgerClient() {
     setHoldingDupNavKey(null);
     setWatchDupNavKey(null);
     try {
+      if (!sym && nam && holdingCreateDraft.market === "KR") {
+        const res = await fetch("/api/portfolio/watchlist/resolve", {
+          method: "POST",
+          headers: jsonHeaders,
+          credentials: "same-origin",
+          body: JSON.stringify({ market: "KR", name: nam }),
+        });
+        const resolved = (await res.json()) as {
+          ok?: boolean;
+          resolved?: { symbol: string; resolvedName: string; googleTicker: string; quoteSymbol: string; sector?: string };
+          failureCode?: string;
+          actionHint?: string;
+          candidates?: Array<{ resolvedName: string; symbol: string }>;
+        };
+        if (resolved.ok && resolved.resolved?.symbol?.trim()) {
+          sym = resolved.resolved.symbol.trim();
+          setHoldingCreateDraft((prev) => ({
+            ...prev,
+            symbol: sym,
+            name: resolved.resolved!.resolvedName?.trim() ? resolved.resolved!.resolvedName : prev.name,
+            googleTicker: resolved.resolved!.googleTicker?.trim() ? resolved.resolved!.googleTicker : prev.googleTicker,
+            quoteSymbol: resolved.resolved!.quoteSymbol?.trim() ? resolved.resolved!.quoteSymbol : prev.quoteSymbol,
+            sector: resolved.resolved!.sector?.trim() ? resolved.resolved!.sector : prev.sector,
+            krQuoteMarket: resolved.resolved!.quoteSymbol?.endsWith(".KQ")
+              ? "KOSDAQ"
+              : resolved.resolved!.quoteSymbol?.endsWith(".KS")
+                ? "KOSPI"
+                : prev.krQuoteMarket,
+          }));
+          setSuggestFormBanner({
+            kind: "partial",
+            message: `1단계 resolve: 종목명으로 심볼을 채웠습니다(${sym}). 이후 단계에서 ticker/suggest로 보정합니다.`,
+          });
+        } else if (!resolved.ok && resolved.failureCode === "ambiguous_name" && (resolved.candidates?.length ?? 0) > 0) {
+          const lines = (resolved.candidates ?? [])
+            .slice(0, 6)
+            .map((c) => `${c.resolvedName} ${c.symbol}`)
+            .join(" / ");
+          setSuggestFormBanner({
+            kind: "partial",
+            message: `1단계 resolve: ${resolved.actionHint ?? "여러 후보"} — ${lines}`,
+          });
+          return;
+        } else if (!resolved.ok && resolved.actionHint) {
+          setSuggestFormBanner({ kind: "partial", message: `1단계 resolve: ${resolved.actionHint}` });
+        }
+      }
+
+      if (!sym) {
+        setSuggestFormBanner({
+          kind: "partial",
+          message:
+            "심볼이 비어 있습니다. 종목명만으로 확정되지 않았다면 표기를 바꾸거나 6자리 코드를 입력한 뒤 다시 시도하세요.",
+        });
+        return;
+      }
+
       const params = new URLSearchParams({ market: holdingCreateDraft.market, symbol: sym, name: nam });
       const res = await fetch(`/api/portfolio/ticker-resolver/suggest?${params}`, { credentials: "same-origin" });
       const data = (await res.json()) as TickerSuggestResponse;
@@ -539,7 +667,7 @@ export function PortfolioLedgerClient() {
         }));
         setSuggestFormBanner({
           kind: "partial",
-          message: "일부 정보만 추천했습니다. 심볼 또는 종목명을 확인하세요.",
+          message: "2단계 suggest: 심볼을 확정하지 못했습니다. resolve 결과 또는 종목명을 다시 확인하세요.",
         });
         return;
       }
@@ -556,8 +684,8 @@ export function PortfolioLedgerClient() {
       setSuggestFormBanner({
         kind: partial ? "partial" : "success",
         message: partial
-          ? "일부 정보만 추천했습니다. 심볼 또는 종목명을 확인하세요."
-          : "추천 정보를 채웠습니다. 저장 전 ticker/섹터를 확인하세요.",
+          ? "2단계 suggest: 일부만 반영했습니다. ticker/섹터를 확인하세요."
+          : "2단계 suggest: 추천 정보를 채웠습니다. 저장 전 ticker/섹터를 확인하세요.",
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "자동 채움 실패");
@@ -571,7 +699,7 @@ export function PortfolioLedgerClient() {
     const nam = watchCreateDraft.name.trim();
     if (!sym && !nam) {
       setSuggestFormBanner(null);
-      setError("심볼 또는 종목명을 먼저 입력하세요.");
+      setError("심볼 또는 종목명 중 하나는 입력해 주세요.");
       return;
     }
     setSuggestFillWatchBusy(true);
@@ -617,7 +745,7 @@ export function PortfolioLedgerClient() {
         }));
         setSuggestFormBanner({
           kind: r.confidence === "low" ? "partial" : "success",
-          message: `종목명으로 자동 채움했으며, 적용 전 확인이 필요합니다. (${r.symbol} · ${r.googleTicker})`,
+          message: `1단계 resolve: 종목명으로 자동 채움했으며 적용 전 확인이 필요합니다. (${r.symbol} · ${r.googleTicker})`,
         });
         return;
       }
@@ -628,12 +756,12 @@ export function PortfolioLedgerClient() {
           .join(" / ");
         setSuggestFormBanner({
           kind: "partial",
-          message: `${resolved.actionHint ?? "여러 후보"} — ${lines}`,
+          message: `1단계 resolve: ${resolved.actionHint ?? "여러 후보"} — ${lines}`,
         });
         return;
       }
       if (!resolved.ok && resolved.actionHint) {
-        setSuggestFormBanner({ kind: "partial", message: resolved.actionHint });
+        setSuggestFormBanner({ kind: "partial", message: `1단계 resolve: ${resolved.actionHint}` });
       }
 
       const params = new URLSearchParams({ market: watchCreateDraft.market, symbol: sym, name: nam });
@@ -650,7 +778,7 @@ export function PortfolioLedgerClient() {
         }));
         setSuggestFormBanner({
           kind: "partial",
-          message: "원장 기반 추천만으로는 심볼을 확정하지 못했습니다. resolve 단계 메시지를 확인하세요.",
+          message: "2단계 suggest: 원장 기반 추천만으로는 심볼을 확정하지 못했습니다. 위 resolve 단계 메시지를 확인하세요.",
         });
         return;
       }
@@ -667,8 +795,8 @@ export function PortfolioLedgerClient() {
       setSuggestFormBanner({
         kind: partial ? "partial" : "success",
         message: partial
-          ? "일부 정보만 추천했습니다. 심볼 또는 종목명을 확인하세요."
-          : "추천 정보를 채웠습니다. 저장 전 ticker/섹터를 확인하세요.",
+          ? "2단계 suggest: 일부만 반영했습니다. ticker/섹터를 확인하세요."
+          : "2단계 suggest: 추천 정보를 채웠습니다. 저장 전 ticker/섹터를 확인하세요.",
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "자동 채움 실패");
@@ -699,6 +827,7 @@ export function PortfolioLedgerClient() {
           status: string;
           confidence: string;
           message?: string;
+          applyDisabledReason?: string;
         }>;
         status?: string;
         elapsedMs?: number;
@@ -1549,7 +1678,9 @@ export function PortfolioLedgerClient() {
                 className={`mt-2 rounded border px-3 py-2 text-[11px] ${
                   ledgerTradeBanner.kind === "success"
                     ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                    : "border-blue-200 bg-blue-50 text-blue-950"
+                    : ledgerTradeBanner.kind === "partial"
+                      ? "border-amber-200 bg-amber-50 text-amber-950"
+                      : "border-blue-200 bg-blue-50 text-blue-950"
                 }`}
                 role="status"
               >
@@ -2094,23 +2225,49 @@ export function PortfolioLedgerClient() {
         ) : null}
         {ledgerTickerReqId || ledgerTickerRows.length > 0 ? (
           <div className="mt-4 rounded border border-violet-200 bg-violet-50/50 p-3 text-[11px] text-violet-950">
-            <p className="font-semibold">GOOGLEFINANCE ticker 후보 (승인 후 DB 반영)</p>
+            <p className="font-semibold">GOOGLEFINANCE ticker 후보 (승인 후 원장에만 반영·자동 주문 없음)</p>
             {ledgerTickerOrigin === "holding_form" || ledgerTickerOrigin === "watchlist_form" ? (
               <p className="mt-1 font-medium text-violet-950">이 폼에서 요청한 후보입니다.</p>
             ) : null}
-            <p className="mt-1 text-violet-900/90">
-              requestId: {ledgerTickerReqId ?? "—"} · Google Sheets 계산까지 30~90초 걸릴 수 있습니다. 자동 저장 없음.
-              {ledgerTickerPoll?.elapsedMs != null && ledgerTickerPoll.timeoutMs != null ? (
-                <span className="block text-violet-900">
-                  경과 {Math.round(ledgerTickerPoll.elapsedMs / 1000)}초 / 제한 {Math.round(ledgerTickerPoll.timeoutMs / 1000)}초 · 상태{" "}
-                  {ledgerTickerPoll.status ?? "—"}
+            <div className="mt-1 min-w-0 space-y-1 text-violet-900/90">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="shrink-0 text-violet-800">requestId</span>
+                <span
+                  className="min-w-0 flex-1 break-all font-mono text-[10px] text-violet-900"
+                  title={shortenTickerResolverRequestId(ledgerTickerReqId).full}
+                >
+                  {shortenTickerResolverRequestId(ledgerTickerReqId).display}
                 </span>
+                {ledgerTickerReqId ? (
+                  <button
+                    type="button"
+                    className="shrink-0 rounded border border-violet-300 bg-white px-2 py-0.5 text-[10px] text-violet-900"
+                    onClick={() => void navigator.clipboard?.writeText(ledgerTickerReqId)}
+                  >
+                    복사
+                  </button>
+                ) : null}
+              </div>
+              <p>
+                Google Sheets 계산까지 30~90초 걸릴 수 있습니다. 제한 시간을 넘기면 pending 행은 timeout으로 전환되며 그때는 적용할 수
+                없습니다.
+              </p>
+              {ledgerTickerPoll?.elapsedMs != null && ledgerTickerPoll.timeoutMs != null ? (
+                <p className="text-violet-900">
+                  전체 요청 경과 {Math.round(ledgerTickerPoll.elapsedMs / 1000)}초 / 한도{" "}
+                  {Math.round(ledgerTickerPoll.timeoutMs / 1000)}초 · 세션 상태 {ledgerTickerPoll.status ?? "—"}
+                </p>
               ) : null}
-            </p>
-            {ledgerTickerPoll?.status === "timeout" || ledgerTickerPoll?.status === "partial" ? (
+            </div>
+            {ledgerTickerPoll?.status === "partial" ? (
               <p className="mt-1 rounded border border-amber-200 bg-amber-50/90 p-1.5 text-[10px] text-amber-950">
-                Google Sheets 계산이 제한 시간 내 끝나지 않았습니다. 다시 요청하거나 수동 입력을 사용하세요. (timeout 행은 적용할 수
-                없습니다)
+                일부 후보만 제한 시간 안에 검증되었습니다(partial). <strong>상태가 ok인 행만</strong> 「적용」할 수 있습니다.
+              </p>
+            ) : null}
+            {ledgerTickerPoll?.status === "timeout" ? (
+              <p className="mt-1 rounded border border-amber-200 bg-amber-50/90 p-1.5 text-[10px] text-amber-950">
+                제한 시간이 지나 요청이 종료되었습니다(timeout). timeout·failed 행은 적용할 수 없습니다. 필요 시 다시 요청하거나 수동 입력을
+                사용하세요.
               </p>
             ) : null}
             <div className="mt-2 flex flex-wrap gap-2">
@@ -2125,145 +2282,228 @@ export function PortfolioLedgerClient() {
             </div>
             {ledgerTickerRows.length > 0 ? (
               <>
-                <div className="mt-2 hidden overflow-auto md:block">
-                  <table className="min-w-full">
+                <div className="mt-2 hidden min-w-0 overflow-x-auto md:block">
+                  <table className="min-w-full table-fixed">
                     <thead>
                       <tr className="border-b border-violet-200 text-violet-800">
-                        <th className="px-2 py-1 text-left">종목</th>
-                        <th className="px-2 py-1 text-left">후보 ticker</th>
-                        <th className="px-2 py-1 text-right">가격</th>
-                        <th className="px-2 py-1 text-left">통화</th>
-                        <th className="px-2 py-1 text-left">googleName</th>
-                        <th className="px-2 py-1 text-left">상태</th>
-                        <th className="px-2 py-1 text-left">적용</th>
+                        <th className="w-[10%] px-2 py-1 text-left align-top">종목</th>
+                        <th className="w-[14%] px-2 py-1 text-left align-top">googleTicker</th>
+                        <th className="w-[12%] px-2 py-1 text-left align-top">적용 시 quote</th>
+                        <th className="w-[8%] px-2 py-1 text-right align-top">가격</th>
+                        <th className="w-[7%] px-2 py-1 text-left align-top">통화</th>
+                        <th className="w-[10%] px-2 py-1 text-left align-top">googleName</th>
+                        <th className="w-[16%] px-2 py-1 text-left align-top">상태</th>
+                        <th className="w-[13%] px-2 py-1 text-left align-top">경과/한도</th>
+                        <th className="w-[10%] px-2 py-1 text-left align-top">적용</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {ledgerTickerRows.map((row) => (
-                        <tr key={`${row.targetType}-${row.market}-${row.symbol}-${row.candidateTicker}`}>
-                          <td className="px-2 py-1">{row.name ?? row.symbol}</td>
-                          <td className="px-2 py-1 font-mono">{row.candidateTicker}</td>
-                          <td className="px-2 py-1 text-right">{row.parsedPrice == null ? "—" : row.parsedPrice.toLocaleString("ko-KR")}</td>
-                          <td className="px-2 py-1">{row.currency ?? "—"}</td>
-                          <td className="px-2 py-1">{row.googleName ?? "—"}</td>
-                          <td className="px-2 py-1">{row.status}</td>
-                          <td className="px-2 py-1">
-                            <button
-                              type="button"
-                              className="rounded border border-violet-500 bg-white px-2 py-0.5 disabled:opacity-40"
-                              disabled={row.status !== "ok"}
-                              onClick={() => {
-                                void (async () => {
-                                  setError(null);
-                                  try {
-                                    const apply = await fetch("/api/portfolio/ticker-resolver/apply", {
-                                      method: "POST",
-                                      headers: jsonHeaders,
-                                      credentials: "same-origin",
-                                      body: JSON.stringify({
-                                        targetType: row.targetType === "watchlist" ? "watchlist" : "holding",
-                                        market: row.market,
-                                        symbol: row.symbol,
-                                        googleTicker: row.candidateTicker,
-                                        quoteSymbol:
-                                          row.market === "KR"
-                                            ? `${row.symbol.replace(/\D/g, "").padStart(6, "0")}.KS`
-                                            : undefined,
-                                      }),
-                                    });
-                                    const ar = (await apply.json()) as { error?: string; message?: string };
-                                    if (!apply.ok) throw new Error(ar.error ?? `HTTP ${apply.status}`);
-                                    const qref = await fetch("/api/portfolio/quotes/refresh", {
-                                      method: "POST",
-                                      credentials: "same-origin",
-                                    });
-                                    if (!qref.ok) {
-                                      const qr = (await qref.json()) as { error?: string };
-                                      throw new Error(qr.error ?? "시세 새로고침 실패");
+                      {ledgerTickerRows.map((row) => {
+                        const statusLabel =
+                          row.status === "pending" &&
+                          ledgerTickerPoll?.elapsedMs != null &&
+                          ledgerTickerPoll.timeoutMs != null &&
+                          ledgerTickerPoll.elapsedMs < ledgerTickerPoll.timeoutMs
+                            ? `pending (계산 중 · ${Math.round(ledgerTickerPoll.elapsedMs / 1000)}초)`
+                            : row.status;
+                        const timeCell =
+                          ledgerTickerPoll?.elapsedMs != null && ledgerTickerPoll.timeoutMs != null
+                            ? `${Math.round(ledgerTickerPoll.elapsedMs / 1000)}초 / ${Math.round(ledgerTickerPoll.timeoutMs / 1000)}초`
+                            : "—";
+                        const applyTitle =
+                          row.status === "ok"
+                            ? "검증 완료(ok) 후보를 원장에 반영합니다."
+                            : row.applyDisabledReason ?? "상태가 ok일 때만 적용할 수 있습니다.";
+                        return (
+                          <tr key={`${row.targetType}-${row.market}-${row.symbol}-${row.candidateTicker}`}>
+                            <td className="px-2 py-1 align-top break-words">{row.name ?? row.symbol}</td>
+                            <td className="px-2 py-1 align-top">
+                              <span className="break-all font-mono text-[10px]">{row.candidateTicker}</span>
+                            </td>
+                            <td className="px-2 py-1 align-top">
+                              <span className="break-all font-mono text-[10px]">
+                                {ledgerTickerQuoteSymbolForApply(row.market, row.symbol)}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 text-right align-top whitespace-nowrap">
+                              {row.parsedPrice == null ? "—" : row.parsedPrice.toLocaleString("ko-KR")}
+                            </td>
+                            <td className="px-2 py-1 align-top">{row.currency ?? "—"}</td>
+                            <td className="px-2 py-1 align-top break-words">{row.googleName ?? "—"}</td>
+                            <td className="px-2 py-1 align-top">
+                              <span
+                                className={`inline-flex max-w-full flex-col gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium ${ledgerTickerStatusBadgeClass(row.status)}`}
+                              >
+                                <span className="break-all">{statusLabel}</span>
+                                {row.applyDisabledReason ? (
+                                  <span className="font-normal break-words text-amber-950">{row.applyDisabledReason}</span>
+                                ) : null}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 align-top text-[10px] text-violet-900">{timeCell}</td>
+                            <td className="px-2 py-1 align-top">
+                              <button
+                                type="button"
+                                className="rounded border border-violet-500 bg-white px-2 py-1 text-left text-[11px] disabled:opacity-40"
+                                disabled={row.status !== "ok"}
+                                title={applyTitle}
+                                onClick={() => {
+                                  void (async () => {
+                                    setError(null);
+                                    try {
+                                      const apply = await fetch("/api/portfolio/ticker-resolver/apply", {
+                                        method: "POST",
+                                        headers: jsonHeaders,
+                                        credentials: "same-origin",
+                                        body: JSON.stringify({
+                                          targetType: row.targetType === "watchlist" ? "watchlist" : "holding",
+                                          market: row.market,
+                                          symbol: row.symbol,
+                                          googleTicker: row.candidateTicker,
+                                          quoteSymbol:
+                                            row.market === "KR"
+                                              ? `${row.symbol.replace(/\D/g, "").padStart(6, "0")}.KS`
+                                              : undefined,
+                                        }),
+                                      });
+                                      const ar = (await apply.json()) as { error?: string; message?: string };
+                                      if (!apply.ok) throw new Error(ar.error ?? `HTTP ${apply.status}`);
+                                      const qref = await fetch("/api/portfolio/quotes/refresh", {
+                                        method: "POST",
+                                        credentials: "same-origin",
+                                      });
+                                      if (!qref.ok) {
+                                        const qr = (await qref.json()) as { error?: string };
+                                        throw new Error(qr.error ?? "시세 새로고침 실패");
+                                      }
+                                      setLedgerTradeBanner({
+                                        kind: "info",
+                                        message:
+                                          ar.message ??
+                                          "저장 및 시세 새로고침 요청 완료. 30~90초 후 /portfolio에서 확인하세요.",
+                                      });
+                                      await loadSnapshot();
+                                    } catch (e: unknown) {
+                                      setError(e instanceof Error ? e.message : "적용 실패");
                                     }
-                                    setLedgerTradeBanner({
-                                      kind: "info",
-                                      message:
-                                        ar.message ??
-                                        "저장 및 시세 새로고침 요청 완료. 30~90초 후 /portfolio에서 확인하세요.",
-                                    });
-                                    await loadSnapshot();
-                                  } catch (e: unknown) {
-                                    setError(e instanceof Error ? e.message : "적용 실패");
-                                  }
-                                })();
-                              }}
-                            >
-                              적용
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                                  })();
+                                }}
+                              >
+                                적용
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
-                <div className="mt-2 space-y-2 md:hidden">
-                  {ledgerTickerRows.map((row) => (
-                    <div
-                      key={`m-${row.targetType}-${row.market}-${row.symbol}-${row.candidateTicker}`}
-                      className="rounded border border-violet-200 bg-white p-2 text-[11px] text-violet-950"
-                    >
-                      <p className="font-medium">{row.name ?? row.symbol}</p>
-                      <p className="font-mono text-violet-900">{row.candidateTicker}</p>
-                      <p className="text-violet-800">
-                        가격 {row.parsedPrice == null ? "—" : row.parsedPrice.toLocaleString("ko-KR")} · 통화 {row.currency ?? "—"}
-                      </p>
-                      <p className="text-violet-800">googleName: {row.googleName ?? "—"}</p>
-                      <p className="text-violet-800">상태: {row.status}</p>
-                      <button
-                        type="button"
-                        className="mt-1 rounded border border-violet-500 bg-violet-50 px-2 py-0.5 disabled:opacity-40"
-                        disabled={row.status !== "ok"}
-                        onClick={() => {
-                          void (async () => {
-                            setError(null);
-                            try {
-                              const apply = await fetch("/api/portfolio/ticker-resolver/apply", {
-                                method: "POST",
-                                headers: jsonHeaders,
-                                credentials: "same-origin",
-                                body: JSON.stringify({
-                                  targetType: row.targetType === "watchlist" ? "watchlist" : "holding",
-                                  market: row.market,
-                                  symbol: row.symbol,
-                                  googleTicker: row.candidateTicker,
-                                  quoteSymbol:
-                                    row.market === "KR"
-                                      ? `${row.symbol.replace(/\D/g, "").padStart(6, "0")}.KS`
-                                      : undefined,
-                                }),
-                              });
-                              const ar = (await apply.json()) as { error?: string; message?: string };
-                              if (!apply.ok) throw new Error(ar.error ?? `HTTP ${apply.status}`);
-                              const qref = await fetch("/api/portfolio/quotes/refresh", {
-                                method: "POST",
-                                credentials: "same-origin",
-                              });
-                              if (!qref.ok) {
-                                const qr = (await qref.json()) as { error?: string };
-                                throw new Error(qr.error ?? "시세 새로고침 실패");
-                              }
-                              setLedgerTradeBanner({
-                                kind: "info",
-                                message:
-                                  ar.message ?? "저장 및 시세 새로고침 요청 완료. 30~90초 후 /portfolio에서 확인하세요.",
-                              });
-                              await loadSnapshot();
-                            } catch (e: unknown) {
-                              setError(e instanceof Error ? e.message : "적용 실패");
-                            }
-                          })();
-                        }}
+                <div className="mt-2 space-y-3 md:hidden">
+                  {ledgerTickerRows.map((row) => {
+                    const statusLabel =
+                      row.status === "pending" &&
+                      ledgerTickerPoll?.elapsedMs != null &&
+                      ledgerTickerPoll.timeoutMs != null &&
+                      ledgerTickerPoll.elapsedMs < ledgerTickerPoll.timeoutMs
+                        ? `pending (계산 중 · ${Math.round(ledgerTickerPoll.elapsedMs / 1000)}초)`
+                        : row.status;
+                    const timeLine =
+                      ledgerTickerPoll?.elapsedMs != null && ledgerTickerPoll.timeoutMs != null
+                        ? `경과 ${Math.round(ledgerTickerPoll.elapsedMs / 1000)}초 · 한도 ${Math.round(ledgerTickerPoll.timeoutMs / 1000)}초`
+                        : "경과·한도: 조회 후 표시";
+                    const applyTitle =
+                      row.status === "ok"
+                        ? "검증 완료(ok) 후보를 원장에 반영합니다."
+                        : row.applyDisabledReason ?? "상태가 ok일 때만 적용할 수 있습니다.";
+                    return (
+                      <div
+                        key={`m-${row.targetType}-${row.market}-${row.symbol}-${row.candidateTicker}`}
+                        className="min-w-0 overflow-hidden rounded border border-violet-200 bg-white p-3 text-[11px] text-violet-950"
                       >
-                        적용
-                      </button>
-                    </div>
-                  ))}
+                        <p className="font-semibold break-words">{row.name ?? row.symbol}</p>
+                        <dl className="mt-2 space-y-1.5 text-violet-900">
+                          <div className="grid gap-0.5">
+                            <dt className="text-[10px] font-medium text-violet-700">googleTicker (후보)</dt>
+                            <dd className="break-all font-mono text-[10px] text-violet-900">{row.candidateTicker}</dd>
+                          </div>
+                          <div className="grid gap-0.5">
+                            <dt className="text-[10px] font-medium text-violet-700">적용 시 quote 심볼(예상)</dt>
+                            <dd className="break-all font-mono text-[10px] text-violet-900">
+                              {ledgerTickerQuoteSymbolForApply(row.market, row.symbol)}
+                            </dd>
+                          </div>
+                          <div className="grid gap-0.5">
+                            <dt className="text-[10px] font-medium text-violet-700">상태</dt>
+                            <dd className="min-w-0">
+                              <span
+                                className={`inline-flex max-w-full flex-col gap-0.5 rounded px-1.5 py-1 text-[10px] font-medium ${ledgerTickerStatusBadgeClass(row.status)}`}
+                              >
+                                <span className="break-all">{statusLabel}</span>
+                                {row.applyDisabledReason ? (
+                                  <span className="font-normal break-words text-amber-950">{row.applyDisabledReason}</span>
+                                ) : null}
+                              </span>
+                            </dd>
+                          </div>
+                          <div className="text-[10px] text-violet-800">{timeLine}</div>
+                          <div className="text-[10px] text-violet-800">
+                            가격 {row.parsedPrice == null ? "—" : row.parsedPrice.toLocaleString("ko-KR")} · 통화{" "}
+                            {row.currency ?? "—"}
+                          </div>
+                          <div className="break-words text-[10px] text-violet-800">googleName: {row.googleName ?? "—"}</div>
+                        </dl>
+                        <button
+                          type="button"
+                          className="mt-3 min-h-[40px] w-full rounded border border-violet-500 bg-violet-50 px-3 py-2 text-sm font-medium disabled:opacity-40"
+                          disabled={row.status !== "ok"}
+                          title={applyTitle}
+                          onClick={() => {
+                            void (async () => {
+                              setError(null);
+                              try {
+                                const apply = await fetch("/api/portfolio/ticker-resolver/apply", {
+                                  method: "POST",
+                                  headers: jsonHeaders,
+                                  credentials: "same-origin",
+                                  body: JSON.stringify({
+                                    targetType: row.targetType === "watchlist" ? "watchlist" : "holding",
+                                    market: row.market,
+                                    symbol: row.symbol,
+                                    googleTicker: row.candidateTicker,
+                                    quoteSymbol:
+                                      row.market === "KR"
+                                        ? `${row.symbol.replace(/\D/g, "").padStart(6, "0")}.KS`
+                                        : undefined,
+                                  }),
+                                });
+                                const ar = (await apply.json()) as { error?: string; message?: string };
+                                if (!apply.ok) throw new Error(ar.error ?? `HTTP ${apply.status}`);
+                                const qref = await fetch("/api/portfolio/quotes/refresh", {
+                                  method: "POST",
+                                  credentials: "same-origin",
+                                });
+                                if (!qref.ok) {
+                                  const qr = (await qref.json()) as { error?: string };
+                                  throw new Error(qr.error ?? "시세 새로고침 실패");
+                                }
+                                setLedgerTradeBanner({
+                                  kind: "info",
+                                  message:
+                                    ar.message ??
+                                    "저장 및 시세 새로고침 요청 완료. 30~90초 후 /portfolio에서 확인하세요.",
+                                });
+                                await loadSnapshot();
+                              } catch (e: unknown) {
+                                setError(e instanceof Error ? e.message : "적용 실패");
+                              }
+                            })();
+                          }}
+                        >
+                          적용
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             ) : null}

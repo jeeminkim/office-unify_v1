@@ -58,6 +58,33 @@ const EMPTY_DRAFT: DraftState = {
   reflectionDueAt: '',
 };
 
+const SIDE_KO: Record<DraftState['side'], string> = { buy: '매수', sell: '매도' };
+const HORIZON_KO: Record<DraftState['strategyHorizon'], string> = {
+  long_term: '장기',
+  swing: '스윙',
+  short_term: '단기',
+};
+const ENTRY_KO: Record<string, string> = {
+  value_entry: '가치 진입',
+  trend_follow: '추세 추종',
+  rebalancing_buy: '리밸런싱 매수',
+  event_driven_buy: '이벤트(재료) 매수',
+  long_term_accumulate: '장기 적립',
+};
+const EXIT_KO: Record<string, string> = {
+  target_reached: '목표 도달',
+  thesis_broken: '테시스 붕괴',
+  risk_reduction: '리스크 축소',
+  rebalancing_sell: '리밸런싱 매도',
+  stop_loss: '손절',
+  event_avoidance: '이벤트 회피',
+};
+const CONVICTION_KO: Record<NonNullable<Exclude<DraftState['convictionLevel'], ''>>, string> = {
+  low: '낮음',
+  medium: '보통',
+  high: '높음',
+};
+
 export function TradeJournalClient() {
   const [sets, setSets] = useState<InvestmentPrincipleSet[]>([]);
   const [principles, setPrinciples] = useState<InvestmentPrinciple[]>([]);
@@ -68,6 +95,9 @@ export function TradeJournalClient() {
   const [evaluation, setEvaluation] = useState<TradeJournalCheckResponse | null>(null);
   const [review, setReview] = useState<TradeJournalReviewResponse | null>(null);
   const [entryWarnings, setEntryWarnings] = useState<string[]>([]);
+  const [journalStep, setJournalStep] = useState(1);
+  const [holdPresets, setHoldPresets] = useState<Array<{ symbol: string; displayName?: string; market?: string }>>([]);
+  const [todayPresets, setTodayPresets] = useState<Array<{ label: string; symbol: string; market: string }>>([]);
   const [selectedPersona, setSelectedPersona] = useState('private-banker');
   const [newPrinciple, setNewPrinciple] = useState({
     principleType: 'buy',
@@ -146,6 +176,28 @@ export function TradeJournalClient() {
       setMessage(null);
       try {
         await Promise.all([loadPrinciples(), loadEntries(), loadPattern()]);
+        const [ovRes, tbRes] = await Promise.all([
+          fetch('/api/dashboard/overview', { credentials: 'same-origin' }),
+          fetch('/api/dashboard/today-brief', { credentials: 'same-origin' }),
+        ]);
+        if (ovRes.ok) {
+          const ov = (await ovRes.json()) as {
+            portfolio?: { topPositions?: Array<{ symbol: string; displayName?: string; market?: string }> };
+          };
+          setHoldPresets(ov.portfolio?.topPositions ?? []);
+        }
+        if (tbRes.ok) {
+          const tb = (await tbRes.json()) as {
+            primaryCandidateDeck?: Array<{ name: string; stockCode?: string; symbol?: string; market: string }>;
+          };
+          setTodayPresets(
+            (tb.primaryCandidateDeck ?? []).map((c) => ({
+              label: c.name,
+              symbol: String(c.stockCode ?? c.symbol ?? '').replace(/^KR:/, ''),
+              market: c.market === 'US' ? 'US' : 'KR',
+            })),
+          );
+        }
       } catch (error: unknown) {
         setMessage(error instanceof Error ? error.message : '초기 로드 실패');
       } finally {
@@ -487,71 +539,352 @@ export function TradeJournalClient() {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-800">매매일지 입력</h2>
-        <div className="mt-2 grid gap-2 md:grid-cols-4">
-          <input value={draft.symbol} onChange={(e) => setDraft((prev) => ({ ...prev, symbol: e.target.value }))} className="rounded border border-slate-200 px-2 py-1 text-sm" placeholder="symbol" />
-          <input value={draft.market} onChange={(e) => setDraft((prev) => ({ ...prev, market: e.target.value }))} className="rounded border border-slate-200 px-2 py-1 text-sm" placeholder="market" />
-          <select value={draft.side} onChange={(e) => setDraft((prev) => ({ ...prev, side: e.target.value as 'buy' | 'sell' }))} className="rounded border border-slate-200 px-2 py-1 text-sm">
-            <option value="buy">buy</option>
-            <option value="sell">sell</option>
-          </select>
-          <select value={draft.strategyHorizon} onChange={(e) => setDraft((prev) => ({ ...prev, strategyHorizon: e.target.value as 'long_term' | 'swing' | 'short_term' }))} className="rounded border border-slate-200 px-2 py-1 text-sm">
-            <option value="long_term">long_term</option>
-            <option value="swing">swing</option>
-            <option value="short_term">short_term</option>
-          </select>
-          {draft.side === 'buy' ? (
-            <select value={draft.entryType} onChange={(e) => setDraft((prev) => ({ ...prev, entryType: e.target.value as DraftState['entryType'], exitType: '' }))} className="rounded border border-slate-200 px-2 py-1 text-sm">
-              <option value="">entry_type</option>
-              <option value="value_entry">value_entry</option>
-              <option value="trend_follow">trend_follow</option>
-              <option value="rebalancing_buy">rebalancing_buy</option>
-              <option value="event_driven_buy">event_driven_buy</option>
-              <option value="long_term_accumulate">long_term_accumulate</option>
-            </select>
-          ) : (
-            <select value={draft.exitType} onChange={(e) => setDraft((prev) => ({ ...prev, exitType: e.target.value as DraftState['exitType'], entryType: '' }))} className="rounded border border-slate-200 px-2 py-1 text-sm">
-              <option value="">exit_type</option>
-              <option value="target_reached">target_reached</option>
-              <option value="thesis_broken">thesis_broken</option>
-              <option value="risk_reduction">risk_reduction</option>
-              <option value="rebalancing_sell">rebalancing_sell</option>
-              <option value="stop_loss">stop_loss</option>
-              <option value="event_avoidance">event_avoidance</option>
-            </select>
-          )}
-          <select value={draft.convictionLevel} onChange={(e) => setDraft((prev) => ({ ...prev, convictionLevel: e.target.value as DraftState['convictionLevel'] }))} className="rounded border border-slate-200 px-2 py-1 text-sm">
-            <option value="">conviction_level</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-          </select>
-          <input value={draft.quantity} onChange={(e) => setDraft((prev) => ({ ...prev, quantity: e.target.value }))} className="rounded border border-slate-200 px-2 py-1 text-sm" placeholder="quantity" />
-          <input value={draft.price} onChange={(e) => setDraft((prev) => ({ ...prev, price: e.target.value }))} className="rounded border border-slate-200 px-2 py-1 text-sm" placeholder="price" />
-          <input value={draft.amount} onChange={(e) => setDraft((prev) => ({ ...prev, amount: e.target.value }))} className="rounded border border-slate-200 px-2 py-1 text-sm" placeholder="amount" />
-          <input value={draft.tradeDate} onChange={(e) => setDraft((prev) => ({ ...prev, tradeDate: e.target.value }))} className="rounded border border-slate-200 px-2 py-1 text-sm" placeholder="tradeDate(ISO)" />
-        </div>
-        <textarea value={draft.tradeReason} onChange={(e) => setDraft((prev) => ({ ...prev, tradeReason: e.target.value }))} className="mt-2 min-h-[80px] w-full rounded border border-slate-200 px-2 py-1 text-sm" placeholder="거래 이유" />
-        <textarea value={draft.expectedScenario} onChange={(e) => setDraft((prev) => ({ ...prev, expectedScenario: e.target.value }))} className="mt-2 min-h-[80px] w-full rounded border border-slate-200 px-2 py-1 text-sm" placeholder="기대 시나리오" />
-        <textarea value={draft.invalidationCondition} onChange={(e) => setDraft((prev) => ({ ...prev, invalidationCondition: e.target.value }))} className="mt-2 min-h-[80px] w-full rounded border border-slate-200 px-2 py-1 text-sm" placeholder="틀릴 수 있는 조건" />
-        <textarea value={draft.thesisSummary} onChange={(e) => setDraft((prev) => ({ ...prev, thesisSummary: e.target.value }))} className="mt-2 min-h-[70px] w-full rounded border border-slate-200 px-2 py-1 text-sm" placeholder="thesis 요약" />
-        <input value={draft.emotionState} onChange={(e) => setDraft((prev) => ({ ...prev, emotionState: e.target.value }))} className="mt-2 w-full rounded border border-slate-200 px-2 py-1 text-sm" placeholder="감정 상태" />
-        <textarea value={draft.note} onChange={(e) => setDraft((prev) => ({ ...prev, note: e.target.value }))} className="mt-2 min-h-[70px] w-full rounded border border-slate-200 px-2 py-1 text-sm" placeholder="메모" />
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" onClick={() => void runCheck()} className="rounded bg-slate-900 px-3 py-1 text-xs text-white">자동 점검</button>
-          <button type="button" onClick={() => void saveJournal()} className="rounded border border-slate-300 bg-white px-3 py-1 text-xs">일지 저장</button>
-          <select value={selectedPersona} onChange={(e) => setSelectedPersona(e.target.value)} className="rounded border border-slate-300 bg-white px-2 py-1 text-xs">
-            {PERSONA_OPTIONS.map((persona) => <option key={persona} value={persona}>{persona}</option>)}
-          </select>
-          <button type="button" onClick={() => void runReview()} className="rounded border border-indigo-300 bg-indigo-50 px-3 py-1 text-xs text-indigo-900">페르소나 검토</button>
-        </div>
-        <p className="mt-1 text-[11px] text-slate-500">
-          매수는 entry_type, 매도는 exit_type을 사용합니다. conviction_level은 선택 입력입니다.
+        <h2 className="text-sm font-semibold text-slate-800">매매일지 · 복기 플로우</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          단계별 입력(모바일 친화). 관찰·복기용 기록이며 자동 주문·매수 권유가 아닙니다.
         </p>
+        <div className="mt-2 flex flex-wrap gap-1 text-[11px]">
+          {(
+            [
+              [1, '종목'],
+              [2, '행동'],
+              [3, '이유'],
+              [4, '원칙'],
+              [5, '복ㆍ저장'],
+            ] as const
+          ).map(([s, label]) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setJournalStep(s)}
+              className={`rounded px-2 py-1 ${journalStep === s ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-slate-50 text-slate-800'}`}
+            >
+              {s}. {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {journalStep === 1 ? (
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-slate-700">종목명 / 티커</label>
+              <input
+                value={draft.symbol}
+                onChange={(e) => setDraft((prev) => ({ ...prev, symbol: e.target.value }))}
+                className="w-full rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="티커 또는 종목코드"
+              />
+              <label className="block text-xs font-medium text-slate-700">시장</label>
+              <select
+                value={draft.market}
+                onChange={(e) => setDraft((prev) => ({ ...prev, market: e.target.value }))}
+                className="w-full rounded border border-slate-200 px-2 py-2 text-sm"
+              >
+                <option value="KR">한국 (KR)</option>
+                <option value="US">미국 (US)</option>
+              </select>
+              <p className="text-[11px] font-medium text-slate-700">보유 종목에서 불러오기</p>
+              <div className="flex flex-wrap gap-1">
+                {holdPresets.length === 0 ? (
+                  <span className="text-[11px] text-slate-500">목록 없음</span>
+                ) : (
+                  holdPresets.map((h) => (
+                    <button
+                      key={`${h.market}:${h.symbol}`}
+                      type="button"
+                      className="rounded border border-slate-200 px-2 py-1 text-[11px]"
+                      onClick={() =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          symbol: h.symbol,
+                          market: h.market === 'US' ? 'US' : 'KR',
+                        }))
+                      }
+                    >
+                      {h.displayName ?? h.symbol}
+                    </button>
+                  ))
+                )}
+              </div>
+              <p className="text-[11px] font-medium text-slate-700">오늘 후보에서 불러오기</p>
+              <div className="flex flex-wrap gap-1">
+                {todayPresets.length === 0 ? (
+                  <span className="text-[11px] text-slate-500">후보 없음</span>
+                ) : (
+                  todayPresets.map((t) => (
+                    <button
+                      key={`${t.market}:${t.symbol}:${t.label}`}
+                      type="button"
+                      className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-[11px]"
+                      onClick={() =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          symbol: t.symbol,
+                          market: t.market,
+                        }))
+                      }
+                    >
+                      {t.label}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {journalStep === 2 ? (
+            <div className="grid gap-2">
+              <label className="text-xs font-medium text-slate-700">매매 행동</label>
+              <select
+                value={draft.side}
+                onChange={(e) => setDraft((prev) => ({ ...prev, side: e.target.value as 'buy' | 'sell' }))}
+                className="rounded border border-slate-200 px-2 py-2 text-sm"
+              >
+                <option value="buy">{SIDE_KO.buy}</option>
+                <option value="sell">{SIDE_KO.sell}</option>
+              </select>
+              <label className="text-xs font-medium text-slate-700">매매 유형</label>
+              <select
+                value={draft.strategyHorizon}
+                onChange={(e) =>
+                  setDraft((prev) => ({ ...prev, strategyHorizon: e.target.value as DraftState['strategyHorizon'] }))
+                }
+                className="rounded border border-slate-200 px-2 py-2 text-sm"
+              >
+                {(Object.keys(HORIZON_KO) as DraftState['strategyHorizon'][]).map((k) => (
+                  <option key={k} value={k}>
+                    {HORIZON_KO[k]}
+                  </option>
+                ))}
+              </select>
+              <label className="text-xs font-medium text-slate-700">확신 수준 (선택)</label>
+              <select
+                value={draft.convictionLevel}
+                onChange={(e) =>
+                  setDraft((prev) => ({ ...prev, convictionLevel: e.target.value as DraftState['convictionLevel'] }))
+                }
+                className="rounded border border-slate-200 px-2 py-2 text-sm"
+              >
+                <option value="">선택 안 함</option>
+                {(Object.keys(CONVICTION_KO) as Array<Exclude<DraftState['convictionLevel'], ''>>).map((k) => (
+                  <option key={k} value={k}>
+                    {CONVICTION_KO[k]}
+                  </option>
+                ))}
+              </select>
+              <label className="text-xs font-medium text-slate-700">수량</label>
+              <input
+                value={draft.quantity}
+                onChange={(e) => setDraft((prev) => ({ ...prev, quantity: e.target.value }))}
+                className="rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="수량"
+              />
+              <label className="text-xs font-medium text-slate-700">체결가</label>
+              <input
+                value={draft.price}
+                onChange={(e) => setDraft((prev) => ({ ...prev, price: e.target.value }))}
+                className="rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="체결가"
+              />
+              <label className="text-xs font-medium text-slate-700">금액 (선택)</label>
+              <input
+                value={draft.amount}
+                onChange={(e) => setDraft((prev) => ({ ...prev, amount: e.target.value }))}
+                className="rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="금액"
+              />
+              <label className="text-xs font-medium text-slate-700">체결 시각 (ISO)</label>
+              <input
+                value={draft.tradeDate}
+                onChange={(e) => setDraft((prev) => ({ ...prev, tradeDate: e.target.value }))}
+                className="rounded border border-slate-200 px-2 py-2 text-sm"
+              />
+            </div>
+          ) : null}
+
+          {journalStep === 3 ? (
+            <div className="grid gap-2">
+              {draft.side === 'buy' ? (
+                <>
+                  <label className="text-xs font-medium text-slate-700">진입 근거</label>
+                  <select
+                    value={draft.entryType}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        entryType: e.target.value as DraftState['entryType'],
+                        exitType: '',
+                      }))
+                    }
+                    className="rounded border border-slate-200 px-2 py-2 text-sm"
+                  >
+                    <option value="">선택</option>
+                    {(Object.keys(ENTRY_KO) as Array<Exclude<DraftState['entryType'], ''>>).map((k) => (
+                      <option key={k} value={k}>
+                        {ENTRY_KO[k] ?? k}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <label className="text-xs font-medium text-slate-700">청산/매도 유형</label>
+                  <select
+                    value={draft.exitType}
+                    onChange={(e) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        exitType: e.target.value as DraftState['exitType'],
+                        entryType: '',
+                      }))
+                    }
+                    className="rounded border border-slate-200 px-2 py-2 text-sm"
+                  >
+                    <option value="">선택</option>
+                    {(Object.keys(EXIT_KO) as Array<Exclude<DraftState['exitType'], ''>>).map((k) => (
+                      <option key={k} value={k}>
+                        {EXIT_KO[k] ?? k}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+              <textarea
+                value={draft.tradeReason}
+                onChange={(e) => setDraft((prev) => ({ ...prev, tradeReason: e.target.value }))}
+                className="min-h-[72px] w-full rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="진입/청산 이유 (한 줄 요약부터)"
+              />
+              <textarea
+                value={draft.expectedScenario}
+                onChange={(e) => setDraft((prev) => ({ ...prev, expectedScenario: e.target.value }))}
+                className="min-h-[64px] w-full rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="기대 시나리오"
+              />
+              <textarea
+                value={draft.invalidationCondition}
+                onChange={(e) => setDraft((prev) => ({ ...prev, invalidationCondition: e.target.value }))}
+                className="min-h-[64px] w-full rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="생각이 틀렸다고 볼 조건 (무효화)"
+              />
+            </div>
+          ) : null}
+
+          {journalStep === 4 ? (
+            <div className="grid gap-2">
+              <label className="text-xs font-medium text-slate-700">테시스 요약</label>
+              <textarea
+                value={draft.thesisSummary}
+                onChange={(e) => setDraft((prev) => ({ ...prev, thesisSummary: e.target.value }))}
+                className="min-h-[70px] w-full rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="왜 이 종목인지, 기간·근거를 짧게"
+              />
+              <label className="text-xs font-medium text-slate-700">감정·컨디션 (선택)</label>
+              <input
+                value={draft.emotionState}
+                onChange={(e) => setDraft((prev) => ({ ...prev, emotionState: e.target.value }))}
+                className="rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="예: 초조함 / 차분함"
+              />
+              <button
+                type="button"
+                onClick={() => void runCheck()}
+                className="mt-1 w-full rounded bg-slate-900 px-3 py-2 text-sm text-white md:w-auto"
+              >
+                원칙 자동 점검 실행
+              </button>
+              {evaluation && evaluation.blockingViolationCount > 0 ? (
+                <p className="text-[11px] text-amber-800">
+                  원칙 위반 가능성이 있습니다. 저장은 가능하나 복기 시 반드시 확인하세요.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {journalStep === 5 ? (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-700">복기 메모</label>
+              <textarea
+                value={draft.note}
+                onChange={(e) => setDraft((prev) => ({ ...prev, note: e.target.value }))}
+                className="min-h-[88px] w-full rounded border border-slate-200 px-2 py-2 text-sm"
+                placeholder="다시 보면 알고 싶은 점, 다음에 고칠 점"
+              />
+              <div className="rounded border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-800">
+                <p className="font-semibold text-slate-900">저장 전 요약</p>
+                <ul className="mt-1 list-inside list-disc space-y-0.5">
+                  <li>
+                    종목: {draft.symbol || '—'} · 시장: {draft.market} · 행동: {SIDE_KO[draft.side]} · 유형:{' '}
+                    {HORIZON_KO[draft.strategyHorizon]}
+                  </li>
+                  <li>
+                    수량/가격: {draft.quantity || '—'} / {draft.price || '—'} · 확신:{' '}
+                    {draft.convictionLevel ? CONVICTION_KO[draft.convictionLevel as keyof typeof CONVICTION_KO] : '—'}
+                  </li>
+                  <li>
+                    근거:{' '}
+                    {draft.side === 'buy'
+                      ? draft.entryType
+                        ? ENTRY_KO[draft.entryType as keyof typeof ENTRY_KO]
+                        : '—'
+                      : draft.exitType
+                        ? EXIT_KO[draft.exitType as keyof typeof EXIT_KO]
+                        : '—'}
+                  </li>
+                </ul>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveJournal()}
+                  className="rounded border border-slate-800 bg-white px-3 py-2 text-sm font-medium"
+                >
+                  일지 저장
+                </button>
+                <select
+                  value={selectedPersona}
+                  onChange={(e) => setSelectedPersona(e.target.value)}
+                  className="rounded border border-slate-300 bg-white px-2 py-2 text-sm"
+                >
+                  {PERSONA_OPTIONS.map((persona) => (
+                    <option key={persona} value={persona}>
+                      {persona}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void runReview()}
+                  className="rounded border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm text-indigo-900"
+                >
+                  페르소나 검토
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-4 flex justify-between gap-2 border-t border-slate-100 pt-3">
+          <button
+            type="button"
+            className="rounded border border-slate-200 px-3 py-2 text-sm"
+            disabled={journalStep <= 1}
+            onClick={() => setJournalStep((s) => Math.max(1, s - 1))}
+          >
+            이전
+          </button>
+          <button
+            type="button"
+            className="rounded border border-slate-200 px-3 py-2 text-sm"
+            disabled={journalStep >= 5}
+            onClick={() => setJournalStep((s) => Math.min(5, s + 1))}
+          >
+            다음
+          </button>
+        </div>
         {draft.side === 'sell' ? (
-          <p className="mt-1 text-[11px] text-amber-700">
-            매도 체크리스트: 왜 파는지(exit_type), thesis가 깨졌는지, 감정 반응인지, 리스크 축소 근거를 함께 남기세요.
+          <p className="mt-2 text-[11px] text-amber-700">
+            매도 기록: 왜 파는지, 테시스 붕괴 여부, 감정 반응인지, 리스크 축소 근거를 남기면 복기에 유리합니다.
           </p>
         ) : null}
       </section>

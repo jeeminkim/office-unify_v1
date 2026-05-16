@@ -42,6 +42,8 @@ export type SectorRadarSummaryBatchDegradedDetail = {
   veryLowConfidenceCount: number;
   totalSectors: number;
   reasonCodes: string[];
+  /** Read-only 저하의 대표 코드(첫 번째 집계 코드와 동일하게 둘 수 있음). */
+  reasonCode?: string;
   skippedIndividualWarnings: true;
   reason: ReadOnlyAggregateDegradedReason;
 };
@@ -73,13 +75,22 @@ export type TodayCandidatesUsMarketNoDataDetail = {
   yyyyMMdd: string;
   usMarketWarnings: string[];
   loggingDecisionReason?: string;
+  provider?: string;
+  requestedAt?: string;
+  upstreamStatus?: number | null;
+  emptyReason?: string;
+  envMissing?: boolean;
+  timeoutMs?: number;
+  fallbackUsed?: boolean;
 };
 
 export function buildSectorRadarSummaryBatchDegradedFingerprint(input: {
   userKey: string;
   ymdKst: string;
+  /** 동일 code+reasonCode 쿨다운 분리용 */
+  reasonCode: string;
 }): string {
-  return `sector_radar:${input.userKey}:${input.ymdKst}:summary_batch_degraded`;
+  return `sector_radar:${input.userKey}:${input.ymdKst}:summary_batch_degraded:${input.reasonCode}`;
 }
 
 export function buildTodayCandidatesSummaryBatchDegradedFingerprint(input: {
@@ -92,8 +103,17 @@ export function buildTodayCandidatesSummaryBatchDegradedFingerprint(input: {
 export function buildTodayCandidatesUsMarketNoDataFingerprint(input: {
   userKey: string;
   ymdKst: string;
+  emptyReasonSlug: string;
 }): string {
-  return `today_candidates:${input.userKey}:${input.ymdKst}:us_market_no_data`;
+  return `today_candidates:${input.userKey}:${input.ymdKst}:us_market_no_data:${input.emptyReasonSlug}`;
+}
+
+export function buildUsSignalCandidatesEmptyFingerprint(input: {
+  userKey: string;
+  ymdKst: string;
+  primaryReason: string;
+}): string {
+  return `today_candidates:${input.userKey}:${input.ymdKst}:us_signal_empty:${input.primaryReason}`;
 }
 
 export function collectSectorRadarBatchDegradedReasonCodes(input: {
@@ -137,7 +157,13 @@ export function buildSectorRadarSummaryBatchDegradedDetail(input: {
   totalSectors: number;
   route?: string;
   component?: string;
+  reasonCode?: string;
 }): SectorRadarSummaryBatchDegradedDetail {
+  const reasonCodes = collectSectorRadarBatchDegradedReasonCodes({
+    noDataCount: input.noDataCount,
+    quoteMissingSectors: input.quoteMissingSectors,
+    veryLowConfidenceCount: input.veryLowConfidenceCount,
+  });
   return {
     schemaVersion: OPS_AGGREGATE_DETAIL_SCHEMA_VERSION,
     kind: OPS_AGGREGATE_WARNING_CODES.SECTOR_RADAR_SUMMARY_BATCH_DEGRADED,
@@ -148,11 +174,8 @@ export function buildSectorRadarSummaryBatchDegradedDetail(input: {
     quoteMissingSectors: input.quoteMissingSectors,
     veryLowConfidenceCount: input.veryLowConfidenceCount,
     totalSectors: input.totalSectors,
-    reasonCodes: collectSectorRadarBatchDegradedReasonCodes({
-      noDataCount: input.noDataCount,
-      quoteMissingSectors: input.quoteMissingSectors,
-      veryLowConfidenceCount: input.veryLowConfidenceCount,
-    }),
+    reasonCodes,
+    reasonCode: input.reasonCode ?? reasonCodes[0] ?? "unknown",
     skippedIndividualWarnings: true,
     reason: "read_only_aggregate_degraded",
   };
@@ -200,6 +223,13 @@ export function buildTodayCandidatesUsMarketNoDataDetail(input: {
   loggingDecisionReason?: string;
   route?: string;
   component?: string;
+  provider?: string;
+  requestedAt?: string;
+  upstreamStatus?: number | null;
+  emptyReason?: string;
+  envMissing?: boolean;
+  timeoutMs?: number;
+  fallbackUsed?: boolean;
 }): TodayCandidatesUsMarketNoDataDetail {
   return {
     schemaVersion: OPS_AGGREGATE_DETAIL_SCHEMA_VERSION,
@@ -209,6 +239,13 @@ export function buildTodayCandidatesUsMarketNoDataDetail(input: {
     yyyyMMdd: input.yyyyMMdd,
     usMarketWarnings: input.usMarketWarnings,
     loggingDecisionReason: input.loggingDecisionReason,
+    ...(input.provider ? { provider: input.provider } : {}),
+    ...(input.requestedAt ? { requestedAt: input.requestedAt } : {}),
+    ...(input.upstreamStatus !== undefined ? { upstreamStatus: input.upstreamStatus } : {}),
+    ...(input.emptyReason ? { emptyReason: input.emptyReason } : {}),
+    ...(input.envMissing !== undefined ? { envMissing: input.envMissing } : {}),
+    ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+    ...(input.fallbackUsed !== undefined ? { fallbackUsed: input.fallbackUsed } : {}),
   };
 }
 

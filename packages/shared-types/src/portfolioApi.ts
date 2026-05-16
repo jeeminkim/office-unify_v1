@@ -155,6 +155,10 @@ export type WatchlistSectorMatchResult = {
 export type WatchlistSectorMatchApiResponse = {
   ok: boolean;
   mode: 'preview' | 'apply';
+  /** 미리보기 요청일 때 true — 서버가 DB/ops 쓰기를 하지 않습니다(additive). */
+  previewReadOnly?: boolean;
+  /** 사용자 안내(설정 누락·일시 오류 등). ops 로그와 별도(additive). */
+  actionHint?: string;
   total: number;
   matched: number;
   applied: number;
@@ -172,16 +176,36 @@ export type WatchlistSectorMatchApiResponse = {
       lowConfidence: number;
       manualProtected: number;
     };
-    /** additive: 미리보기 vs 적용 결과·매핑 버전(원문 없음) */
+    /** additive: 미리보기 vs 적용 결과·매핑 버전(원문 없음). 섹터 라벨/테마 연결 보정용이며 후보 생성 아님. */
     keywordMatch?: {
       previewCount: number;
+      /** 미리보기 기준 자동 적용 가능 추정 건수(신뢰도·검토 플래그 반영) */
+      applyPossibleCount?: number;
+      /** 검토 필요로 표시된 건수 */
+      needsReviewCount?: number;
       appliedCount: number;
       skippedCount: number;
       unmatchedCount: number;
+      /** 적용 후에도 매칭되지 않은 건수(통상 unmatched와 동일, 명시용) */
+      stillUnmatchedCount?: number;
       lastAppliedAt?: string;
+      /** ISO 적용 시각(alias), 클라이언트 호환 */
+      appliedAt?: string;
       mappingVersion: string;
       mode: 'preview' | 'apply';
       reason: string;
+      /** 미매칭·적용 스킵 진단 코드 집계(민감 필드 없음) */
+      unmatchedReasonCounts?: Partial<
+        Record<
+          | 'keyword_confidence_low'
+          | 'registry_missing'
+          | 'sector_radar_no_data'
+          | 'quote_missing'
+          | 'already_applied_but_score_low'
+          | 'other',
+          number
+        >
+      >;
     };
     opsLogging?: {
       attempted: boolean;

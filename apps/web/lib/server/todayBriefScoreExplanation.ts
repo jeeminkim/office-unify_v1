@@ -7,10 +7,12 @@ import type {
   ObservationScoreFactor,
   ObservationScoreFactorCode,
   ObservationScoreRepeatExposure,
+  ObservationScoreRepeatExposureSource,
   SuitabilityAssessment,
   UsKrSignalEmptyReasonCode,
 } from '@office-unify/shared-types';
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
+import { normalizeCandidateReasons } from '@/lib/server/todayBriefCandidateDisplay';
 import type { UsKrSignalDiagnostics } from '@/lib/server/usSignalCandidateDiagnostics';
 import type { TodayCandidateRepeatStat } from '@/lib/server/todayCandidateRepeatExposure';
 
@@ -321,6 +323,12 @@ function buildDiagnostics(input: {
   };
 }
 
+function mapRepeatSource(stat?: TodayCandidateRepeatStat | null): ObservationScoreRepeatExposureSource {
+  const s = stat?.source;
+  if (s === 'exposed_event' || s === 'detail_opened_fallback' || s === 'none') return s;
+  return 'none';
+}
+
 function buildRepeatExposure(input: {
   stat?: TodayCandidateRepeatStat | null;
   diagnostics: ObservationScoreDiagnostics;
@@ -328,29 +336,49 @@ function buildRepeatExposure(input: {
   const stat = input.stat;
   const count = stat?.candidateRepeatCount7d ?? 0;
   const repeatedCandidate = count >= 2;
+  const src = mapRepeatSource(stat);
+  const exposureChannel =
+    src === 'exposed_event'
+      ? '브리핑 덱 노출 로그'
+      : src === 'detail_opened_fallback'
+        ? '상세 열람 로그(폴백)'
+        : '측정 불가';
   let repeatReason = '';
   if (count === 0) {
-    repeatReason = '최근 7일 동안 이 후보 상세를 연 기록이 없습니다(노출 빈도는 다른 신호와 함께 쓰입니다).';
+    repeatReason = `최근 7일 동안 반복 노출 신호가 거의 없습니다(${exposureChannel}).`;
   } else if (count === 1) {
-    repeatReason = '최근 7일 안에 한 번 이 후보 상세를 연 기록이 있습니다.';
+    repeatReason = `최근 7일 안에 한 번 같은 후보 맥락이 잡혔습니다(${exposureChannel}).`;
   } else if (repeatedCandidate && input.diagnostics.watchlistLinked) {
     repeatReason =
-      '최근에도 같은 후보가 노출되었습니다. 관심사·관심종목 연결성이 높아 유지됐을 수 있으나, 반복 노출이므로 다양성 점검이 필요합니다.';
+      `최근에도 같은 후보가 노출되었습니다(${exposureChannel}). 관심사·관심종목 연결성이 높아 유지됐을 수 있으나, 반복 노출이므로 다양성 점검이 필요합니다.`;
   } else if (repeatedCandidate) {
     repeatReason =
-      '최근에도 같은 후보가 노출되었습니다. 내부 정렬에서 상대적으로 같은 맥락이 유지됐을 수 있으나, 저신뢰 후보를 억지로 끌어올리지는 않습니다.';
+      `최근에도 같은 후보가 노출되었습니다(${exposureChannel}). 내부 정렬에서 같은 맥락이 유지됐을 수 있으나, 저신뢰 후보를 억지로 끌어올리지는 않습니다.`;
   } else {
-    repeatReason = '최근 7일 동안 이 후보를 여러 번 확인한 기록이 있습니다.';
+    repeatReason = `최근 7일 동안 이 후보와 관련된 표시 기록이 여러 번 있습니다(${exposureChannel}).`;
   }
   const diversityPolicyNote =
-    '다양성은 “설명·진단”으로만 보강합니다. 데이터가 부족한 대체 후보를 억지로 끌어올리지는 않습니다.';
+    '반복 노출 후보지만 저품질 대체 후보를 억지로 올리지 않음 — 다양성은 설명·진단으로만 보강합니다.';
   return {
     candidateRepeatCount7d: count,
     ...(stat?.lastShownAt ? { lastShownAt: stat.lastShownAt } : {}),
     repeatedCandidate,
     repeatReason,
     diversityPolicyNote,
+    source: src,
   };
+}
+
+function mandatoryNeutralObservationPhrase(args: {
+  diagnostics: ObservationScoreDiagnostics;
+  repeat?: ObservationScoreRepeatExposure;
+}): string | null {
+  const { diagnostics, repeat } = args;
+  if (!diagnostics.neutralScoreBand) return null;
+  if (repeat?.repeatedCandidate) return '반복 노출 후보지만 저품질 대체 후보를 억지로 올리지 않음';
+  if (diagnostics.needsQuoteVerification) return '시세 확인 필요로 추가 가점 제한';
+  if (diagnostics.needsSectorVerification) return '섹터 확인 필요로 추가 가점 제한';
+  return '데이터 부족으로 기본 관찰 점수 유지';
 }
 
 function buildUserReadableSummary(args: {
@@ -360,14 +388,21 @@ function buildUserReadableSummary(args: {
 }): string {
   const { diagnostics, repeat, finalScore } = args;
   const parts: string[] = [];
+  const mandatory = mandatoryNeutralObservationPhrase({ diagnostics, repeat });
+  if (mandatory) parts.push(mandatory);
   if (diagnostics.defaultScoreHold) {
     parts.push(
       `기본 관찰 점수 ${finalScore}점 근처에서 시작했고, 시세·섹터 검증이 부족해 추가 가점을 크게 주지 않았습니다.`,
     );
-  } else if (diagnostics.neutralScoreBand) {
+  } else if (diagnostics.neutralScoreBand && !diagnostics.defaultScoreHold) {
     parts.push(`관찰 점수는 ${finalScore}점 근처의 중립대에 있습니다. 데이터와 맥락을 함께 보시면 됩니다.`);
   }
-  if (diagnostics.watchlistLinked && !parts.length) {
+  if (
+    diagnostics.watchlistLinked &&
+    !mandatory &&
+    !diagnostics.defaultScoreHold &&
+    !diagnostics.neutralScoreBand
+  ) {
     parts.push('관심 흐름과 연결된 맥락이 있어 후보에 포함되었습니다.');
   }
   if (repeat?.repeatedCandidate) {
@@ -376,7 +411,7 @@ function buildUserReadableSummary(args: {
   if (!parts.length) {
     parts.push(`관찰 점수는 ${finalScore}/100 수준으로 정리됐습니다. 매수 권유가 아닌 후보 정렬용 보조 지표입니다.`);
   }
-  return parts.join(' ');
+  return normalizeCandidateReasons(parts).join(' · ');
 }
 
 function pushDefaultHoldFactor(factors: ObservationScoreFactor[]): void {
@@ -480,7 +515,7 @@ export type TodayBriefScoreExplanationSummary = {
   explainedCandidateCount: number;
   factorCounts: Partial<Record<ObservationScoreFactorCode, number>>;
   profileStatus: TodayBriefScoreExplanationProfileStatus;
-  /** 반복 노출이 의심되는 후보 수(7일 detail_open 기준) */
+  /** 반복 노출이 의심되는 후보 수(7일, 스냅샷 우선·상세 열람 폴백) */
   repeatedCandidateCount?: number;
   /** 관찰 점수 58~62 중립대 후보 수 */
   neutralScoreCount?: number;
@@ -568,7 +603,7 @@ export function buildTodayBriefScoreExplanationSummary(
   }
   const scoreDefaultReasonCounts = countDefaultReasons(deck);
   const diversityPolicy =
-    '반복 후보는 ops(상세 열람)로만 추정합니다. 저신뢰 후보를 억지로 끌어올리지 않고, 설명·다양성 힌트로만 보완합니다.';
+    '반복 노출은 브리핑 덱 스냅샷 로그를 우선하고, 없으면 상세 열람 로그로 폴백합니다. 저품질 대체 후보를 억지로 올리지 않습니다.';
   return {
     explainedCandidateCount,
     factorCounts: countFactors(deck),

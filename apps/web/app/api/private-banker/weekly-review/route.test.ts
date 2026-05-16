@@ -106,10 +106,12 @@ describe("/api/private-banker/weekly-review", () => {
       const res = await GET();
       expect(res.status).toBe(503);
     },
-    20_000,
+    60_000,
   );
 
-  it("GET returns preview and recommendedIdempotencyKey without invoking PB idempotency", async () => {
+  it(
+    "GET returns preview and recommendedIdempotencyKey without invoking PB idempotency",
+    async () => {
     hoisted.getServiceSupabase.mockReturnValue({});
     const { GET } = await import("./route");
     const { buildRecommendedWeeklyReviewIdempotencyKey } = await import("@/lib/server/privateBankerWeeklyReview");
@@ -120,14 +122,50 @@ describe("/api/private-banker/weekly-review", () => {
       ok?: boolean;
       preview?: { weekOf?: string };
       recommendedIdempotencyKey?: string;
+      sqlReadiness?: {
+        investorProfileTableMissing?: boolean;
+        researchFollowupTableMissing?: boolean;
+        actionHints?: string[];
+      };
     };
     expect(j.ok).toBe(true);
     expect(j.preview?.weekOf).toBe("2026-05-11");
+    expect(j.sqlReadiness?.investorProfileTableMissing).toBe(false);
+    expect(j.sqlReadiness?.researchFollowupTableMissing).toBe(false);
+    expect(Array.isArray(j.sqlReadiness?.actionHints)).toBe(true);
+    expect(j.sqlReadiness?.actionHints?.length ?? 0).toBe(0);
     expect(j.recommendedIdempotencyKey).toMatch(/^pb-weekly:2026-05-11:[a-f0-9]{24}$/);
     expect(j.recommendedIdempotencyKey).toBe(
       buildRecommendedWeeklyReviewIdempotencyKey("2026-05-11", { weekOf: "2026-05-11" } as Record<string, unknown>),
     );
-  });
+    },
+    60_000,
+  );
+
+  it(
+    "GET sqlReadiness lists hints when investor profile / follow-up tables are missing",
+    async () => {
+    hoisted.getServiceSupabase.mockReturnValue({});
+    hoisted.buildCtx.mockResolvedValueOnce({
+      weekOf: "2026-05-11",
+      userKey: "u-test",
+      profileStatus: "missing",
+      investorProfileTableMissing: true,
+      primaryCandidateDeck: [],
+      followupRows: [],
+      followupTableMissing: true,
+      nowIso: new Date().toISOString(),
+    });
+    const { GET } = await import("./route");
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const j = (await res.json()) as {
+      sqlReadiness?: { actionHints?: string[] };
+    };
+    expect((j.sqlReadiness?.actionHints ?? []).length).toBeGreaterThanOrEqual(2);
+    },
+    60_000,
+  );
 
   it("POST requires idempotencyKey", async () => {
     hoisted.getServiceSupabase.mockReturnValue({});

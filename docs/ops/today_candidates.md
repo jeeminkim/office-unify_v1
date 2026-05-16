@@ -3,6 +3,9 @@
 - Research Center는 explicit generation action으로 requestId 추적을 사용한다.
 - Today Candidates(read-only)와 달리 Research Center 생성 route는 제한적 ops logging을 허용한다.
 - 공통 원칙은 동일하다: `qualityMeta`는 화면 상태, `web_ops_events`는 제한적 운영 누적이며 secret/token/prompt 원문은 저장하지 않는다.
+
+DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
+
 # Today Candidates (아침 관찰 후보)
 
 홈 대시보드의 `오늘의 3줄 브리핑`에 개인화 관찰 후보를 추가한다.
@@ -20,6 +23,8 @@
 - 미국시장 기반 한국주식: 오전 데이터 신호와 rule map 매핑
 - 응답 구조: `today-brief`의 optional `candidates.userContext` / `candidates.usMarketKr`
 - 모든 후보는 `isBuyRecommendation=false`
+- **additive 필드:** `scoreBreakdown` / `corporateActionRisk` / `candidateAction`; `displayMetrics`에 `candidateCardKind`, `dataStatusUi`, `mainDeductionLabels`, `neutralObservationCopy`; `qualityMeta.todayCandidates`에 `usCoverage`, `scoreBreakdownSummary`
+- **관찰 점수 파이프라인(요약):** 풀 후보 생성(`buildTodayStockCandidates`: 희소 base 45–55·품질·미국 부스트·`corporateActionRiskRegistry` 게이트) → 메인 덱 구성(`composeTodayBriefCandidates`: 다양성·리스크 슬롯) → 테마·적합성·집중도 → **7일 반복 감점**(`applyRepeatExposurePenaltiesToDeck`) → 표시 지표 재해석 → 점수 설명 enrich. 매수 권유·자동 주문 없음.
 
 ### 메인 3카드 덱 (additive)
 
@@ -89,6 +94,7 @@
 - `today_candidates_generated`
 - `today_candidates_us_market_no_data`
 - `today_candidate_detail_opened`
+- **`today_candidate_snapshot`** / **`today_candidate_exposed`** — 브리핑 덱 노출 기록(반복 노출 진단 시 스냅샷 우선, 상세 열람은 폴백)
 - `today_candidate_watchlist_add_success`
 - `today_candidate_watchlist_already_exists`
 - `today_candidate_watchlist_add_failed`
@@ -245,6 +251,10 @@ low/very_low 후보는 기본 숨김(토글로 표시) 정책을 사용한다.
 4. 상세에서 `reasonItems`가 있으면 severity별 섹션으로 표시되는지 확인
 5. 미국장 no_data 상황에서 후보 억지 생성 없이 보수 문구가 노출되는지 확인
 6. `/api/dashboard/today-candidates/ops-summary` 집계가 정상인지 확인
+
+## 실사용 전 수동 체크리스트
+
+- [`docs/ops/pre_live_checklist.md`](pre_live_checklist.md) — SQL·스모크·Today Candidates·원장·모바일·톤 점검
 
 ## ETF 테마 매칭 연동 메모 (2026-05)
 

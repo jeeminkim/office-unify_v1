@@ -13,7 +13,7 @@ describe("resolveWatchlistInstrument", () => {
     expect(out.ok).toBe(true);
     if (out.ok) {
       expect(out.resolved.symbol).toBe("042660");
-      expect(out.resolved.googleTicker.toUpperCase()).toContain("042660");
+      expect(out.resolved.googleTicker.toUpperCase()).toMatch(/^KRX:042660|^KOSDAQ:042660/);
       expect(out.resolved.quoteSymbol).toMatch(/042660\.(KS|KQ)/);
     }
   });
@@ -29,6 +29,21 @@ describe("resolveWatchlistInstrument", () => {
     expect(out.ok).toBe(true);
     if (out.ok) {
       expect(out.resolved.resolvedName).toContain("한화");
+    }
+  });
+
+  it("returns actionHint when name cannot be resolved", () => {
+    const out = resolveWatchlistInstrument({
+      market: "KR",
+      name: "존재하지않는종목명테스트XYZ",
+      symbol: "",
+      holdings: [],
+      watchlist: [],
+    });
+    expect(out.ok).toBe(false);
+    if (!out.ok) {
+      expect(out.actionHint?.length).toBeGreaterThan(8);
+      expect(out.candidates?.length ?? 0).toBeGreaterThanOrEqual(0);
     }
   });
 });

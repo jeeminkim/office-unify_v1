@@ -4,6 +4,10 @@
 
 `office-unify_v1`를 단일 사용자 개인 투자 콘솔로 운영할 때의 핵심 경로를 정리한다.
 
+## 운영 DB 마이그레이션
+
+- Supabase에 더하는 DDL 묶음(`docs/sql/append_*.sql`)의 권장 적용 순서·증상·사전 점검은 **`docs/sql/APPLY_ORDER.md`** 참고.
+
 ## 메인 화면 구조
 
 - `/` : 개인 투자 대시보드
@@ -12,6 +16,7 @@
   - Trend/Research 기억 요약
   - 하루 10분 루틴
   - 포트폴리오-신호 연결
+  - **실사용 점검 / 데이터 상태**(Today Brief 메타·미국 신호 히스토그램 상위·ticker resolver 세션 requestId·SQL 적용 신호; 매수 추천 아님)
 - `/dev-assistant` : 기존 개발 보조 기능 분리 진입점
 - `/portfolio` : 포트폴리오 현황 대시보드(점검 전용)
 - `/portfolio-ledger` : 보유 종목 관리/원장 반영(사후 기록 반영 전용)
@@ -43,6 +48,13 @@
 ### Dashboard Today Candidates
 
 - 홈 `오늘의 3줄 브리핑` 응답은 기존 3줄 라인 + optional `candidates` 확장을 함께 사용한다.
+- **관찰 점수 파이프라인(서버 순서, 개요):**
+  1. **풀 생성** — `buildTodayStockCandidates`(희소 데이터 시 base 45–55 분산; `scoreBreakdown` 조립; 미국 신호 부스트; 시세 품질 감점; **`corporateActionRiskRegistry`** 활성 시 점수 상한·`candidateAction`·`primaryRisk` 보강).
+  2. **덱 구성** — `composeTodayBriefCandidates`(관심·섹터 대표 ETF·미국→KR 매핑 슬롯·기업 이벤트 **리스크 점검** 슬롯 등 다양성).
+  3. **테마·적합성·집중도** — 기존 EVO 연결(테마 맵·투자자 프로필·보유 집중도 참고; 지시·자동 주문 없음).
+  4. **반복 노출 감점** — 최근 7일 스냅샷 기반 `repeatExposurePenalty`를 덱에 반영(`applyRepeatExposurePenaltiesToDeck`).
+  5. **표시·설명** — `displayMetrics`·`scoreExplanationDetail`·중복 완화된 사용자 문구(normalize).
+  6. **운영 로그** — `today_candidates_us_market_no_data`·`us_signal_candidates_empty`·`sector_radar_summary_batch_degraded` 등은 fingerprint upsert·**6시간** code+reason 쿨다운으로 제한 기록; `detail`에 provider/route/skip 집계 등 진단 필드 additive.
 - 후보 축:
   - `candidates.userContext`
   - `candidates.usMarketKr`
@@ -54,7 +66,7 @@
 - low/very_low 후보는 기본 숨김(토글로 표시) 정책을 사용한다.
 - `POST /api/portfolio/watchlist/add-candidate`는 `added|already_exists`를 반환하고, 성공 후 postprocess를 best-effort로 수행한다.
 - 운영 요약은 `GET /api/dashboard/today-candidates/ops-summary`로 조회한다(쿼리 `range=24h|7d`·`days`; **EVO-006** `us_signal_candidates_empty` 사유 히스토그램은 `qualityMeta.todayCandidates.usKrEmptyReasonHistogram` 및 기존 `usKrEmptyReasonHistogram` 배열, domain `today_candidates`/`today_brief`·**read-only SELECT**).
-- read-only 경로(`GET /api/dashboard/today-brief`)는 warning을 `qualityMeta`에 유지하고 `web_ops_events` write는 제한한다(개별 warning 억제, aggregate degraded는 일 1회/cooldown/budget).
+- read-only 경로(`GET /api/dashboard/today-brief`)는 warning을 `qualityMeta`에 유지하고 `web_ops_events` write는 대체로 제한한다(개별 warning 억제, aggregate degraded는 일 1회/cooldown/budget). **추가 예외:** 브리핑이 후보 덱까지 성공 생성되면 **일 단위 fingerprint**로 `today_candidate_snapshot`을 최대 1회 기록해 노출 진단에 쓴다(민감 필드 없음, 요청당 budget 준수).
 - **투자자 프로필(`web_investor_profiles`, SQL 선택):** 손실 감내·기간·레버리지·집중도·선호/회피 섹터를 **관찰·판단 보조** 맥락으로만 사용. `primaryCandidateDeck` 후보에 `suitabilityAssessment`(additive), `qualityMeta.todayCandidates.suitability` 요약. PB·후속 고찰 프롬프트에 짧은 맥락 주입. 자동매매·자동주문·무승인 포트 변경 없음.
 
 ## 서버 API 계층
@@ -69,10 +81,10 @@
   - 오늘의 3줄 브리핑(리스크/성과/행동) 생성
   - 사실 데이터와 제안 문장을 분리하고 confidence/경고를 함께 반환
   - optional `candidates` 블록(`userContext`/`usMarketKr`) 지원
-  - additive: `primaryCandidateDeck`, `displayMetrics`(및 `displayMetrics.scoreExplanationDetail` 요인 설명), `usKrSignalDiagnostics`, `usMarketSummary.diagnostics`, 후보별 `suitabilityAssessment`, `qualityMeta.todayCandidates.suitability`(프로필 SQL 미적용 시 skipped 가능), `qualityMeta.todayCandidates.scoreExplanationSummary`, 후보별 **`concentrationRiskAssessment`**(`exposureBasis`, `themeMappingConfidence`), **`qualityMeta.todayCandidates.concentrationRiskSummary`**(EVO-005, `exposureBasis`·`themeMappingConfidenceCounts`, 금액·`userNote` 원문 없음; 집중도는 점검 질문, 매도·리밸런싱 지시 아님), **EVO-007** 후보별 **`themeConnection`**, `qualityMeta.todayCandidates.themeConnectionSummary`(add **`truncated`**·**`watchlistSourceAvailable`**) / **`themeConnectionMap`(Brief용 크기 제한 본문)** / `usKrEmptyThemeBridgeHint`, 요인 코드 **`theme_link`**(설명 전용, 점수 가산 `points` 없음)
+  - additive: `primaryCandidateDeck`, 후보별 **`scoreBreakdown`**, `displayMetrics`(및 `displayMetrics.scoreExplanationDetail` 요인 설명·카드 기본 `userReadableSummary`·`repeatExposure.source` 스냅샷/폴백·**`candidateCardKind`/`dataStatusUi`/`mainDeductionLabels`/`neutralObservationCopy`**), `usKrSignalDiagnostics`, `usMarketSummary.diagnostics`·**degraded 요약 시에도 시드/진단 유지**, `qualityMeta.todayCandidates.usCoverage`·**`scoreBreakdownSummary`**, 후보별 `suitabilityAssessment`, `qualityMeta.todayCandidates.suitability`(프로필 SQL 미적용 시 skipped 가능), `qualityMeta.todayCandidates.scoreExplanationSummary`, `qualityMeta.todayCandidates.incompleteHoldingCount`, 후보별 **`concentrationRiskAssessment`**(`exposureBasis`, `themeMappingConfidence`), **`qualityMeta.todayCandidates.concentrationRiskSummary`**(EVO-005, `exposureBasis`·`themeMappingConfidenceCounts`, 금액·`userNote` 원문 없음; 집중도는 점검 질문, 매도·리밸런싱 지시 아님), **EVO-007** 후보별 **`themeConnection`**, `qualityMeta.todayCandidates.themeConnectionSummary`(add **`truncated`**·**`watchlistSourceAvailable`**) / **`themeConnectionMap`(Brief용 크기 제한 본문)** / `usKrEmptyThemeBridgeHint`, 요인 코드 **`theme_link`**(설명 전용, 점수 가산 `points` 없음); **`corporateActionRisk`**·**`candidateAction`**(기업 이벤트 리스크 시 관찰·복기 톤)
   - 후보별 `dataQuality.summary`, `reasonItems`, `primaryRisk`(additive)
   - 데이터 부족 시 NO_DATA 문구로 degrade
-  - read-only 경로에서는 warning을 `qualityMeta.todayCandidates.warnings`에 유지하고 `web_ops_events` write는 제한(하루 1회/no_data, cooldown, budget 정책)
+  - read-only 경로에서는 warning을 `qualityMeta.todayCandidates.warnings`에 유지하고 `web_ops_events` write는 제한(화이트리스트·하루 1회/no_data, cooldown, budget 정책). 브리핑 성공 시 **`today_candidate_snapshot`**은 일 단위 fingerprint로만 제한 기록(노출 진단).
 - `/api/dashboard/theme-connections`
   - `GET ?range=7d`(형식 `\d+d`); 인증 사용자 기준 **테마 연결 맵 상세** read-only·**DB write 없음**
   - `loadThemeConnectionMapInput` + `buildThemeConnectionMap`; 응답 `themeConnectionMap`은 테마당 링크 **최대 20**건까지(잘리면 `qualityMeta.truncated`), `summary`는 전체 맵 집계; `qualityMeta.readOnly`·`sourceCounts`·`confidenceCounts`·`watchlistSourceAvailable`
@@ -90,6 +102,7 @@
   - US 종목은 USD/KRW read-back 성공 시 KRW 평가금액/비중에 포함, 환율 미조회 시 `fx_missing` 경고 + NO_DATA
   - 종목별 `thesisHealthStatus`/`thesisConfidence`를 함께 반환해 대시보드 badge로 사용
   - (best-effort) 섹터 레이더 최우선 매칭 구간에 따라 `sectorRadarBadge`: `fear` \| `greed` (판단 보조, 자동 주문 없음)
+  - 수량·평단이 채워지지 않은 보유(incomplete)는 평가금·비중·일부 경고 집계에서 제외하며 `dataQuality.incompleteHoldingCount`로 건수만 노출한다.
 - `/api/portfolio/alerts`
   - 목표가/손절가/손실률/비중/시세누락/thesis 약화·깨짐 룰 기반 action feed
   - 경고는 제안이며 자동 매매/자동 주문을 수행하지 않음

@@ -6,6 +6,7 @@ import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { listWebPortfolioHoldingsForUser, listWebPortfolioWatchlistForUser } from '@office-unify/supabase-access';
 import { loadHoldingQuotes } from '@/lib/server/marketQuoteService';
+import { isHoldingCompleteForValuation } from '@/lib/server/portfolioHoldingValuation';
 import { normalizeQuoteKey } from '@/lib/server/quoteReadbackUtils';
 import { analyzeThesisHealth } from '@/lib/server/thesisHealthAnalyzer';
 import { matchRelatedSectorsForHolding } from '@/lib/server/sectorRadarDossierMatch';
@@ -61,6 +62,8 @@ type EnhancedPortfolioSummaryResponse = {
     quoteFallbackUsed?: boolean;
     readBackSucceeded?: boolean;
     refreshRequested?: boolean;
+    /** 수량·평단 미입력 등으로 평가·비중 집계에서 제외된 보유 행 수 */
+    incompleteHoldingCount?: number;
   };
 };
 
@@ -102,7 +105,9 @@ export async function GET(req: Request) {
 
   try {
     const holdings = await listWebPortfolioHoldingsForUser(supabase, userKey);
-    const quoteBundle = await loadHoldingQuotes(holdings.map((holding) => ({
+    const valuationHoldings = holdings.filter((h) => isHoldingCompleteForValuation(h.qty, h.avg_price));
+    const incompleteHoldingCount = Math.max(0, holdings.length - valuationHoldings.length);
+    const quoteBundle = await loadHoldingQuotes(valuationHoldings.map((holding) => ({
       market: holding.market,
       symbol: holding.symbol,
       displayName: holding.name,
@@ -117,7 +122,7 @@ export async function GET(req: Request) {
         listWebPortfolioWatchlistForUser(supabase, userKey),
         buildSectorRadarSummaryForUser(supabase, userKey),
       ]);
-      for (const holding of holdings) {
+      for (const holding of valuationHoldings) {
         const wl =
           watchlist.find(
             (w) =>
@@ -146,7 +151,7 @@ export async function GET(req: Request) {
       /* 섹터 배지는 best-effort */
     }
 
-    const topPositionsRaw = holdings.map((holding) => {
+    const topPositionsRaw = valuationHoldings.map((holding) => {
       const quantity = toNumber(holding.qty);
       const avgPrice = toNumber(holding.avg_price);
       const quote = quoteBundle.quoteByHolding.get(normalizeQuoteKey(holding.market, holding.symbol));
@@ -285,7 +290,14 @@ export async function GET(req: Request) {
     if (holdings.length === 0) {
       warnings.push({ code: 'portfolio_no_data', severity: 'info', message: '포트폴리오 데이터가 없습니다.' });
     }
-    if (holdings.some((row) => !row.google_ticker?.trim())) {
+    if (incompleteHoldingCount > 0) {
+      warnings.push({
+        code: 'holdings_incomplete_excluded',
+        severity: 'info',
+        message: `수량·평단이 채워지지 않은 보유 ${incompleteHoldingCount}건은 평가·비중·손익 집계에서 제외했습니다.`,
+      });
+    }
+    if (valuationHoldings.some((row) => !row.google_ticker?.trim())) {
       warnings.push({
         code: 'google_ticker_missing',
         severity: 'info',
@@ -296,7 +308,7 @@ export async function GET(req: Request) {
     if (topPositions.slice(0, 3).some((p) => (p.pnlRate ?? 0) <= -10)) {
       warnings.push({ code: 'loss_over_10_exists', severity: 'danger', message: '손실률 -10% 이하 종목이 존재합니다.' });
     }
-    const missingMetadataCount = holdings.filter((row) => !row.name || !row.sector).length;
+    const missingMetadataCount = valuationHoldings.filter((row) => !row.name || !row.sector).length;
     if (missingMetadataCount > 0) {
       warnings.push({
         code: 'metadata_missing',
@@ -337,6 +349,7 @@ export async function GET(req: Request) {
         quoteFallbackUsed: quoteBundle.providerMeta.quoteFallbackUsed,
         readBackSucceeded: quoteBundle.providerMeta.readBackSucceeded,
         refreshRequested: quoteBundle.providerMeta.refreshRequested,
+        incompleteHoldingCount,
       },
     };
     if (searchParams.get('format') === 'legacy') {
