@@ -4,10 +4,11 @@ import type {
   InvestmentPrincipleType,
   TradeJournalConvictionLevel,
   TradeJournalCreateRequest,
+  TradeJournalEntryDraft,
   TradeJournalEntryType,
   TradeJournalExitType,
-  TradeJournalEntryDraft,
   TradeJournalReflectionType,
+  TradeJournalTodayCandidateSeedContext,
 } from '@office-unify/shared-types';
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -48,6 +49,25 @@ const EXIT_TYPES: TradeJournalExitType[] = [
   'event_avoidance',
 ];
 const CONVICTION_LEVELS: TradeJournalConvictionLevel[] = ['low', 'medium', 'high'];
+
+function parseTodayCandidateSeedContext(raw: unknown): TradeJournalTodayCandidateSeedContext | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const body = asRecord(raw);
+  if (!body) return undefined;
+  const source = String(body.source ?? '').trim();
+  if (source !== 'today_candidate') return undefined;
+  return {
+    source: 'today_candidate',
+    symbol: String(body.symbol ?? '').trim() || undefined,
+    stockCode: String(body.stockCode ?? '').trim() || undefined,
+    market: String(body.market ?? '').trim().toUpperCase() || undefined,
+    candidateDate: String(body.candidateDate ?? '').trim() || undefined,
+    decisionTraceSummary: String(body.decisionTraceSummary ?? '').trim() || undefined,
+    riskFlags: Array.isArray(body.riskFlags) ? body.riskFlags.map((x) => String(x)) : undefined,
+    nextChecks: Array.isArray(body.nextChecks) ? body.nextChecks.map((x) => String(x)) : undefined,
+    doNotDo: Array.isArray(body.doNotDo) ? body.doNotDo.map((x) => String(x)) : undefined,
+  };
+}
 
 export function parseTradeJournalEntryDraft(input: unknown):
   { ok: true; value: TradeJournalEntryDraft; warnings: string[] }
@@ -134,12 +154,14 @@ export function parseTradeJournalCreateRequest(input: unknown):
   if (!body) return { ok: false, errors: ['invalid_body'] };
   const parsed = parseTradeJournalEntryDraft(body.entry);
   if (!parsed.ok) return parsed;
+  const seedContext = parseTodayCandidateSeedContext(body.seedContext);
   return {
     ok: true,
     value: {
       entry: parsed.value,
       selectedPrincipleSetId: String(body.selectedPrincipleSetId ?? '').trim() || undefined,
       requireNoBlockingViolation: Boolean(body.requireNoBlockingViolation),
+      ...(seedContext ? { seedContext } : {}),
     },
     warnings: parsed.warnings,
   };

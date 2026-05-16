@@ -40,6 +40,11 @@ import {
   usSignalMappingSourceIndexes,
 } from '@/lib/server/todayCandidateRules';
 import { applyRepeatExposurePenaltiesToDeck } from '@/lib/server/todayCandidateScoring';
+import { enrichDeckWithDecisionTraces } from '@/lib/server/todayCandidateDecisionTrace';
+import {
+  computeCandidateJudgmentQuality,
+  summarizeJudgmentQualityDeck,
+} from '@/lib/server/todayCandidateJudgmentQuality';
 import { upsertOpsEventByFingerprint } from '@/lib/server/upsertOpsEventByFingerprint';
 import {
   appendQualityMetaOpsEventTrace,
@@ -402,6 +407,32 @@ export async function GET() {
       primaryCandidateDeck,
       profileStatusForScoreExplanation,
     );
+
+    const usDiagForMeta = todayCandidates.usMarketSummary.diagnostics;
+    const usCoverageStatusEarly =
+      todayCandidates.usMarketSummary.available && usDiagForMeta?.coverageStatus !== 'degraded'
+        ? ('ok' as const)
+        : ('degraded' as const);
+
+    const tracePack = enrichDeckWithDecisionTraces({
+      deck: primaryCandidateDeck,
+      pool: [...todayCandidates.userContextCandidates, ...todayCandidates.usMarketKrCandidates],
+      repeatByCandidateId: repeatByCandidateIdPool,
+      usCoverageStatus: usCoverageStatusEarly,
+      profileStatus: profileStatusForScoreExplanation,
+      usKrEmpty: todayCandidates.usMarketKrCandidates.length === 0,
+      usSignalCount: todayCandidates.usMarketSummary.signals.length,
+    });
+    primaryCandidateDeck = tracePack.deck.map((c) => ({
+      ...c,
+      judgmentQuality: computeCandidateJudgmentQuality(c, {
+        usCoverageStatus: usCoverageStatusEarly,
+        profileStatus: profileStatusForScoreExplanation,
+        repeatByCandidateId: repeatByCandidateIdPool,
+      }),
+    }));
+    const judgmentQualitySummary = summarizeJudgmentQualityDeck(primaryCandidateDeck);
+
     const ymd = ymdKst();
     const opsLogging: {
       attempted: number;
@@ -665,7 +696,6 @@ export async function GET() {
       opsLogging,
     });
 
-    const usDiagForMeta = todayCandidates.usMarketSummary.diagnostics;
     const usCoverage = {
       status:
         todayCandidates.usMarketSummary.available && usDiagForMeta?.coverageStatus !== 'degraded'
@@ -740,6 +770,10 @@ export async function GET() {
           ...(usKrEmptyThemeBridgeHint ? { usKrEmptyThemeBridgeHint } : {}),
           usCoverage,
           scoreBreakdownSummary,
+          decisionTraceSummary: tracePack.summary,
+          judgmentQualitySummary,
+          suppressedCandidates: tracePack.suppressedCandidates,
+          rejectedCandidates: tracePack.rejectedCandidates,
         },
       },
     };

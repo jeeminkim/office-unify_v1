@@ -9,6 +9,7 @@ export * from './llmEnvConfig';
 export * from './openAiBudgetRunner';
 export * from './openAiUsageCost';
 export * from './webPersonaChatOrchestrator';
+export * from './personaStructuredOutputKoAppend';
 export * from './webPersonaLongTerm';
 export * from './longTermEntryPriority';
 export * from './personaChatFeedback';

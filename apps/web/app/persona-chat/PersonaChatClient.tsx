@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PersonaChatMessageDto, PersonaChatSessionInitResponseBody } from "@office-unify/shared-types";
+import type { PersonaChatMessageDto, PersonaChatSessionInitResponseBody, PersonaChatMessageResponseBody } from "@office-unify/shared-types";
 import {
   PERSONA_CHAT_STREAM_FLUSH_CHARS,
   PERSONA_CHAT_USER_MESSAGE_MAX_CHARS,
@@ -18,13 +18,14 @@ const jsonHeaders: HeadersInit = {
 type NdjsonDone = {
   type: "done";
   deduplicated?: boolean;
-  body: {
-    userMessage: PersonaChatMessageDto;
-    assistantMessage: PersonaChatMessageDto;
-    longTermMemorySummary?: string | null;
-    personaFormatNote?: string;
-    llmProviderNote?: string;
-  };
+  body: PersonaChatMessageResponseBody;
+  /** NDJSON 편의 필드 — `body`와 동일 정보가 중복될 수 있음 */
+  structuredOutput?: PersonaChatMessageResponseBody["personaStructuredOutput"];
+  structuredOutputSummary?: PersonaChatMessageResponseBody["personaStructuredOutputSummary"];
+  personaWarnings?: string[];
+  bannedPhraseCount?: number;
+  parseFailed?: boolean;
+  fallbackApplied?: boolean;
 };
 
 type NdjsonFatal = { type: "fatal"; status: number; message: string; code?: string };
@@ -82,6 +83,7 @@ export function PersonaChatClient() {
   const [info, setInfo] = useState<string | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
   const [streamPreview, setStreamPreview] = useState<string | null>(null);
+  const [structuredNotice, setStructuredNotice] = useState<string | null>(null);
 
   const sendInFlightRef = useRef(false);
   const idempotencyKeyRef = useRef<string | null>(null);
@@ -121,6 +123,7 @@ export function PersonaChatClient() {
   const send = async (contentOverride?: string) => {
     setError(null);
     setInfo(null);
+    setStructuredNotice(null);
     if (sendInFlightRef.current) return;
     const raw = contentOverride ?? input;
     if (!raw.trim()) return;
@@ -191,6 +194,15 @@ export function PersonaChatClient() {
       } else if (body.llmProviderNote) {
         setInfo(body.llmProviderNote);
       }
+
+      const hints: string[] = [];
+      if (body.personaStructuredParseFailed) {
+        hints.push("구조화 응답 일부를 해석하지 못했습니다. 확인·점검 관점으로만 참고하세요.");
+      }
+      if (body.personaWarnings?.length) {
+        hints.push(...body.personaWarnings.slice(0, 8));
+      }
+      setStructuredNotice(hints.length ? hints.join(" · ") : null);
 
       setMessages((prev) => {
         const uid = body.userMessage.id;
@@ -315,6 +327,12 @@ export function PersonaChatClient() {
 
       {info ? (
         <div className="rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-700">{info}</div>
+      ) : null}
+
+      {structuredNotice ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          <span className="font-semibold">구조화 응답 점검:</span> {structuredNotice}
+        </div>
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">

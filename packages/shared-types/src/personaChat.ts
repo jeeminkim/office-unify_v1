@@ -2,6 +2,8 @@
  * 웹 페르소나 채팅(일별 세션 + 장기 기억) 최소 DTO.
  */
 
+import type { PersonaStructuredOutput, PersonaStructuredOutputQualitySummary } from './personaStructuredOutput';
+
 /** URL/설정에서 쓰는 슬러그, 예: `ray-dalio` */
 export type PersonaWebKey = string & { readonly __brand: 'PersonaWebKey' };
 
@@ -56,6 +58,9 @@ export type CommitteeDiscussionLineDto = {
   slug: string;
   displayName: string;
   content: string;
+  /** additive: 구조화 페르소나 산출물(LLM JSON 계약) */
+  structuredOutput?: PersonaStructuredOutput;
+  structuredParseWarnings?: string[];
 };
 
 /** POST /api/persona-chat/feedback — 장기 기억에 반영할 답변 평가 */
@@ -86,6 +91,8 @@ export type CommitteeDiscussionRoundRequestBody = {
 export type CommitteeDiscussionRoundResponseBody = {
   lines: CommitteeDiscussionLineDto[];
   committeeTurnId: string;
+  /** additive: 라운드 전체 구조화 출력 집계 */
+  personaStructuredOutputSummary?: PersonaStructuredOutputQualitySummary;
 };
 
 /** POST /api/committee/feedback — 위원회 토론 1회에 대한 피드백 */
@@ -134,4 +141,18 @@ export type PersonaChatMessageResponseBody = {
     providerUsed: string;
     fallbackUsed: boolean;
   };
+  /** additive: 파싱된 구조화 산출물 */
+  personaStructuredOutput?: PersonaStructuredOutput | null;
+  /** JSON 파싱 실패 시 원문 요약 보존 */
+  personaStructuredFallbackSummary?: string;
+  /** additive: 단일 메시지 응답 집계(성공 0~1) */
+  personaStructuredOutputSummary?: PersonaStructuredOutputQualitySummary;
+  /** 금지 문구·계약 위반 등 페르소나 경고 */
+  personaWarnings?: string[];
+  /** additive: 구조화 JSON 파싱 실패 여부(단일 메시지) */
+  personaStructuredParseFailed?: boolean;
+  /** additive: insufficient_data 등 폴백 산출물 적용 여부 */
+  personaStructuredFallbackApplied?: boolean;
+  /** additive: 금지 문구 sanitize 히트 수(요약과 동일 값일 수 있음) */
+  personaStructuredBannedPhraseCount?: number;
 };

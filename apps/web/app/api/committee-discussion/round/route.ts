@@ -13,6 +13,7 @@ import {
   resolvePersonaChatLlmEnv,
 } from '@/lib/server/runCommitteeDiscussion';
 import { validateInvestmentAssistantOutput } from '@/lib/server/investmentAssistantOutputFormat';
+import { enrichCommitteeLinesWithStructuredOutput } from '@/lib/server/committeeStructuredOutput';
 
 type Body = {
   topic?: string;
@@ -89,18 +90,21 @@ export async function POST(req: Request) {
       priorTranscript,
     });
 
-    const fullTranscript = [...priorTranscript, ...lines];
+    const enriched = enrichCommitteeLinesWithStructuredOutput(lines);
+
+    const fullTranscript = [...priorTranscript, ...enriched.lines];
     const excerpt = buildCommitteeTranscriptExcerpt(topic, fullTranscript);
     await updateWebCommitteeTurnExcerpt(supabase, userKey, committeeTurnId, excerpt);
 
-    const merged = lines.map((line) => `## ${line.displayName}\n${line.content}`).join('\n\n');
+    const merged = enriched.lines.map((line) => `## ${line.displayName}\n${line.content}`).join('\n\n');
     const outputQuality = validateInvestmentAssistantOutput(merged);
     const res: CommitteeDiscussionRoundResponseBody & {
       outputQuality?: ReturnType<typeof validateInvestmentAssistantOutput>;
       modelUsage?: { providerUsed: string; fallbackUsed: boolean };
     } = {
-      lines,
+      lines: enriched.lines,
       committeeTurnId,
+      personaStructuredOutputSummary: enriched.personaStructuredOutputSummary,
       outputQuality,
       modelUsage: {
         providerUsed: 'gemini_openai_committee_round',

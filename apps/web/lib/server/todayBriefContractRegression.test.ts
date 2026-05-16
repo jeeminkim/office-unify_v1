@@ -152,4 +152,15 @@ describe("Today Brief / Today Candidates contract regression", () => {
     expect(next[0].score!).toBeLessThan(deck[0].score!);
     expect((next[0].scoreBreakdown?.repeatExposurePenalty ?? 0) > 0).toBe(true);
   });
+
+  it("additive: judgmentQuality + decisionTrace optional fields do not replace legacy keys", () => {
+    const c = minimalDeckCandidate();
+    const extended = {
+      ...c,
+      decisionTrace: { decisionStatus: "selected" as const, candidateBucket: "watchlist" as const, selectedReasons: [], suppressedReasons: [], rejectedReasons: [], downgradeReasons: [], missingEvidence: [], dataQualityFlags: [], riskFlags: [], nextChecks: [], doNotDo: [] },
+      judgmentQuality: { score: 50, level: "medium" as const, reasons: [], penalties: [] },
+    };
+    expect(extended.score).toBe(55);
+    expect(extended.judgmentQuality?.level).toBe("medium");
+  });
 });

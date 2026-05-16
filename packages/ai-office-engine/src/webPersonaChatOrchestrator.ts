@@ -35,6 +35,7 @@ import { getOpenAiMonthlyBudgetUsd, getOpenAiMonthlyMaxCalls, isOpenAiFallbackTo
 import { formatLongTermForPrompt } from './webPersonaLongTerm';
 import { getCommitteeSystemPromptAppend, isCommitteePersonaSlug } from './committee/committeePrompt';
 import { formatCommitteeInputSummaryForPrompt } from './sheets/portfolioSheetsModel';
+import { PERSONA_STRUCTURED_OUTPUT_CONTRACT_APPEND_KO } from './personaStructuredOutputKoAppend';
 
 /** 조일현 제외 — persona-chat에서 Supabase 웹 원장 스냅샷을 시스템 프롬프트에 붙인다(Ray Dalio 포함). */
 export const WEB_PORTFOLIO_LEDGER_PERSONA_SLUGS = [
@@ -127,6 +128,7 @@ export function buildWebPersonaSystemInstruction(params: {
     `[지시] 위 장기 기억·어제 힌트는 참고용이다. ${ledgerHint}`,
     '',
     `[응답 스타일] 한국어로 답한다. 기본은 간결하게 핵심 위주로 정리하되, 질문이 넓거나 근거·체크리스트가 필요하면 필요한 만큼 충분히 길게 답할 수 있다(불필요한 서론·반복만 줄인다). 대략 ${PERSONA_CHAT_ASSISTANT_TARGET_MAX_CHARS}자 전후가 아이디어상의 짧은 답 목표이며, 길이는 주제에 따라 달라질 수 있다.`,
+    PERSONA_STRUCTURED_OUTPUT_CONTRACT_APPEND_KO,
   );
 
   return chunks.join('\n');

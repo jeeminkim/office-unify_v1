@@ -1,14 +1,18 @@
 import type {
+  CandidateDecisionTrace,
+  CandidateJudgmentQuality,
   ConcentrationRiskAssessment,
   ObservationScoreFactorCode,
   SuitabilityAssessment,
   ThemeConnectionCandidateBinding,
   ThemeConnectionMapItem,
   ThemeConnectionSummary,
-  TodayCandidateDisplayMetrics,
-  TodayCandidateScoreBreakdown,
   TodayBriefConcentrationRiskSummary,
   TodayBriefDeckSlot,
+  TodayCandidateDisplayMetrics,
+  TodayCandidateScoreBreakdown,
+  TodayCandidatesDecisionTraceSummary,
+  TodayCandidatesJudgmentQualitySummary,
   UsKrSignalEmptyReasonCode,
 } from '@office-unify/shared-types';
 
@@ -140,6 +144,10 @@ export interface TodayStockCandidate {
   candidateAction?: TodayCandidateCandidateAction;
   /** Additive: 관찰 점수 분해. */
   scoreBreakdown?: TodayCandidateScoreBreakdown;
+  /** additive: 후보 선정·제외 감사 로그 */
+  decisionTrace?: CandidateDecisionTrace;
+  /** additive: 관찰 점수와 별개의 판단 근거 성숙도 */
+  judgmentQuality?: CandidateJudgmentQuality;
 }
 
 export interface UsMarketMorningSummary {
@@ -285,6 +293,12 @@ export interface TodayBriefWithCandidatesResponse {
         repeatPenaltyAppliedCount?: number;
         corporateRiskGatedCount?: number;
       };
+      /** additive: 후보 감사 로그 요약 */
+      decisionTraceSummary?: TodayCandidatesDecisionTraceSummary;
+      judgmentQualitySummary?: TodayCandidatesJudgmentQualitySummary;
+      /** additive: 덱에 오르지 않은 후보 요약(상위 N) */
+      suppressedCandidates?: CandidateDecisionTrace[];
+      rejectedCandidates?: CandidateDecisionTrace[];
     };
   };
 }

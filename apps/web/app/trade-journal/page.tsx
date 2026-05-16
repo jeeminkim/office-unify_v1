@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { createServerSupabaseAuthClient } from '@/lib/supabase/server';
 import { isAllowedPersonaChatEmail } from '@/lib/server/allowed-user';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
@@ -37,6 +38,10 @@ export default async function TradeJournalPage() {
     );
   }
 
-  return <TradeJournalClient />;
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-6xl p-6 text-sm text-slate-600">로딩…</div>}>
+      <TradeJournalClient />
+    </Suspense>
+  );
 }
 

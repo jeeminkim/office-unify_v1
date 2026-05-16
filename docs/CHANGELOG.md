@@ -4,6 +4,24 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-16 Persona-chat NDJSON · 구조화 출력 패리티
+
+- **`/api/persona-chat/message/stream`**가 비스트림 경로와 동일하게 `buildPersonaStructuredLayer` → **`mergePersonaStructuredLayerIntoChatResponse`**를 거치도록 정렬; DB 저장 어시스턴트 문구는 sanitize 후 표시문.
+- **스트림 `done` NDJSON:** root에 additive **`structuredOutput`**, **`structuredOutputSummary`**, **`personaWarnings`**, **`bannedPhraseCount`**, **`parseFailed`**, **`fallbackApplied`**(내용은 `body`와 동일 계열; 구 클라이언트는 `body`만 사용 가능).
+- **공유 타입:** `PersonaChatMessageResponseBody`에 `personaStructuredParseFailed`·`personaStructuredFallbackApplied`·`personaStructuredBannedPhraseCount` additive.
+- **금지 문구 목록**에 **`자동 리밸런싱`** 포함.
+- **UI:** `/persona-chat` 스트림 완료 시 구조화 경고·파싱 실패 안내 배너(선택 표시).
+- 위원회 라운드는 비스트림만 해당(PB 주간은 기존 `auditPrivateBankerStructuredResponse` 경로).
+
+### 2026-05-16 Candidate Decision Trace · 페르소나 구조화 출력 · 판단 품질 · Trade Journal 시드
+
+- **Decision Trace:** 후보별 `decisionTrace`(선정·억제·제외·리스크 점검·근거/부족 데이터·다음 확인) additive; `qualityMeta.todayCandidates.decisionTraceSummary`·`suppressedCandidates`/`rejectedCandidates` 요약.
+- **판단 품질:** `judgmentQuality`(관찰 점수와 별개 근거 성숙도)·`judgmentQualitySummary`.
+- **페르소나 계약:** 공통 프롬프트에 JSON 선행 + 요약 후행; `parsePersonaStructuredOutput`·금지 문구 sanitize; persona-chat 응답에 `personaStructuredOutput*`; 위원회 라운드에 `personaStructuredOutputSummary` 및 라인별 `structuredOutput`.
+- **UI:** 대시보드 카드에 후보 선정 근거·확인 체크·판단 품질·Trade Journal 관찰 메모 링크(시드 쿼리).
+- **Trade Journal:** `TradeJournalCreateRequest.seedContext`(today_candidate); 저장 시 노트에 당시 후보 판단 접두 붙임.
+- **테스트:** `personaStructuredOutput.test.ts`, `todayCandidateDecisionTrace.test.ts`.
+
 ### 2026-05-16 실사용 전 소규모 보강 (preview read-only·모바일 ticker·회귀 테스트)
 
 - **Sector-match 미리보기:** `POST …/sector-match` `mode=preview`에서 **DB update·ops 로그 write 없음**(성공/실패 공통). 응답 additive: `previewReadOnly`, `actionHint`. 적용(`apply`)은 기존처럼 DB·ops 허용.

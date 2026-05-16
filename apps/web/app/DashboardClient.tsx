@@ -30,8 +30,22 @@ import type {
   PbWeeklyReview,
 } from "@office-unify/shared-types";
 import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from "@/lib/todayCandidatesContract";
+import { scrubTodayCandidateUiCopy } from "@/lib/todayCandidateUiCopy";
 import { filterCandidatesByConfidence } from "@/lib/todayCandidateDataQuality";
 import { readLastTickerResolverRequestId } from "@/lib/lastTickerResolverRequestId";
+
+function judgmentQualityLevelLabel(level: string | undefined): string {
+  switch (level) {
+    case "high":
+      return "높음";
+    case "medium":
+      return "보통";
+    case "low":
+      return "낮음";
+    default:
+      return "데이터 부족";
+  }
+}
 
 function candidateCardKindLabel(k: TodayCandidateCardKind | undefined): string {
   switch (k) {
@@ -1069,8 +1083,19 @@ export function DashboardClient() {
                       <>{c.name} · {c.sector ?? "NO_DATA"}</>
                     )}
                   </p>
+                  {(c.decisionTrace?.decisionStatus === "risk_review" || c.briefDeckSlot === "risk_review") ? (
+                    <p className="mt-1 w-fit rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-950">
+                      리스크 점검
+                    </p>
+                  ) : null}
+                  {c.candidateAction === "review_required" ? (
+                    <p className="mt-1 text-[10px] text-amber-900">
+                      검토·리스크 점검이 필요한 카드입니다. 자동 주문 없음 · 확인 후 판단하세요.
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-[11px] text-slate-800">
                     관찰 점수 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
+                    {c.judgmentQuality ? <> · 판단 품질: {judgmentQualityLevelLabel(c.judgmentQuality.level)}</> : null}
                   </p>
                   {c.displayMetrics?.candidateCardKind ? (
                     <p className="mt-0.5 text-[10px] text-slate-600">
@@ -1097,7 +1122,78 @@ export function DashboardClient() {
                       {c.displayMetrics.scoreExplanationDetail.userReadableSummary}
                     </p>
                   ) : null}
-                  <p className="mt-1 text-[11px] text-slate-700">{c.reasonSummary}</p>
+                  <p className="mt-1 text-[11px] text-slate-700">{scrubTodayCandidateUiCopy(c.reasonSummary)}</p>
+                  {c.judgmentQuality ? (
+                    <p className="mt-0.5 text-[10px] text-slate-600">
+                      관찰 점수와 별개로, 판단에 사용된 근거 충분성을 나타냅니다.
+                      {c.judgmentQuality.level === "low" || c.judgmentQuality.level === "unknown"
+                        ? " 데이터 일부가 부족해 판단 품질이 낮을 수 있습니다."
+                        : null}
+                      {(c.judgmentQuality.penalties ?? []).length > 0 ? (
+                        <span className="block text-slate-500">
+                          감점 참고: {(c.judgmentQuality.penalties ?? []).slice(0, 3).join(" · ")}
+                        </span>
+                      ) : null}
+                    </p>
+                  ) : null}
+                  {c.decisionTrace ? (
+                    <details className="mt-1.5 rounded border border-violet-100 bg-violet-50/40 p-1.5 text-[10px] text-slate-800">
+                      <summary className="cursor-pointer select-none font-medium text-violet-950">
+                        후보 선정 근거 · 확인 체크
+                      </summary>
+                      <div className="mt-1 space-y-1 border-t border-violet-100 pt-1">
+                        <p className="font-medium text-violet-950">왜 올라왔나요?</p>
+                        <ul className="list-inside list-disc text-slate-700">
+                          {(c.decisionTrace.selectedReasons ?? []).slice(0, 8).map((r) => (
+                            <li key={`sel-${c.candidateId}-${r.code}`}>{scrubTodayCandidateUiCopy(r.labelKo)}</li>
+                          ))}
+                        </ul>
+                        {(c.decisionTrace.missingEvidence ?? []).length > 0 ? (
+                          <>
+                            <p className="font-medium text-amber-950">무엇이 부족한가요?</p>
+                            <ul className="list-inside list-disc text-amber-950/95">
+                              {(c.decisionTrace.missingEvidence ?? []).slice(0, 8).map((r) => (
+                                <li key={`miss-${c.candidateId}-${r.code}`}>{r.labelKo}</li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                        {(c.decisionTrace.riskFlags ?? []).length > 0 ? (
+                          <>
+                            <p className="font-medium text-rose-950">주의할 점</p>
+                            <ul className="list-inside list-disc text-rose-900">
+                              {(c.decisionTrace.riskFlags ?? []).slice(0, 8).map((r) => (
+                                <li key={`risk-${c.candidateId}-${r.code}`}>{r.labelKo}</li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                        {(c.decisionTrace.doNotDo ?? []).length > 0 ? (
+                          <>
+                            <p className="font-medium text-slate-800">확대하지 말아야 할 가정</p>
+                            <ul className="list-inside list-disc">
+                              {(c.decisionTrace.doNotDo ?? []).map((x, i) => (
+                                <li key={`dn-${c.candidateId}-${i}`}>{scrubTodayCandidateUiCopy(x)}</li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                        {(c.decisionTrace.nextChecks ?? []).length > 0 ? (
+                          <>
+                            <p className="font-medium text-slate-800">다음 확인사항</p>
+                            <ul className="list-inside list-disc">
+                              {(c.decisionTrace.nextChecks ?? []).map((x, i) => (
+                                <li key={`nx-${c.candidateId}-${i}`}>{x}</li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : null}
+                        <p className="text-[9px] text-slate-500">
+                          나중에 복기할 기준: 위 리스크·확인사항이 해소·충족되었는지 다시 점검하세요.
+                        </p>
+                      </div>
+                    </details>
+                  ) : null}
                   <div className="mt-1 flex flex-wrap gap-1">
                     {(c.dataQuality?.badges ?? []).map((b) => (
                       <span key={`deck-${c.candidateId}-${b}`} className={`rounded px-1.5 py-0.5 text-[10px] ${badgeTone(b)}`}>{b}</span>
@@ -1167,6 +1263,29 @@ export function DashboardClient() {
                       ) : null}
                     </div>
                   ) : null}
+                  {c.briefDeckSlot !== "sector_etf" && c.stockCode ? (
+                    <div className="mt-1">
+                      <Link
+                        href={(() => {
+                          const p = new URLSearchParams();
+                          p.set("seedSource", "today_candidate");
+                          p.set("seedStockCode", String(c.stockCode));
+                          p.set("seedMarket", c.market === "US" ? "US" : "KR");
+                          const traceHint = [
+                            c.decisionTrace?.decisionStatus,
+                            ...(c.decisionTrace?.riskFlags?.map((x) => x.code) ?? []),
+                          ]
+                            .filter(Boolean)
+                            .join(",");
+                          if (traceHint) p.set("seedTrace", traceHint.slice(0, 480));
+                          return `/trade-journal?${p.toString()}`;
+                        })()}
+                        className="text-[10px] text-violet-800 underline underline-offset-2"
+                      >
+                        관찰 메모로 남기기 (Trade Journal)
+                      </Link>
+                    </div>
+                  ) : null}
                   <div className="mt-1 flex gap-2 text-[11px]">
                     <button type="button" className="rounded border border-slate-300 px-2 py-0.5" onClick={() => void onOpenReason(c)}>사유 보기</button>
                     <button
@@ -1192,6 +1311,28 @@ export function DashboardClient() {
                 </li>
               ))}
             </ul>
+            {todayBrief?.qualityMeta?.todayCandidates?.decisionTraceSummary ? (
+              <details className="mt-2 rounded border border-slate-200 bg-white/80 p-2 text-[10px] text-slate-700">
+                <summary className="cursor-pointer select-none font-medium text-slate-800">
+                  후보 감사 요약 (운영·상세)
+                </summary>
+                <p className="mt-1 text-slate-600">
+                  선택 {todayBrief.qualityMeta.todayCandidates.decisionTraceSummary.selectedCount} · 리스크 점검{" "}
+                  {todayBrief.qualityMeta.todayCandidates.decisionTraceSummary.riskReviewCount} · 억제{" "}
+                  {todayBrief.qualityMeta.todayCandidates.decisionTraceSummary.suppressedCount} · 제외{" "}
+                  {todayBrief.qualityMeta.todayCandidates.decisionTraceSummary.rejectedCount} · 커버리지{" "}
+                  {(todayBrief.qualityMeta.todayCandidates.decisionTraceSummary.traceCoverageRatio * 100).toFixed(0)}%
+                </p>
+                {(todayBrief.qualityMeta.todayCandidates.decisionTraceSummary.topSuppressedReasons ?? []).length > 0 ? (
+                  <p className="mt-1 text-slate-600">
+                    억제 상위 사유:{" "}
+                    {(todayBrief.qualityMeta.todayCandidates.decisionTraceSummary.topSuppressedReasons ?? [])
+                      .map((x) => x.labelKo)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+              </details>
+            ) : null}
           </div>
         ) : null}
 

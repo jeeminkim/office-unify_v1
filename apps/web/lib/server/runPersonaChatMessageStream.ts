@@ -17,6 +17,12 @@ import {
   insertPendingPersonaChatRequest,
   updatePersonaChatRequestRow,
 } from '@office-unify/supabase-access';
+import {
+  buildPersonaChatStreamDoneEnvelope,
+  buildPersonaStructuredLayer,
+  mergePersonaStructuredLayerIntoChatResponse,
+  type PersonaStructuredLayer,
+} from '@/lib/server/personaStructuredOutput';
 
 const STALE_PENDING_MS = 10 * 60 * 1000;
 
@@ -45,6 +51,7 @@ export type PersonaChatStreamPrepareResult =
 
 /**
  * NDJSON 스트림: `{"type":"delta","text":"..."}\\n` … 마지막에 `{"type":"done",...}\\n`
+ * 비스트림 경로와 동일하게 `buildPersonaStructuredLayer` → `mergePersonaStructuredLayerIntoChatResponse` 적용.
  */
 export function createPersonaChatMessageNdjsonStream(params: {
   supabase: SupabaseClient;
@@ -89,13 +96,23 @@ export function createPersonaChatMessageNdjsonStream(params: {
         let row = await fetchPersonaChatRequestRow(supabase, userKeyStr, idempotencyKey);
 
         if (row?.status === 'completed' && row.contentHash === contentHash && row.responseJson) {
-          push({ type: 'done', deduplicated: true, body: row.responseJson });
+          push(
+            buildPersonaChatStreamDoneEnvelope({
+              deduplicated: true,
+              body: row.responseJson as PersonaChatMessageResponseBody,
+            }),
+          );
           controller.close();
           return;
         }
 
         if (row?.status === 'completed' && row.contentHash !== contentHash) {
-          push({ type: 'fatal', status: 409, code: 'IDEMPOTENCY_KEY_REUSED', message: 'idempotencyKey is already used with different content.' });
+          push({
+            type: 'fatal',
+            status: 409,
+            code: 'IDEMPOTENCY_KEY_REUSED',
+            message: 'idempotencyKey is already used with different content.',
+          });
           controller.close();
           return;
         }
@@ -156,7 +173,10 @@ export function createPersonaChatMessageNdjsonStream(params: {
             row.contentHash === contentHash;
 
           const canResumeAfterLlm =
-            row.processingStage === 'llm_done' && row.llmAssistantText && row.contentHash === contentHash && !row.userMessageId;
+            row.processingStage === 'llm_done' &&
+            row.llmAssistantText &&
+            row.contentHash === contentHash &&
+            !row.userMessageId;
 
           if (!canResumeMemory && !canResumeAfterLlm) {
             await updatePersonaChatRequestRow(supabase, row.id, {
@@ -181,9 +201,9 @@ export function createPersonaChatMessageNdjsonStream(params: {
           userContent: content,
         });
 
-        let replyText: string;
         let userMessage: PersonaChatMessageDto;
         let assistantMessage: PersonaChatMessageDto;
+        let structuredLayer: PersonaStructuredLayer | undefined;
         let personaFormatNote: string | undefined;
         let llmProviderNote: string | undefined;
 
@@ -196,7 +216,6 @@ export function createPersonaChatMessageNdjsonStream(params: {
           row.status !== 'completed';
 
         if (resumeMemoryOnly) {
-          replyText = row.llmAssistantText!;
           const pair = await fetchWebPersonaMessagesByIds(
             supabase,
             prepared.sessionId,
@@ -205,7 +224,9 @@ export function createPersonaChatMessageNdjsonStream(params: {
           );
           userMessage = pair.userMessage;
           assistantMessage = pair.assistantMessage;
-          emitTextAsNdjsonChunks(replyText, push);
+          emitTextAsNdjsonChunks(row.llmAssistantText!, push);
+          structuredLayer = buildPersonaStructuredLayer(personaSlug, assistantMessage.content);
+          assistantMessage = { ...assistantMessage, content: structuredLayer.displayReplyText };
         } else {
           let llmRaw: string;
           if (row.llmAssistantText && row.processingStage === 'llm_done' && row.contentHash === contentHash) {
@@ -239,23 +260,22 @@ export function createPersonaChatMessageNdjsonStream(params: {
             );
             if (isCommitteePersonaSlug(personaSlug)) {
               const rem = remediateCommitteePersonaReply(personaSlug, pair.assistantMessage.content);
-              replyText = rem.text;
               if (rem.note) personaFormatNote = rem.note;
               if (process.env.NODE_ENV !== 'production' && rem.debugTags?.length) {
                 console.debug(`[committee-remediation] ${personaSlug}`, rem.debugTags.join(','));
               }
               userMessage = pair.userMessage;
-              assistantMessage = { ...pair.assistantMessage, content: rem.text };
+              structuredLayer = buildPersonaStructuredLayer(personaSlug, rem.text);
+              assistantMessage = { ...pair.assistantMessage, content: structuredLayer.displayReplyText };
             } else {
-              replyText = pair.assistantMessage.content;
               userMessage = pair.userMessage;
-              assistantMessage = pair.assistantMessage;
+              structuredLayer = buildPersonaStructuredLayer(personaSlug, pair.assistantMessage.content);
+              assistantMessage = { ...pair.assistantMessage, content: structuredLayer.displayReplyText };
             }
           } else {
             const rem = isCommitteePersonaSlug(personaSlug)
               ? remediateCommitteePersonaReply(personaSlug, llmRaw)
               : { text: llmRaw, note: null as string | null };
-            replyText = rem.text;
             if (rem.note) personaFormatNote = rem.note;
             if (
               isCommitteePersonaSlug(personaSlug) &&
@@ -265,10 +285,11 @@ export function createPersonaChatMessageNdjsonStream(params: {
             ) {
               console.debug(`[committee-remediation] ${personaSlug}`, rem.debugTags!.join(','));
             }
+            structuredLayer = buildPersonaStructuredLayer(personaSlug, rem.text);
             const pair = await insertPersonaChatTurnMessages({
               supabase,
               prepared,
-              replyText: rem.text,
+              replyText: structuredLayer.displayReplyText,
             });
             userMessage = pair.userMessage;
             assistantMessage = pair.assistantMessage;
@@ -279,6 +300,12 @@ export function createPersonaChatMessageNdjsonStream(params: {
               status: 'pending',
             });
           }
+        }
+
+        if (!structuredLayer) {
+          push({ type: 'fatal', status: 500, message: 'structuredLayer missing after persona reply.' });
+          controller.close();
+          return;
         }
 
         const outBase = await finalizePersonaChatTurnMemory({
@@ -292,6 +319,8 @@ export function createPersonaChatMessageNdjsonStream(params: {
           out = { ...out, llmProviderNote };
         }
 
+        out = mergePersonaStructuredLayerIntoChatResponse(out, structuredLayer);
+
         await updatePersonaChatRequestRow(supabase, row.id, {
           status: 'completed',
           processingStage: null,
@@ -300,7 +329,7 @@ export function createPersonaChatMessageNdjsonStream(params: {
           errorMessage: null,
         });
 
-        push({ type: 'done', deduplicated: false, body: out });
+        push(buildPersonaChatStreamDoneEnvelope({ deduplicated: false, body: out }));
         controller.close();
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Unknown error';

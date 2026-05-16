@@ -150,10 +150,24 @@ export type TradeJournalEntryDraft = Omit<
   'id' | 'userKey' | 'createdAt' | 'updatedAt'
 >;
 
+/** Today Candidate 카드에서 매매일지 초안 연결용(additive, DB 컬럼 없이도 요청·표시 가능) */
+export type TradeJournalTodayCandidateSeedContext = {
+  source: 'today_candidate';
+  symbol?: string;
+  stockCode?: string;
+  market?: string;
+  candidateDate?: string;
+  decisionTraceSummary?: string;
+  riskFlags?: string[];
+  nextChecks?: string[];
+  doNotDo?: string[];
+};
+
 export type TradeJournalCreateRequest = {
   entry: TradeJournalEntryDraft;
   selectedPrincipleSetId?: string;
   requireNoBlockingViolation?: boolean;
+  seedContext?: TradeJournalTodayCandidateSeedContext;
 };
 
 export type TradeJournalCheckDetail = {

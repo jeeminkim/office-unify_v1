@@ -75,7 +75,21 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    const entry = await insertTradeJournalEntry(supabase, auth.userKey, parsed.value.entry);
+    let entryPayload = parsed.value.entry;
+    const seed = parsed.value.seedContext;
+    if (seed?.source === 'today_candidate') {
+      const lines: string[] = ['[당시 후보 판단 메모 seed · today_candidate]'];
+      if (seed.decisionTraceSummary) lines.push(seed.decisionTraceSummary);
+      for (const x of seed.riskFlags ?? []) lines.push(`- 리스크 플래그: ${x}`);
+      for (const x of seed.nextChecks ?? []) lines.push(`- 다음 확인: ${x}`);
+      for (const x of seed.doNotDo ?? []) lines.push(`- 주의(지시 아님): ${x}`);
+      const appendix = lines.join('\n');
+      entryPayload = {
+        ...entryPayload,
+        note: entryPayload.note ? `${appendix}\n\n${entryPayload.note}` : appendix,
+      };
+    }
+    const entry = await insertTradeJournalEntry(supabase, auth.userKey, entryPayload);
     await insertTradeJournalCheckResults(
       supabase,
       evaluation.details.map((detail) => ({

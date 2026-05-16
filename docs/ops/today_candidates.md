@@ -17,13 +17,21 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 - 미국시장 신호는 한국 종목 관찰 후보 도출의 참고값
 - 데이터 부족 시 후보를 억지로 만들지 않고 NO_DATA/fallback 표시
 
+### Candidate Decision Trace · 판단 품질 (additive)
+
+- **`decisionTrace`**: 코드(`repeat_exposure`, `quote_missing`, `us_coverage_degraded`, `corporate_action_risk` 등)와 한국어 라벨을 분리한 추적 필드. 노출 덱뿐 아니라 억제·합성 제외 요약을 `qualityMeta`에 제한적으로 포함.
+- **`judgmentQuality`**: 관찰 점수와 별개로 근거 데이터 성숙도를 요약(매수 가능성 점수 아님).
+- UI는 「후보 선정 근거」와 「다음 확인사항」을 분리하고, 리스크 점검 카드는 배지를 우선한다.
+
+**연관:** 페르소나 채팅 스트림(`/api/persona-chat/message/stream`)의 최종 `done` 페이로드에도 동일 계약의 `personaStructuredOutput*`가 포함된다(중간 `delta`는 원문일 수 있으나 저장·`body.assistantMessage.content`는 sanitize 후 표시문). PB 주간 리포트는 별도 응답 가드 경로를 유지한다.
+
 ## 후보 축
 
 - 내 관심사 기반: watchlist/보유/Trend memory/Sector Radar 기반
 - 미국시장 기반 한국주식: 오전 데이터 신호와 rule map 매핑
 - 응답 구조: `today-brief`의 optional `candidates.userContext` / `candidates.usMarketKr`
 - 모든 후보는 `isBuyRecommendation=false`
-- **additive 필드:** `scoreBreakdown` / `corporateActionRisk` / `candidateAction`; `displayMetrics`에 `candidateCardKind`, `dataStatusUi`, `mainDeductionLabels`, `neutralObservationCopy`; `qualityMeta.todayCandidates`에 `usCoverage`, `scoreBreakdownSummary`
+- **additive 필드:** `scoreBreakdown` / `corporateActionRisk` / `candidateAction`; `displayMetrics`에 `candidateCardKind`, `dataStatusUi`, `mainDeductionLabels`, `neutralObservationCopy`; 후보별 **`decisionTrace`**(선정·억제·제외 감사)·**`judgmentQuality`**; `qualityMeta.todayCandidates`에 `usCoverage`, `scoreBreakdownSummary`, **`decisionTraceSummary`**, **`judgmentQualitySummary`**, **`suppressedCandidates`/`rejectedCandidates`**
 - **관찰 점수 파이프라인(요약):** 풀 후보 생성(`buildTodayStockCandidates`: 희소 base 45–55·품질·미국 부스트·`corporateActionRiskRegistry` 게이트) → 메인 덱 구성(`composeTodayBriefCandidates`: 다양성·리스크 슬롯) → 테마·적합성·집중도 → **7일 반복 감점**(`applyRepeatExposurePenaltiesToDeck`) → 표시 지표 재해석 → 점수 설명 enrich. 매수 권유·자동 주문 없음.
 
 ### 메인 3카드 덱 (additive)

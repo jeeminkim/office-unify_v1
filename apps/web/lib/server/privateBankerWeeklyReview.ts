@@ -11,6 +11,7 @@ import type {
   ResearchFollowupRowDto,
 } from '@office-unify/shared-types';
 import { listWebPortfolioHoldingsForUser } from '@office-unify/supabase-access';
+import { PERSONA_STRUCTURED_OUTPUT_CONTRACT_APPEND_KO } from '@office-unify/ai-office-engine';
 import { loadHoldingQuotes } from '@/lib/server/marketQuoteService';
 import { analyzeThesisHealth } from '@/lib/server/thesisHealthAnalyzer';
 import { buildTodayStockCandidates } from '@/lib/server/todayStockCandidateService';
@@ -443,6 +444,8 @@ export function buildPrivateBankerWeeklyReviewPrompt(ctx: PrivateBankerWeeklyRev
   lines.push('');
   lines.push('이번 주 사용자에게 물어볼 확인 질문을 우선순위대로 제시하세요.');
   lines.push('금액 원문·userNote·민감 메모는 인용하지 마세요.');
+  lines.push('');
+  lines.push(PERSONA_STRUCTURED_OUTPUT_CONTRACT_APPEND_KO.trim());
   lines.push('');
   lines.push('--- 구조화 컨텍스트(JSON, 민감정보 제거) ---');
   lines.push(JSON.stringify(sanitized, null, 0));

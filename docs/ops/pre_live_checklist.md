@@ -27,6 +27,14 @@ npm run pre-live-smoke --workspace=apps/web
 - [ ] `028300`(HLB 예시) 등 **기업 이벤트 리스크** 레지스트리가 켜진 종목은 **50점 이하·리스크 점검 톤**으로 보이는지.
 - [ ] 미국 데이터가 부족할 때 `qualityMeta.todayCandidates.usCoverage.status === 'degraded'` 및 UI 안내가 보이는지.
 - [ ] 같은 종목이 반복 노출되면 `repeatExposurePenalty`가 점수·설명에 반영되는지(운영 스냅샷/이벤트에 따라 다름).
+- [ ] 후보 카드에 **후보 선정 근거**(왜 올라왔나요·부족 데이터·다음 확인)·**판단 품질** 문구가 보이고 매수 추천 톤이 없는지.
+- [ ] `Trade Journal`로 「관찰 메모로 남기기」 링크 시 시드 배너가 뜨고 저장 노트에 접두가 붙는지.
+
+## 3a. Persona chat · NDJSON · 구조화 응답
+
+- [ ] `/persona-chat` 스트림 완료(`done`)의 **`body.personaStructuredOutputSummary`**(또는 root **`structuredOutputSummary`**)가 존재하는지.
+- [ ] 파싱 실패 시 **`parseFailed` / `personaStructuredParseFailed`** 및 확인·점검 톤 안내가 보이는지(중간 delta는 원문일 수 있음).
+- [ ] 금지 표현(예: 자동 주문·자동 리밸런싱·지금 사라)이 **최종 저장 메시지**에 남지 않는지.
 
 ## 4. 한화오션 name-only resolve
 

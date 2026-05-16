@@ -24,6 +24,7 @@ import type { WebPersonaDefinition } from '../webPersonas/registry';
 import { generateOpenAiPrivateBankerReply } from './openAiPrivateBankerAdapter';
 import { PRIVATE_BANKER_CORE_SYSTEM, PRIVATE_BANKER_INTENT_HINT, PRIVATE_BANKER_PERSONA_SLUG } from './privateBankerPrompt';
 import { formatWebPortfolioLedgerForPrivateBankerPrompt } from './privateBankerPortfolioLedgerPrompt';
+import { PERSONA_STRUCTURED_OUTPUT_CONTRACT_APPEND_KO } from '../personaStructuredOutputKoAppend';
 
 const JP_DEF: WebPersonaDefinition = {
   key: toPersonaWebKey(PRIVATE_BANKER_PERSONA_SLUG),
@@ -111,6 +112,7 @@ function buildPrivateBankerFullInstruction(params: {
     `[지시] 장기 기억·어제 힌트는 참고용이다. ${priorityHint} 기억·추정으로 원장 수치를 채우지 않는다.`,
     '',
     `[응답 스타일] 한국어, 전체 길이는 대략 ${PERSONA_CHAT_ASSISTANT_TARGET_MAX_CHARS}자 안팎을 넘지 않도록 압축하되 체크리스트·행동 블록은 생략하지 않는다.`,
+    PERSONA_STRUCTURED_OUTPUT_CONTRACT_APPEND_KO,
   );
 
   return chunks.join('\n');

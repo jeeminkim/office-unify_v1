@@ -270,6 +270,27 @@ export type {
   UsKrSignalEmptyReasonCode,
 } from './todayBriefDisplay';
 export type {
+  CandidateDecisionBucket,
+  CandidateDecisionExposureTrace,
+  CandidateDecisionSourceRef,
+  CandidateDecisionStatus,
+  CandidateDecisionTrace,
+  CandidateJudgmentQuality,
+  CandidateJudgmentQualityLevel,
+  CandidateTraceReason,
+  TodayCandidatesDecisionTraceSummary,
+  TodayCandidatesJudgmentQualitySummary,
+} from './candidateDecisionTrace';
+export type {
+  PersonaPortfolioContextStructured,
+  PersonaRole,
+  PersonaScoreAdjustmentSuggestion,
+  PersonaStructuredConfidence,
+  PersonaStructuredOutput,
+  PersonaStructuredOutputQualitySummary,
+  PersonaStructuredStance,
+} from './personaStructuredOutput';
+export type {
   UsKrEmptyReasonHistogram,
   UsKrEmptyReasonHistogramItem,
   UsKrEmptyReasonHistogramRange,
@@ -424,6 +445,7 @@ export type {
   TradeJournalReviewVerdict,
   TradeJournalSide,
   TradeJournalStrategyHorizon,
+  TradeJournalTodayCandidateSeedContext,
 } from './tradeJournal';
 export type {
   FinancialGoal,

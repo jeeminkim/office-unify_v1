@@ -18,6 +18,7 @@ import {
   insertPendingPersonaChatRequest,
   updatePersonaChatRequestRow,
 } from '@office-unify/supabase-access';
+import { buildPersonaStructuredLayer, mergePersonaStructuredLayerIntoChatResponse, type PersonaStructuredLayer } from '@/lib/server/personaStructuredOutput';
 
 const STALE_PENDING_MS = 10 * 60 * 1000;
 
@@ -158,6 +159,7 @@ export async function runPersonaChatMessageWithDbIdempotency(params: {
 
   let userMessage: PersonaChatMessageDto;
   let assistantMessage: PersonaChatMessageDto;
+  let structuredLayer: PersonaStructuredLayer | undefined;
 
   try {
     const resumeMemoryOnly =
@@ -179,7 +181,8 @@ export async function runPersonaChatMessageWithDbIdempotency(params: {
         row.assistantMessageId!,
       );
       userMessage = pair.userMessage;
-      assistantMessage = pair.assistantMessage;
+      structuredLayer = buildPersonaStructuredLayer(personaSlug, pair.assistantMessage.content);
+      assistantMessage = { ...pair.assistantMessage, content: structuredLayer.displayReplyText };
     } else {
       let llmRaw: string;
       if (row.llmAssistantText && row.processingStage === 'llm_done' && row.contentHash === contentHash) {
@@ -215,11 +218,13 @@ export async function runPersonaChatMessageWithDbIdempotency(params: {
           if (process.env.NODE_ENV !== 'production' && rem.debugTags?.length) {
             console.debug(`[committee-remediation] ${personaSlug}`, rem.debugTags.join(','));
           }
+          structuredLayer = buildPersonaStructuredLayer(personaSlug, rem.text);
           userMessage = pair.userMessage;
-          assistantMessage = { ...pair.assistantMessage, content: rem.text };
+          assistantMessage = { ...pair.assistantMessage, content: structuredLayer.displayReplyText };
         } else {
+          structuredLayer = buildPersonaStructuredLayer(personaSlug, pair.assistantMessage.content);
           userMessage = pair.userMessage;
-          assistantMessage = pair.assistantMessage;
+          assistantMessage = { ...pair.assistantMessage, content: structuredLayer.displayReplyText };
         }
       } else {
         const rem = isCommitteePersonaSlug(personaSlug)
@@ -234,10 +239,11 @@ export async function runPersonaChatMessageWithDbIdempotency(params: {
         ) {
           console.debug(`[committee-remediation] ${personaSlug}`, rem.debugTags!.join(','));
         }
+        structuredLayer = buildPersonaStructuredLayer(personaSlug, rem.text);
         const pair = await insertPersonaChatTurnMessages({
           supabase,
           prepared,
-          replyText: rem.text,
+          replyText: structuredLayer.displayReplyText,
         });
         userMessage = pair.userMessage;
         assistantMessage = pair.assistantMessage;
@@ -261,6 +267,9 @@ export async function runPersonaChatMessageWithDbIdempotency(params: {
       : outBase;
     if (llmProviderNote) {
       out = { ...out, llmProviderNote };
+    }
+    if (structuredLayer) {
+      out = mergePersonaStructuredLayerIntoChatResponse(out, structuredLayer);
     }
 
     await updatePersonaChatRequestRow(supabase, row.id, {

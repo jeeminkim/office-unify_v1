@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import type {
   InvestmentPrinciple,
   InvestmentPrincipleSet,
@@ -9,6 +10,7 @@ import type {
   TradeJournalEntry,
   TradeJournalReflectionType,
   TradeJournalReviewResponse,
+  TradeJournalTodayCandidateSeedContext,
 } from '@office-unify/shared-types';
 
 const REFLECTION_TYPES: TradeJournalReflectionType[] = ['week_1', 'month_1', 'after_exit', 'manual'];
@@ -86,6 +88,8 @@ const CONVICTION_KO: Record<NonNullable<Exclude<DraftState['convictionLevel'], '
 };
 
 export function TradeJournalClient() {
+  const searchParams = useSearchParams();
+  const [pendingSeed, setPendingSeed] = useState<TradeJournalTodayCandidateSeedContext | null>(null);
   const [sets, setSets] = useState<InvestmentPrincipleSet[]>([]);
   const [principles, setPrinciples] = useState<InvestmentPrinciple[]>([]);
   const [selectedSetId, setSelectedSetId] = useState<string>('');
@@ -171,6 +175,27 @@ export function TradeJournalClient() {
   };
 
   useEffect(() => {
+    const src = searchParams.get('seedSource');
+    if (src !== 'today_candidate') return;
+    const stockCode = searchParams.get('seedStockCode') ?? searchParams.get('seedSymbol') ?? '';
+    const market = (searchParams.get('seedMarket') ?? 'KR').toUpperCase();
+    const trace = searchParams.get('seedTrace') ?? '';
+    const seed: TradeJournalTodayCandidateSeedContext = {
+      source: 'today_candidate',
+      stockCode: stockCode || undefined,
+      symbol: stockCode || undefined,
+      market,
+      decisionTraceSummary: trace || undefined,
+    };
+    setPendingSeed(seed);
+    setDraft((d) => ({
+      ...d,
+      symbol: stockCode || d.symbol,
+      market: market === 'US' ? 'US' : 'KR',
+    }));
+  }, [searchParams]);
+
+  useEffect(() => {
     void (async () => {
       setLoading(true);
       setMessage(null);
@@ -252,6 +277,7 @@ export function TradeJournalClient() {
         entry: toEntryPayload(),
         selectedPrincipleSetId: selectedSetId,
         requireNoBlockingViolation: false,
+        ...(pendingSeed ? { seedContext: pendingSeed } : {}),
       }),
     });
     const data = (await res.json()) as { error?: string; warnings?: string[]; entry?: TradeJournalEntry };
@@ -260,6 +286,7 @@ export function TradeJournalClient() {
     setEntryWarnings(data.warnings ?? []);
     setDraft(EMPTY_DRAFT);
     setEvaluation(null);
+    setPendingSeed(null);
     await loadEntries();
     if (data.entry?.id) setSelectedEntryId(data.entry.id);
   };
@@ -404,6 +431,20 @@ export function TradeJournalClient() {
         </div>
       </div>
       {message ? <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{message}</div> : null}
+      {pendingSeed?.source === 'today_candidate' ? (
+        <div className="rounded border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950">
+          <p className="font-semibold">당시 후보 판단 (시드)</p>
+          <p className="mt-1 text-violet-900">
+            종목 {pendingSeed.stockCode ?? pendingSeed.symbol ?? '—'} · 시장 {pendingSeed.market ?? '—'}
+          </p>
+          {pendingSeed.decisionTraceSummary ? (
+            <p className="mt-1 text-violet-800">요약: {pendingSeed.decisionTraceSummary}</p>
+          ) : null}
+          <p className="mt-1 text-[10px] text-violet-800">
+            저장 시 메모에 자동으로 붙습니다. 매수·매도 지시 아님.
+          </p>
+        </div>
+      ) : null}
       {loading ? <p className="text-sm text-slate-500">로딩 중…</p> : null}
       <section className="rounded-xl border border-violet-200 bg-violet-50 p-4">
         <h2 className="text-sm font-semibold text-violet-900">Pattern Analysis</h2>
