@@ -25,7 +25,7 @@
 
 | ID | 요약 | 사유 |
 |----|------|------|
-| EVO-011 | Today Candidate feedback API (`hide_7d`, `mark_reviewed`) | UI에 `disabled_todo`로 표시됨. 승인·confirm 후에만 write. |
+| EVO-011 | Today Candidate feedback API | **1차 shipped** — `POST …/today-candidates/feedback`, `today_candidate_feedback` SQL, 덱·exposureDiagnostics 반영, 리스크 패널 UI. confirm 후 write · idempotency · GET read-only. |
 | EVO-012 | 30일 판단 품질 복기 리포트 | 반복 실수 감소 지표; 수익률 자랑·자동 실행 아님. |
 | EVO-013 | Dashboard CandidateCard / RiskReviewPanel 추가 분리 | `DashboardClient` 책임 과다 완화. |
 | EVO-014 | SQL readiness Dashboard 요약 고도화 | `/ops/sql-readiness` 링크 1차 반영; registry 전체 요약은 후속. |

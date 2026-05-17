@@ -26,6 +26,14 @@ npm run pre-live-smoke --workspace=apps/web
 - [ ] `GET /api/system/sql-readiness` · `GET /api/research-center/reports/diff` · `GET /api/watchlist/recommendations` 호출 시 **DB insert/update·ops upsert 없음**(단위 테스트 `readOnlyRouteAudit.test.ts`).
 - [ ] 예외: `GET /api/dashboard/today-candidates/ops-summary`는 조회 실패 시에만 fingerprint upsert(문서화됨). `GET /api/sector-radar/summary`는 Supabase 미설정·예외 시에만 `logOpsEvent`.
 
+## 2c. Today Candidate feedback (EVO-011)
+
+- [ ] `append_today_candidate_feedback.sql` 적용 · `/ops/sql-readiness`에서 `today_candidate_feedback` ready.
+- [ ] HLB 등 리스크 점검 카드에서 「리스크 점검 완료」「7일간 낮은 우선순위」「계속 관찰」— **confirm 전** 네트워크 POST 없음.
+- [ ] confirm 후 feedback 저장 · Today Brief 재조회 시 `userFeedbackState`·`feedbackSummary` 반영.
+- [ ] hide_7d 후 다음 브리핑에서 우선순위 하향 또는 suppressed `user_hidden_7d`.
+- [ ] keep_observing 후에도 반복 노출 진단(`exposureDiagnostics`) 유지.
+
 ## 3. Today Brief / Today Candidates
 
 - [ ] `docs/sql/APPLY_ORDER.md` §8(17–20) 적용 후 impression·sector snapshot·research history·recommendation 테이블 존재 확인.

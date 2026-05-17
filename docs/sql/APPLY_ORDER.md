@@ -111,8 +111,10 @@ select count(*) from information_schema.tables
 | 18 | `append_sector_radar_snapshots.sql` | Sector Radar run/item 스냅샷 | 스냅샷 기반 Today 연계·최근 run 조회 불가 |
 | 19 | `append_research_report_history.sql` | 리포트 이력·diff | 동일 종목 리포트 재사용·7일 diff 불가 |
 | 20 | `append_watchlist_recommendation_candidates.sql` | 관심 등록 후보(pending) | 승인형 관찰 후보 저장 불가 |
+| 21 | `append_today_candidate_feedback.sql` | 사용자 피드백(hide_7d·mark_reviewed·keep_observing) | 피드백 저장 불가 · 리스크 점검 후보 사용자 제어 degraded |
 
 > `append_web_portfolio_ledger.sql`(관심·보유) 이후 적용 권장. Research follow-up(§3)과 병행 가능.
+> 피드백은 **confirm 후 POST**만 저장하며, impressions(노출 이력)와 분리합니다.
 
 **적용 후 확인:**
 
@@ -125,9 +127,17 @@ select table_name from information_schema.tables
      'sector_radar_items',
      'research_report_runs',
      'research_report_diffs',
-     'watchlist_recommendation_candidates'
+     'watchlist_recommendation_candidates',
+     'today_candidate_feedback'
    )
  order by 1;
+```
+
+```sql
+-- feedback_action check · idempotency unique
+select indexname from pg_indexes
+ where tablename = 'today_candidate_feedback'
+   and indexname = 'today_candidate_feedback_idempotency_uidx';
 ```
 
 ---

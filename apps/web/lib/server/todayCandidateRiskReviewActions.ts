@@ -1,6 +1,7 @@
 import 'server-only';
 
-import type { TodayCandidateRiskReviewAction } from '@office-unify/shared-types';
+import type { TodayCandidateRiskReviewAction, TodayCandidateUserFeedbackState } from '@office-unify/shared-types';
+import { TODAY_CANDIDATE_FEEDBACK_API_ROUTE } from '@/lib/server/todayCandidateFeedbackStore';
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
 import { attachPolicyKind } from '@/lib/todayCandidateActionPolicy';
 import {
@@ -16,7 +17,81 @@ export type RiskReviewActionBuildContext = {
   hasReportHistory?: boolean;
   reportOlderThan7d?: boolean;
   reportFreshness?: string;
+  userFeedback?: TodayCandidateUserFeedbackState;
 };
+
+function feedbackPayload(
+  candidate: TodayStockCandidate,
+  action: 'hide_7d' | 'mark_reviewed' | 'keep_observing',
+) {
+  const code = sym(candidate);
+  return {
+    route: TODAY_CANDIDATE_FEEDBACK_API_ROUTE,
+    action,
+    symbol: code || undefined,
+    candidateId: candidate.candidateId,
+  };
+}
+
+function appendFeedbackActions(
+  actions: TodayCandidateRiskReviewAction[],
+  candidate: TodayStockCandidate,
+  ctx: RiskReviewActionBuildContext,
+): void {
+  const fb = ctx.userFeedback;
+
+  const hideApplied = fb?.active && fb.action === 'hide_7d';
+  const reviewedApplied = fb?.active && fb.action === 'mark_reviewed';
+  const observingApplied = fb?.active && fb.action === 'keep_observing';
+
+  actions.push(
+    action({
+      actionKey: 'mark_risk_reviewed',
+      label: reviewedApplied ? '검토 완료됨' : '리스크 점검 완료',
+      description: reviewedApplied
+        ? '이미 리스크·확인사항을 점검 완료로 표시했습니다. 매수/매도 판단이 아닙니다.'
+        : '이 후보의 리스크와 확인사항을 검토했다는 표시를 남깁니다. 매수/매도 판단이 아닙니다.',
+      actionType: 'api_post',
+      method: 'POST',
+      priority: 'primary',
+      dangerLevel: 'none',
+      requiresConfirmation: true,
+      writeAction: true,
+      deferred: reviewedApplied,
+      payloadHint: feedbackPayload(candidate, 'mark_reviewed'),
+    }),
+    action({
+      actionKey: 'hide_for_7d',
+      label: hideApplied ? '7일 낮은 우선순위 적용됨' : '7일간 낮은 우선순위로 보기',
+      description: hideApplied
+        ? '7일 동안 Today Candidate에서 낮은 우선순위로 표시 중입니다. 관심종목 삭제·매매 실행 없음.'
+        : '이 후보를 삭제하지 않고 7일 동안 Today Candidate에서 낮은 우선순위로 둡니다.',
+      actionType: 'api_post',
+      method: 'POST',
+      priority: 'secondary',
+      dangerLevel: 'none',
+      requiresConfirmation: true,
+      writeAction: true,
+      deferred: hideApplied,
+      payloadHint: feedbackPayload(candidate, 'hide_7d'),
+    }),
+    action({
+      actionKey: 'keep_observing',
+      label: observingApplied ? '계속 관찰 중' : '계속 관찰',
+      description: observingApplied
+        ? '반복 노출 진단은 유지됩니다. 관심종목 자동 등록·매매 실행 없음.'
+        : '반복 노출되더라도 당분간 계속 관찰하겠다는 표시를 남깁니다.',
+      actionType: 'api_post',
+      method: 'POST',
+      priority: 'tertiary',
+      dangerLevel: 'none',
+      requiresConfirmation: true,
+      writeAction: true,
+      deferred: observingApplied,
+      payloadHint: feedbackPayload(candidate, 'keep_observing'),
+    }),
+  );
+}
 
 export function isRiskReviewCandidate(c: TodayStockCandidate): boolean {
   if (c.briefDeckSlot === 'risk_review') return true;
@@ -89,14 +164,6 @@ export function buildRiskReviewActions(
       priority: 'secondary',
       dangerLevel: 'none',
     }),
-    action({
-      actionKey: 'keep_observing',
-      label: '관찰 유지',
-      description: '지금은 추가 조치 없이 관찰 목록에 두고 다음 브리핑에서 다시 확인합니다.',
-      actionType: 'local_expand',
-      priority: 'tertiary',
-      dangerLevel: 'none',
-    }),
   );
 
   if (corpActive) {
@@ -140,34 +207,6 @@ export function buildRiskReviewActions(
       );
     }
 
-    actions.push(
-      action({
-        actionKey: 'mark_risk_reviewed',
-        label: '검토 완료 표시',
-        description: '리스크를 확인했음을 기록합니다. (저장 API 준비 중)',
-        actionType: 'api_post',
-        method: 'POST',
-        priority: 'tertiary',
-        dangerLevel: 'none',
-        requiresConfirmation: true,
-        writeAction: true,
-        deferred: true,
-        payloadHint: { route: '/api/dashboard/today-candidates/feedback', action: 'mark_reviewed' },
-      }),
-      action({
-        actionKey: 'hide_for_7d',
-        label: '7일간 숨김',
-        description: '이 후보를 일정 기간 Today Candidate에서 낮은 우선순위로 둡니다. (저장 API 준비 중)',
-        actionType: 'api_post',
-        method: 'POST',
-        priority: 'tertiary',
-        dangerLevel: 'none',
-        requiresConfirmation: true,
-        writeAction: true,
-        deferred: true,
-        payloadHint: { route: '/api/dashboard/today-candidates/feedback', action: 'hide_7d' },
-      }),
-    );
   } else {
     actions.push(
       action({
@@ -210,6 +249,8 @@ export function buildRiskReviewActions(
     );
   }
 
+  appendFeedbackActions(actions, candidate, ctx);
+
   const order = { primary: 0, secondary: 1, tertiary: 2 };
   return actions.sort((a, b) => order[a.priority] - order[b.priority]);
 }
@@ -220,7 +261,10 @@ export function attachRiskReviewActionsToDeck(
 ): TodayStockCandidate[] {
   return deck.map((c) => {
     if (!isRiskReviewCandidate(c)) return c;
-    const ctx = ctxByCandidateId?.get(c.candidateId) ?? {};
+    const ctx = {
+      ...(ctxByCandidateId?.get(c.candidateId) ?? {}),
+      userFeedback: c.userFeedbackState ?? ctxByCandidateId?.get(c.candidateId)?.userFeedback,
+    };
     const riskReviewActions = buildRiskReviewActions(c, ctx);
     if (!riskReviewActions.length) return c;
     return { ...c, riskReviewActions };

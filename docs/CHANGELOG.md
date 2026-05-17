@@ -4,6 +4,20 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-17 US 후보 gating · 관심종목 섹터 매핑
+
+- **US gating:** 미국 시장 데이터 부족 시 US 종목은 `primaryCandidateDeck`이 아닌 `diagnosticCandidateCards` / `usMarketCheckCards`로 분리(`todayCandidateUsGating`, `ensureUsMarketCheckInDeck` 슬롯 치환 제거). 국내 후보 슬롯 보호.
+- **Today Brief:** `diagnosticCandidateCards`·`usMarketAnchorCoverageLabel` additive; `usCandidateDiagnostics.selectedUsCandidateCount`는 점검 카드 제외.
+- **UI:** 대시보드 「미국 시장 데이터 점검」접이식 섹션 · `us_data_check` 카드 유형.
+- **Watchlist sector:** registry 보강(캡처 종목) · `matchScores`(quote/registry 분리) · reviewHint · Google Finance는 quote 검증·섹터는 registry/수동 검토 안내(포트폴리오 원장).
+
+### 2026-05-17 EVO-011 Today Candidate feedback API
+
+- **POST** `/api/dashboard/today-candidates/feedback` — `hide_7d` · `mark_reviewed` · `keep_observing` (confirm 후 write, idempotency).
+- **SQL** `append_today_candidate_feedback.sql` · APPLY_ORDER §8 순서 21 · sql-readiness registry.
+- **Today Brief GET** — 피드백 SELECT·덱 반영만(read-only write 없음); `feedbackSummary` · `userFeedbackState` additive.
+- **UI** 리스크 점검 패널 피드백 버튼 3종 · confirm 문구 · 성공 시 브리핑 재조회.
+
 ### 2026-05-17 방향성 감사 · Today Candidate 액션 정책 · read-only 감사
 
 - **제품 방향(명시):** 종목을 맞히는 추천 시스템이 아니라, 후보 관찰·리스크 확인·판단 복기·반복 실수 감소를 위한 **개인 투자 운영체제**. 자동매매·자동주문·자동 리밸런싱 없음.

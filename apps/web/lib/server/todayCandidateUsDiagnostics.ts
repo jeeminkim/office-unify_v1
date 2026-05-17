@@ -27,6 +27,14 @@ function isUsDirect(c: TodayStockCandidate): boolean {
   return c.country === 'US' && c.source !== 'us_market_morning';
 }
 
+function isUsDataCheckCard(c: TodayStockCandidate): boolean {
+  return (
+    c.displayMetrics?.candidateCardKind === 'us_data_check' ||
+    c.briefDeckSlot === 'us_market_check' ||
+    c.displayMetrics?.dataStatusUi === 'us_data_missing'
+  );
+}
+
 export function buildUsCandidateDiagnostics(input: {
   usMarketSummary: UsMarketMorningSummary;
   userUsWatchlistCount: number;
@@ -43,8 +51,8 @@ export function buildUsCandidateDiagnostics(input: {
   const quoteOk = input.pool.filter((c) => c.dataQuality?.quoteReady !== false).length;
   const quoteMissing = input.pool.filter((c) => c.dataQuality?.quoteReady === false).length;
 
-  const selectedUs = input.selectedDeck.filter(isUsPoolCandidate);
-  const selectedUsDirect = input.selectedDeck.filter(isUsDirect);
+  const selectedUs = input.selectedDeck.filter((c) => isUsPoolCandidate(c) && !isUsDataCheckCard(c));
+  const selectedUsDirect = input.selectedDeck.filter((c) => isUsDirect(c) && !isUsDataCheckCard(c));
   const selectedUsKr = input.selectedDeck.filter((c) => c.source === 'us_market_morning');
 
   const suppressedUs = (input.suppressedTraces ?? []).filter(
@@ -81,7 +89,7 @@ export function buildUsCandidateDiagnostics(input: {
       '미국 관심종목이 있으나 오늘 관찰 덱에 미국 후보가 없습니다. 시세·매핑·슬롯 제한 사유를 확인하세요.';
   } else if (poolUs.length > 0 && selectedUs.length === 0) {
     actionHint =
-      '미국 후보 풀에는 종목이 있으나 최종 덱에 포함되지 않았습니다. 다양성 슬롯·점수·반복 노출 감점을 확인하세요.';
+      '미국 후보 풀에는 종목이 있으나 일반 관찰 덱에는 포함되지 않았습니다. 데이터 부족 시 미국 데이터 점검 카드로 분리됩니다.';
   } else if (quoteMissing > 0 && selectedUs.length === 0) {
     actionHint = '미국 시세가 부족한 후보가 있습니다. quote_missing·stale 여부를 점검하세요.';
   }

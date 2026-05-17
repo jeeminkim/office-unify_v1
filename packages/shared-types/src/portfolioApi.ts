@@ -139,6 +139,16 @@ export type SectorRadarAnchorAsset = {
   reason: string;
 };
 
+/** additive: quote 검증과 sector 매칭 점수 분리(quote ok만으로 sector 확정하지 않음). */
+export type WatchlistSectorMatchScores = {
+  quoteValidationScore: number;
+  nameKeywordScore: number;
+  registryAliasScore: number;
+  manualOverrideScore: number;
+  sectorRadarAnchorScore: number;
+  finalSectorMatchScore: number;
+};
+
 export type WatchlistSectorMatchResult = {
   name: string;
   rawTicker?: string;
@@ -150,6 +160,10 @@ export type WatchlistSectorMatchResult = {
   source: 'known_map' | 'keyword_rule' | 'ticker_type_rule' | 'existing' | 'none';
   needsReview: boolean;
   relatedAnchors?: SectorRadarAnchorAsset[];
+  /** additive: 점수 분해(미리보기·적용 공통). */
+  matchScores?: WatchlistSectorMatchScores;
+  /** additive: UI용 미매칭/검토 사유(한글). */
+  reviewHint?: string;
 };
 
 export type WatchlistSectorMatchApiResponse = {

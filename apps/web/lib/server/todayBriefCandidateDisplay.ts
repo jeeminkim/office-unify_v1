@@ -77,9 +77,20 @@ function cardKindFromSlot(slot: NonNullable<TodayStockCandidate['briefDeckSlot']
   return 'watchlist_observation';
 }
 
+export function cardKindForCandidate(
+  c: TodayStockCandidate,
+  slot: NonNullable<TodayStockCandidate['briefDeckSlot']>,
+): TodayCandidateCardKind {
+  if (c.displayMetrics?.candidateCardKind === 'us_data_check') return 'us_data_check';
+  return cardKindFromSlot(slot);
+}
+
 function dataStatusUiFn(c: TodayStockCandidate, us?: UsMarketMorningSummary): TodayCandidateDataStatusUi {
+  if (c.country === 'US' && c.briefDeckSlot === 'us_market_check') {
+    return 'us_data_missing';
+  }
   if (us?.available === false || us?.diagnostics?.coverageStatus === 'degraded') {
-    if (c.source === 'us_market_morning') return 'us_data_missing';
+    if (c.source === 'us_market_morning' || c.country === 'US') return 'us_data_missing';
   }
   if (c.dataQuality?.quoteReady === false) return 'quote_verify_needed';
   if (c.confidence === 'very_low' || c.dataQuality?.overall === 'very_low') return 'partial_sparse';
@@ -137,7 +148,7 @@ export function buildTodayCandidateDisplayMetrics(
     caveatOnce,
   ]).join(' ');
 
-  const cardKind = cardKindFromSlot(slot);
+  const cardKind = cardKindForCandidate(c, slot);
   const repeated = (br?.repeatExposurePenalty ?? 0) > 0;
   const mainDeductionLabels = deductionLabelsFromBreakdown(c);
 

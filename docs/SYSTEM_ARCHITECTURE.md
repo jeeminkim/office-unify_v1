@@ -75,7 +75,7 @@
 - `POST /api/portfolio/watchlist/add-candidate`는 `added|already_exists`를 반환하고, 성공 후 postprocess를 best-effort로 수행한다.
 - 운영 요약은 `GET /api/dashboard/today-candidates/ops-summary`로 조회한다(쿼리 `range=24h|7d`·`days`; **EVO-006** `us_signal_candidates_empty` 사유 히스토그램은 `qualityMeta.todayCandidates.usKrEmptyReasonHistogram` 및 기존 `usKrEmptyReasonHistogram` 배열, domain `today_candidates`/`today_brief`·**read-only SELECT**).
 - read-only 경로(`GET /api/dashboard/today-brief`)는 warning을 `qualityMeta`에 유지하고 `web_ops_events` write는 대체로 제한한다(개별 warning 억제, aggregate degraded는 일 1회/cooldown/budget). **추가 예외:** 브리핑이 후보 덱까지 성공 생성되면 **일 단위 fingerprint**로 `today_candidate_snapshot`을 최대 1회 기록해 노출 진단에 쓴다(민감 필드 없음, 요청당 budget 준수).
-- **리스크 점검 액션 계약:** `todayCandidateRiskReviewActions` + `todayCandidateActionPolicy`(`policyKind`) + `todayCandidateNavigationLinks`. UI는 렌더만; `hide_7d`/`mark_reviewed`는 `disabled_todo` until feedback API.
+- **리스크 점검·피드백:** `todayCandidateRiskReviewActions` · `POST /api/dashboard/today-candidates/feedback` · `today_candidate_feedback` 테이블(impressions·ops와 분리). Today Brief GET은 feedback SELECT·덱 반영만(write 없음).
 - **투자자 프로필(`web_investor_profiles`, SQL 선택):** 손실 감내·기간·레버리지·집중도·선호/회피 섹터를 **관찰·판단 보조** 맥락으로만 사용. `primaryCandidateDeck` 후보에 `suitabilityAssessment`(additive), `qualityMeta.todayCandidates.suitability` 요약. PB·후속 고찰 프롬프트에 짧은 맥락 주입. 자동매매·자동주문·무승인 포트 변경 없음.
 
 ## 서버 API 계층

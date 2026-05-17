@@ -71,6 +71,19 @@ describe('todayCandidateRiskReviewActions', () => {
     }
   });
 
+  it('feedback actions are api_post_confirmed when API ready (not disabled_todo by default)', () => {
+    const actions = buildRiskReviewActions(hlbCandidate());
+    const hide = actions.find((a) => a.actionKey === 'hide_for_7d');
+    const mark = actions.find((a) => a.actionKey === 'mark_risk_reviewed');
+    const keep = actions.find((a) => a.actionKey === 'keep_observing');
+    expect(hide?.policyKind).toBe('api_post_confirmed');
+    expect(mark?.policyKind).toBe('api_post_confirmed');
+    expect(keep?.policyKind).toBe('api_post_confirmed');
+    expect(hide?.deferred).not.toBe(true);
+    expect(mark?.deferred).not.toBe(true);
+    expect(hide?.payloadHint).toMatchObject({ action: 'hide_7d' });
+  });
+
   it('corporateActionRisk active: core risk review actions with policyKind', () => {
     const actions = buildRiskReviewActions(hlbCandidate(), { isWatchlist: true });
     const labels = actions.map((a) => a.label);
@@ -78,9 +91,28 @@ describe('todayCandidateRiskReviewActions', () => {
       expect(labels.some((l) => l.includes(fragment) || fragment.includes(l))).toBe(true);
     }
     expect(actions.every((a) => a.policyKind)).toBe(true);
-    expect(actions.filter((a) => a.policyKind === 'disabled_todo').length).toBeGreaterThan(0);
     expect(actions.some((a) => a.policyKind === 'api_post_confirmed')).toBe(true);
-    expect(actions.some((a) => a.href?.includes('/research-center'))).toBe(true);
+    expect(
+      actions.some(
+        (a) =>
+          a.href?.includes('/research-center') ||
+          a.actionKey === 'generate_research_report' ||
+          a.actionKey === 'view_report_history',
+      ),
+    ).toBe(true);
+  });
+
+  it('applied feedback marks actions deferred', () => {
+    const actions = buildRiskReviewActions(hlbCandidate(), {
+      userFeedback: {
+        action: 'mark_reviewed',
+        createdAt: new Date().toISOString(),
+        active: true,
+      },
+    });
+    const mark = actions.find((a) => a.actionKey === 'mark_risk_reviewed');
+    expect(mark?.deferred).toBe(true);
+    expect(mark?.policyKind).toBe('disabled_todo');
   });
 
   it('view_report_history when history exists', () => {

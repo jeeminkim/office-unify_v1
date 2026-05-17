@@ -366,9 +366,28 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
      'research_report_runs','research_report_diffs','watchlist_recommendation_candidates'
    ) order by 1;`,
   }),
-  // §9 선택
   entry({
     order: 21,
+    sqlFile: 'append_today_candidate_feedback.sql',
+    groupName: 'Today Candidates · Sector Radar · Research · 관심 등록 후보',
+    label: 'Today Candidate 사용자 피드백',
+    purpose: 'today_candidate_feedback',
+    requiredLevel: 'recommended',
+    featureArea: 'today_candidates',
+    expectedTables: ['today_candidate_feedback'],
+    expectedColumns: [
+      { table: 'today_candidate_feedback', columns: ['feedback_action', 'idempotency_key', 'effective_until'] },
+    ],
+    expectedIndexes: ['today_candidate_feedback_idempotency_uidx'],
+    expectedRoutines: [],
+    degradedSymptoms: ['hide_7d·mark_reviewed·keep_observing 저장 불가', '피드백 반영 degraded'],
+    actionHint: 'docs/sql/APPLY_ORDER.md §8의 21번 append_today_candidate_feedback.sql을 적용하세요.',
+    checkSqlPreview: `select table_name from information_schema.tables
+ where table_schema = 'public' and table_name = 'today_candidate_feedback';`,
+  }),
+  // §9 선택
+  entry({
+    order: 22,
     sqlFile: 'append_web_committee_turns.sql',
     groupName: '기타 선택 기능',
     label: '위원회 토론 턴',
@@ -383,7 +402,7 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     actionHint: '위원회 기능을 쓸 때만 적용하세요.',
   }),
   entry({
-    order: 22,
+    order: 23,
     sqlFile: 'append_web_committee_followups.sql',
     groupName: '기타 선택 기능',
     label: '위원회 follow-up',
@@ -398,7 +417,7 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     actionHint: '위원회 follow-up을 쓸 때만 적용하세요.',
   }),
   entry({
-    order: 23,
+    order: 24,
     sqlFile: 'append_web_trade_journal.sql',
     groupName: '기타 선택 기능',
     label: '매매 일지',
@@ -413,7 +432,7 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     actionHint: 'Trade Journal을 쓸 때 적용하세요.',
   }),
   entry({
-    order: 24,
+    order: 25,
     sqlFile: 'append_web_decision_journal.sql',
     groupName: '기타 선택 기능',
     label: '결정 일지',
@@ -428,7 +447,7 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     actionHint: '결정 일지 기능을 쓸 때만 적용하세요.',
   }),
   entry({
-    order: 25,
+    order: 26,
     sqlFile: 'append_web_realized_pnl_and_goals.sql',
     groupName: '기타 선택 기능',
     label: '실현손익·목표',
@@ -443,7 +462,7 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     actionHint: '목표/실현손익 기능을 쓸 때 적용하세요.',
   }),
   entry({
-    order: 26,
+    order: 27,
     sqlFile: 'append_web_llm_usage_monthly.sql',
     groupName: '기타 선택 기능',
     label: 'LLM 월별 사용량',
@@ -458,7 +477,7 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     actionHint: '사용량 집계가 필요할 때만 적용하세요.',
   }),
   entry({
-    order: 27,
+    order: 28,
     sqlFile: 'append_web_dev_support.sql',
     groupName: '기타 선택 기능',
     label: '개발 지원 피드백',
@@ -473,7 +492,7 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     actionHint: 'dev support를 쓸 때만 적용하세요.',
   }),
   entry({
-    order: 28,
+    order: 29,
     sqlFile: 'append_trend_structured_memory.sql',
     groupName: '기타 선택 기능',
     label: '트렌드 구조화 메모리',
@@ -488,7 +507,7 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     actionHint: '트렌드 구조화 메모리를 쓸 때 적용하세요.',
   }),
   entry({
-    order: 29,
+    order: 30,
     sqlFile: 'append_web_trend_memory_phase1.sql',
     groupName: '기타 선택 기능',
     label: '트렌드 메모리 phase1',

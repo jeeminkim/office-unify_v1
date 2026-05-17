@@ -14,6 +14,27 @@
 
 ---
 
+### 2026-05-17 — 미국 데이터 부족 시 US 종목은 일반 후보가 아니라 diagnostics로 분리한다
+
+- **결정:** 채택
+- **이유:** 미국 시장 데이터가 부족한데 미국 종목을 일반 관찰 후보로 노출하면 추천처럼 오해되고, `ensureUsMarketCheckInDeck`이 국내 interest 슬롯을 치환했다.
+- **대안:** US seed를 항상 1개 강제 노출.
+- **링크:** `todayCandidateUsGating.ts`, `todayBriefCandidateComposer.ts`
+
+### 2026-05-17 — Google Finance는 quote 검증에 사용하고 sector/theme는 registry와 manual review로 보강한다
+
+- **결정:** 채택
+- **이유:** GOOGLEFINANCE 함수만으로 sector/theme를 안정적으로 가져오기 어렵다. quote ok만으로 sector를 확정하지 않는다.
+- **대안:** Google Finance 웹 scraping · LLM 추정.
+- **링크:** `watchlistSectorMatcher.ts`, `POST /api/portfolio/watchlist/sector-match`
+
+### 2026-05-17 — Today Candidate feedback은 confirm 후에만 저장한다 (EVO-011)
+
+- **결정:** 채택
+- **이유:** hide_7d·mark_reviewed·keep_observing은 노출 우선순위·복기 메타만 바꾸며, 카드 열람·GET today-brief만으로는 write하지 않는다. impressions(노출)와 feedback(명시 반응)을 분리한다.
+- **대안:** localStorage · web_ops_events 혼용.
+- **링크:** `append_today_candidate_feedback.sql`, `todayCandidateFeedbackStore.ts`
+
 ### 2026-05-17 — Today Candidate 액션은 정책 모듈로 생성하고 UI는 렌더만 한다
 
 - **결정:** 채택

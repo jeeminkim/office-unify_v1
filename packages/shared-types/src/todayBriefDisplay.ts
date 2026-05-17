@@ -81,7 +81,9 @@ export type TodayCandidateCardKind =
   | 'sector_representative'
   | 'us_signal_mapped'
   | 'us_market_check'
-  | 'risk_review';
+  | 'risk_review'
+  /** 미국 데이터 부족 시 일반 후보와 분리된 점검 카드 */
+  | 'us_data_check';
 
 /** 카드 상단 데이터 상태(요약 라벨). */
 export type TodayCandidateDataStatusUi =

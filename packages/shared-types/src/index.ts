@@ -154,6 +154,7 @@ export type {
   SectorRadarAnchorAsset,
   WatchlistSectorMatchApiResponse,
   WatchlistSectorMatchResult,
+  WatchlistSectorMatchScores,
   WatchlistSectorMatchStatus,
   CreateWatchlistRequest,
   PortfolioTradeEvent,
@@ -281,6 +282,16 @@ export type {
   TodayCandidatesDecisionTraceSummary,
   TodayCandidatesJudgmentQualitySummary,
 } from './candidateDecisionTrace';
+export type {
+  TodayCandidateExposureFeedbackDiagnostics,
+  TodayCandidateFeedbackAction,
+  TodayCandidateFeedbackRequest,
+  TodayCandidateFeedbackResponse,
+  TodayCandidateFeedbackSourceRoute,
+  TodayCandidateFeedbackStatus,
+  TodayCandidateFeedbackSummary,
+  TodayCandidateUserFeedbackState,
+} from './todayCandidateFeedback';
 export type {
   RecommendationCandidatesQualityMeta,
   ResearchReportDiffPayload,

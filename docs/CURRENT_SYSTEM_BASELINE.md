@@ -25,7 +25,7 @@
 ## 현재 핵심 기능
 
 - Today Candidates
-  - **리스크 점검 액션:** `riskReviewActions` + `policyKind` — UI는 계약만 렌더; write는 사용자 확인 클릭 후만(`hide_7d`/`mark_reviewed`는 API 후속·`disabled_todo`).
+  - **리스크 점검·피드백:** `riskReviewActions` + `POST /api/dashboard/today-candidates/feedback`(`hide_7d`·`mark_reviewed`·`keep_observing`, confirm·idempotency) · `userFeedbackState` · `feedbackSummary`.
   - **네비게이션:** Research(`riskReview=1` prefill) · Trade Journal 시드 · Portfolio 노출 · 판단 복기 — `todayCandidateNavigationLinks`.
   - `today-brief` optional `candidates`(`userContext`/`usMarketKr`) + **`primaryCandidateDeck`**(관심 top2 + Sector Radar 대표 ETF 1; ETF 없으면 관심 top3 fallback); **EVO-005** `concentrationRiskAssessment`(`exposureBasis`, `themeMappingConfidence`)·`qualityMeta.todayCandidates.concentrationRiskSummary`(동일 메타·건수 집계; 금액·`userNote` 원문 없음; KR/US는 시장 노출 휴리스틱; 집중도는 점검 질문이며 자동 주문·자동 리밸런싱 아님); **EVO-007** `themeConnection`·`themeConnectionSummary`·**크기 제한된** `themeConnectionMap`·`themeConnectionSummary.truncated`·`watchlistSourceAvailable`·`usKrEmptyThemeBridgeHint`; 상세 맵 전용 **`GET /api/dashboard/theme-connections`**. 초기 registry 휴리스틱, 후보 강제 생성 아님.
   - **투자자 프로필**(선택 SQL `web_investor_profiles`): 미설정 시 기존과 동일하게 동작; 설정 시 덱 후보에 **`suitabilityAssessment`**·`qualityMeta.todayCandidates.suitability` additive. 자동 실행 없음.

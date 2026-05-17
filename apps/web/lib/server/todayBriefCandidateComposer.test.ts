@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SectorRadarSummaryResponse } from "@/lib/sectorRadarContract";
 import type { TodayStockCandidate, UsMarketMorningSummary } from "@/lib/todayCandidatesContract";
 import { composeTodayBriefCandidates, buildSectorRadarEtfCandidate } from "./todayBriefCandidateComposer";
+import type { TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import { buildTodayCandidateDisplayMetrics } from "./todayBriefCandidateDisplay";
 import { enrichPrimaryDeckWithThemeConnections } from "./themeConnectionMap";
 import { diagnoseUsKrSignalCandidates } from "./usSignalCandidateDiagnostics";
@@ -213,6 +214,80 @@ describe("composeTodayBriefCandidates", () => {
       watchlistSourceAvailable: false,
     });
     expect(themed.deck.length).toBe(out.deck.length);
+  });
+
+  it("routes TSLA to diagnostic cards when US market data is empty", () => {
+    const tsla: TodayStockCandidate = {
+      candidateId: "us-direct-watchlist-TSLA",
+      name: "테슬라",
+      market: "US",
+      country: "US",
+      symbol: "US:TSLA",
+      source: "watchlist",
+      score: 65,
+      confidence: "low",
+      riskLevel: "medium",
+      reasonSummary: "미국 관심",
+      reasonDetails: [],
+      positiveSignals: [],
+      cautionNotes: [],
+      relatedUserContext: [],
+      relatedWatchlistSymbols: ["US:TSLA"],
+      isBuyRecommendation: false,
+      alreadyInWatchlist: true,
+    };
+    const radar: SectorRadarSummaryResponse = {
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      sectors: [
+        {
+          key: "s1",
+          name: "AI/전력",
+          score: 80,
+          adjustedScore: 80,
+          zone: "greed",
+          actionHint: "hold",
+          narrativeHint: "n",
+          warnings: [],
+          anchors: [
+            {
+              symbol: "SOXX",
+              name: "SOXX ETF",
+              googleTicker: "NASDAQ:SOXX",
+              sourceLabel: "seed",
+              dataStatus: "ok",
+              etfDisplayGroup: "scored",
+              etfQuoteQualityStatus: "ok",
+              changePct: 1.2,
+            },
+          ],
+          components: {},
+        },
+      ],
+      warnings: [],
+      fearCandidatesTop3: [],
+      greedCandidatesTop3: [],
+    };
+    const out = composeTodayBriefCandidates({
+      userContextCandidates: [interest("kr1", 60), interest("kr2", 58)],
+      sectorRadarSummary: radar,
+      usMarketSummary: {
+        asOfKst: new Date().toISOString(),
+        available: false,
+        conclusion: "no_data",
+        summary: "empty",
+        signals: [],
+        warnings: [],
+        diagnostics: { anchorSymbolsRequested: 14, yahooQuoteResultCount: 0, coverageStatus: "empty" },
+      },
+      usMarketKrCandidates: [],
+      usDirectCandidates: [tsla],
+      userUsWatchlistCount: 1,
+    });
+    expect(out.deck.some((c) => c.name.includes("테슬라"))).toBe(false);
+    expect(out.deck.filter((c) => c.source === "watchlist" && c.country === "US")).toHaveLength(0);
+    expect(out.diagnosticCandidateCards.length).toBeGreaterThan(0);
+    expect(out.diagnosticCandidateCards.some((c) => c.name.includes("테슬라"))).toBe(true);
   });
 
   it("falls back to interest top3 when no ETF", () => {

@@ -139,6 +139,7 @@ export function buildExposureDiagnosticsFromRows(
   rows: Awaited<ReturnType<typeof fetchTodayCandidateExposureStats>>['rows'],
   windowDays: number,
   tableMissing: boolean,
+  feedback?: import('@office-unify/shared-types').TodayCandidateExposureFeedbackDiagnostics,
 ): TodayCandidateExposureDiagnostics {
   if (tableMissing) {
     return {
@@ -190,6 +191,9 @@ export function buildExposureDiagnosticsFromRows(
   if (usSelectedCount === 0 && selectedCount >= 3) {
     warningCodes.push('us_candidate_absent_7d');
   }
+  if (feedback && feedback.hide7dActiveCount > 0) {
+    warningCodes.push('user_hidden_7d_active');
+  }
 
   let actionHint: string | undefined;
   if (warningCodes.includes('watchlist_dominance_high')) {
@@ -208,5 +212,6 @@ export function buildExposureDiagnosticsFromRows(
     repeatedSymbols,
     warningCodes,
     actionHint,
+    ...(feedback ? { feedback } : {}),
   };
 }

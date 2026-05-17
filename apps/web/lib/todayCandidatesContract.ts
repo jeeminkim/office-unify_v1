@@ -12,6 +12,8 @@ import type {
   TodayCandidateDisplayMetrics,
   TodayCandidateRiskReviewAction,
   TodayCandidateScoreBreakdown,
+  TodayCandidateUserFeedbackState,
+  TodayCandidateFeedbackSummary,
   TodayCandidatesDecisionTraceSummary,
   TodayCandidatesJudgmentQualitySummary,
   UsKrSignalEmptyReasonCode,
@@ -154,6 +156,8 @@ export interface TodayStockCandidate {
   sectorSnapshotStale?: boolean;
   /** additive: 리스크 점검·review_required 후보의 사용자 액션 계약(자동 실행 없음) */
   riskReviewActions?: TodayCandidateRiskReviewAction[];
+  /** additive: 사용자 명시 피드백 상태(confirm 후 저장) */
+  userFeedbackState?: TodayCandidateUserFeedbackState;
 }
 
 export interface UsMarketMorningSummary {
@@ -209,6 +213,8 @@ export interface TodayBriefWithCandidatesResponse {
   };
   /** Additive: 관심사 상위 2 + Sector 대표 ETF 1 구성의 메인 덱(최대 3). */
   primaryCandidateDeck?: TodayStockCandidate[];
+  /** Additive: 미국 데이터 부족 시 일반 덱과 분리된 점검 카드(최대 3). */
+  diagnosticCandidateCards?: TodayStockCandidate[];
   /** Additive: 미국 신호 → 한국 매핑 후보가 비었을 때 사용자/운영용 진단. */
   usKrSignalDiagnostics?: {
     primaryReason: UsKrSignalEmptyReasonCode;
@@ -309,12 +315,17 @@ export interface TodayBriefWithCandidatesResponse {
       rejectedCandidates?: CandidateDecisionTrace[];
       /** additive: 미국 후보 단계별 진단 */
       usCandidateDiagnostics?: import('@office-unify/shared-types').UsCandidateDiagnostics;
+      /** additive: 미국 시장 데이터 점검 카드(일반 관찰 덱과 분리) */
+      usMarketCheckCards?: TodayStockCandidate[];
+      usMarketAnchorCoverageLabel?: string;
       /** additive: 7일 노출·관심종목 비중 진단 */
       exposureDiagnostics?: import('@office-unify/shared-types').TodayCandidateExposureDiagnostics;
       /** additive: Sector Radar DB 스냅샷 메타 */
       sectorRadarSnapshot?: import('@office-unify/shared-types').SectorRadarSnapshotMeta;
       /** additive: 관심종목 등록 후보(승인 전 자동 등록 없음) */
       recommendationCandidates?: import('@office-unify/shared-types').RecommendationCandidatesQualityMeta;
+      /** additive: 사용자 피드백 요약 */
+      feedbackSummary?: TodayCandidateFeedbackSummary;
     };
   };
 }

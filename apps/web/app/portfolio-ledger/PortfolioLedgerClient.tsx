@@ -2101,6 +2101,10 @@ export function PortfolioLedgerClient() {
               </Link>
               에서 전체 큐를 볼 수 있습니다.
             </p>
+            <p className="mt-1 text-[11px] text-slate-600">
+              Google Finance는 주로 시세·ticker 검증에 사용합니다. 섹터/테마는 Google Finance 함수만으로 안정 제공되지 않아
+              내부 registry·키워드·수동 검토를 함께 사용합니다. 미리보기는 DB write 없음 · 적용에서만 저장됩니다.
+            </p>
             <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
               <button
                 type="button"

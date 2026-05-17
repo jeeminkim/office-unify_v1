@@ -65,9 +65,19 @@ function candidateCardKindLabel(k: TodayCandidateCardKind | undefined): string {
       return "미국 신호";
     case "risk_review":
       return "리스크 점검";
+    case "us_data_check":
+      return "미국 데이터 점검";
     default:
       return "관찰";
   }
+}
+
+function isUsDataCheckCandidate(c: TodayStockCandidate): boolean {
+  return (
+    c.displayMetrics?.candidateCardKind === "us_data_check" ||
+    c.briefDeckSlot === "us_market_check" ||
+    c.displayMetrics?.dataStatusUi === "us_data_missing"
+  );
 }
 
 function candidateDataStatusLabel(s: TodayCandidateDataStatusUi | undefined): string {
@@ -1141,7 +1151,7 @@ export function DashboardClient() {
               </details>
             ) : null}
             <ul className="mt-2 grid gap-2 md:grid-cols-3">
-              {(todayBrief?.primaryCandidateDeck ?? []).map((c) => (
+              {(todayBrief?.primaryCandidateDeck ?? []).filter((c) => !isUsDataCheckCandidate(c)).map((c) => (
                 <li key={c.candidateId} className="rounded border border-violet-100 bg-white p-2">
                   <p className="text-xs font-medium text-slate-900">
                     {c.briefDeckSlot === "sector_etf" ? (
@@ -1221,6 +1231,7 @@ export function DashboardClient() {
                       onTogglePanel={() =>
                         setRiskReviewPanelId((id) => (id === c.candidateId ? null : c.candidateId))
                       }
+                      onFeedbackSaved={() => void loadOverview()}
                     />
                   ) : null}
                   {c.judgmentQuality ? (
@@ -1433,13 +1444,48 @@ export function DashboardClient() {
                 ) : null}
               </details>
             ) : null}
+            {(todayBrief?.diagnosticCandidateCards?.length ?? 0) > 0 ? (
+              <details className="mt-3 rounded border border-slate-300 bg-slate-50/90 p-2" open>
+                <summary className="cursor-pointer select-none text-xs font-semibold text-slate-900">
+                  미국 시장 데이터 점검 ({todayBrief?.diagnosticCandidateCards?.length ?? 0}건 · 일반 관찰 후보와 분리)
+                </summary>
+                <p className="mt-1 text-[10px] text-slate-700">
+                  미국 데이터가 부족해 일반 관찰 후보로 사용하지 않았습니다. 시세·시장 anchor 확인 후 다시 평가됩니다. 매수 권유 아님.
+                </p>
+                {todayBrief?.qualityMeta?.todayCandidates?.usMarketAnchorCoverageLabel ? (
+                  <p className="mt-1 text-[10px] text-slate-600">
+                    {todayBrief.qualityMeta.todayCandidates.usMarketAnchorCoverageLabel}
+                  </p>
+                ) : null}
+                <ul className="mt-2 grid gap-2 md:grid-cols-2">
+                  {(todayBrief?.diagnosticCandidateCards ?? []).map((c) => (
+                    <li key={c.candidateId} className="rounded border border-slate-200 bg-white p-2">
+                      <p className="text-xs font-medium text-slate-900">
+                        {c.name} · {c.sector ?? "미국"}
+                      </p>
+                      <p className="mt-0.5 text-[10px] font-medium text-slate-700">
+                        {candidateCardKindLabel(c.displayMetrics?.candidateCardKind)} ·{" "}
+                        {candidateDataStatusLabel(c.displayMetrics?.dataStatusUi)}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-800">{scrubTodayCandidateUiCopy(c.reasonSummary)}</p>
+                      {c.displayMetrics?.neutralObservationCopy ? (
+                        <p className="mt-0.5 text-[10px] text-slate-600">{c.displayMetrics.neutralObservationCopy}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
             {todayBrief?.qualityMeta?.todayCandidates?.usCandidateDiagnostics ? (
               <details className="mt-2 rounded border border-sky-200 bg-sky-50/80 p-2 text-[10px] text-sky-950">
                 <summary className="cursor-pointer select-none font-medium">미국 후보 진단 (데이터 상태 점검)</summary>
                 <p className="mt-1">
                   상태: {todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.status} · 미국 관심{" "}
-                  {todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.userUsWatchlistCount} · 덱 노출{" "}
+                  {todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.userUsWatchlistCount} · 일반 덱 US{" "}
                   {todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.selectedUsCandidateCount}
+                  {(todayBrief?.diagnosticCandidateCards?.length ?? 0) > 0
+                    ? ` · 점검 카드 ${todayBrief?.diagnosticCandidateCards?.length ?? 0}`
+                    : ""}
                 </p>
                 {todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.actionHint ? (
                   <p className="mt-1 text-sky-800">{todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.actionHint}</p>

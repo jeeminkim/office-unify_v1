@@ -34,6 +34,12 @@ import {
   attachRiskReviewActionsToDeck,
   buildRiskReviewContextBySymbol,
 } from '@/lib/server/todayCandidateRiskReviewActions';
+import {
+  applyTodayCandidateFeedbackToDeck,
+  buildTodayCandidateFeedbackSummary,
+  fetchActiveTodayCandidateFeedback,
+  indexActiveFeedbackByCandidateKey,
+} from '@/lib/server/todayCandidateFeedbackStore';
 import { fetchTodayCandidateRepeatStats7d } from '@/lib/server/todayCandidateRepeatExposure';
 import { recordTodayCandidateDeckSnapshotIfNeeded } from '@/lib/server/todayCandidateDeckExposureOps';
 import { isHoldingCompleteForValuation } from '@/lib/server/portfolioHoldingValuation';
@@ -46,6 +52,7 @@ import {
 import { applyRepeatExposurePenaltiesToDeck } from '@/lib/server/todayCandidateScoring';
 import { enrichDeckWithDecisionTraces } from '@/lib/server/todayCandidateDecisionTrace';
 import { buildUsCandidateDiagnostics } from '@/lib/server/todayCandidateUsDiagnostics';
+import { buildUsMarketAnchorCoverageLabel } from '@/lib/server/todayCandidateUsGating';
 import { emitUsCandidateDiagnosticsOps } from '@/lib/server/todayCandidateUsDiagnosticsOps';
 import {
   buildExposureDiagnosticsFromRows,
@@ -358,6 +365,10 @@ export async function GET() {
       repeatByCandidateId: repeatByCandidateIdPool,
     });
 
+    let diagnosticCandidateCards = composedDeck.diagnosticCandidateCards.map((c) =>
+      withTodayCandidateDisplayMetrics(c),
+    );
+
     const themeConnectionInput = await loadThemeConnectionMapInput(supabase, auth.userKey, {
       reuseTodayCandidates: todayCandidates,
       holdingRows: rows.map((r) => ({
@@ -414,6 +425,20 @@ export async function GET() {
 
     primaryCandidateDeck = applyRepeatExposurePenaltiesToDeck(primaryCandidateDeck, repeatByCandidateIdPool);
 
+    const feedbackFetch = await fetchActiveTodayCandidateFeedback({
+      supabase,
+      userKey: String(auth.userKey),
+    });
+    const feedbackByKey = indexActiveFeedbackByCandidateKey(feedbackFetch.rows);
+    const feedbackApplied = applyTodayCandidateFeedbackToDeck(primaryCandidateDeck, feedbackByKey);
+    primaryCandidateDeck = feedbackApplied.deck;
+    const feedbackSuppressedTraces = feedbackApplied.suppressedTraces;
+    const feedbackSummaryEarly = buildTodayCandidateFeedbackSummary(
+      primaryCandidateDeck,
+      feedbackSuppressedTraces.length,
+      feedbackFetch.tableMissing,
+    );
+
     const profileStatusForScoreExplanation: 'missing' | 'partial' | 'complete' =
       suitabilitySummary && 'profileStatus' in suitabilitySummary ? suitabilitySummary.profileStatus : 'missing';
 
@@ -458,6 +483,7 @@ export async function GET() {
       usKrEmpty: todayCandidates.usMarketKrCandidates.length === 0,
       usSignalCount: todayCandidates.usMarketSummary.signals.length,
     });
+    const mergedSuppressed = [...tracePack.suppressedCandidates, ...feedbackSuppressedTraces];
     primaryCandidateDeck = tracePack.deck.map((c) => ({
       ...c,
       judgmentQuality: computeCandidateJudgmentQuality(c, {
@@ -475,6 +501,17 @@ export async function GET() {
     });
     primaryCandidateDeck = attachRiskReviewActionsToDeck(primaryCandidateDeck, riskReviewCtx);
 
+    diagnosticCandidateCards = diagnosticCandidateCards.map((c) => ({
+      ...c,
+      judgmentQuality: computeCandidateJudgmentQuality(c, {
+        usCoverageStatus: usCoverageStatusEarly,
+        profileStatus: profileStatusForScoreExplanation,
+        repeatByCandidateId: repeatByCandidateIdPool,
+      }),
+    }));
+
+    const usMarketAnchorCoverageLabel = buildUsMarketAnchorCoverageLabel(todayCandidates.usMarketSummary);
+
     const usCandidateDiagnostics = buildUsCandidateDiagnostics({
       usMarketSummary: todayCandidates.usMarketSummary,
       userUsWatchlistCount: todayCandidates.userUsWatchlistCount,
@@ -487,7 +524,7 @@ export async function GET() {
       usDirectCandidates: todayCandidates.usDirectCandidates,
       usKrMappedCandidates: todayCandidates.usMarketKrCandidates,
       selectedDeck: primaryCandidateDeck,
-      suppressedTraces: tracePack.suppressedCandidates,
+      suppressedTraces: mergedSuppressed,
       rejectedTraces: tracePack.rejectedCandidates,
       seedSymbolCount: todayCandidates.usMarketSummary.diagnostics?.anchorSymbolsRequested,
     });
@@ -501,6 +538,11 @@ export async function GET() {
       exposureFetch.rows,
       7,
       exposureFetch.tableMissing,
+      {
+        hide7dActiveCount: feedbackSummaryEarly.hide7dActiveCount,
+        reviewedRecentCount: feedbackSummaryEarly.reviewedCount,
+        keepObservingCount: feedbackSummaryEarly.keepObservingCount,
+      },
     );
 
     const sectorRadarSnap = await fetchLatestSectorRadarSnapshot({
@@ -843,6 +885,7 @@ export async function GET() {
         usMarketKr: todayCandidates.usMarketKrCandidates.map(withTodayCandidateDisplayMetrics),
       },
       primaryCandidateDeck,
+      diagnosticCandidateCards: diagnosticCandidateCards.length > 0 ? diagnosticCandidateCards : undefined,
       usKrSignalDiagnostics: usKrSignalDiagnostics ?? undefined,
       usMarketSummary: todayCandidates.usMarketSummary,
       disclaimer:
@@ -882,12 +925,15 @@ export async function GET() {
           scoreBreakdownSummary,
           decisionTraceSummary: tracePack.summary,
           judgmentQualitySummary,
-          suppressedCandidates: tracePack.suppressedCandidates,
+          suppressedCandidates: mergedSuppressed,
           rejectedCandidates: tracePack.rejectedCandidates,
           usCandidateDiagnostics,
+          usMarketCheckCards: diagnosticCandidateCards.length > 0 ? diagnosticCandidateCards : undefined,
+          usMarketAnchorCoverageLabel,
           exposureDiagnostics,
           sectorRadarSnapshot,
           recommendationCandidates,
+          feedbackSummary: feedbackSummaryEarly,
         },
       },
     };

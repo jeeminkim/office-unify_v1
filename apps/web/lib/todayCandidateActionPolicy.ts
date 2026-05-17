@@ -63,7 +63,8 @@ export function expectedCorporateRiskActionLabels(): string[] {
     '관찰 메모로 남기기',
     '리서치 리포트',
     '공시·기업 이벤트 확인',
-    '관찰 유지',
+    '리스크 점검 완료',
+    '계속 관찰',
   ];
 }
 

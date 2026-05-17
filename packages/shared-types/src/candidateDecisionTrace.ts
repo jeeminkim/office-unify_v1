@@ -80,6 +80,9 @@ export type CandidateDecisionTrace = {
 
   nextChecks: string[];
   doNotDo: string[];
+
+  /** additive: 사용자 피드백(hide_7d 등)이 덱·trace에 반영됨 */
+  userFeedbackApplied?: boolean;
 };
 
 export type CandidateDecisionReasonCount = {

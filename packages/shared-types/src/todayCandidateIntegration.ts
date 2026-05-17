@@ -40,6 +40,8 @@ export type TodayCandidateExposureDiagnostics = {
   warningCodes: string[];
   actionHint?: string;
   tableMissing?: boolean;
+  /** additive: 사용자 피드백 집계(노출 이력과 분리) */
+  feedback?: import('./todayCandidateFeedback').TodayCandidateExposureFeedbackDiagnostics;
 };
 
 export type SectorRadarSnapshotMeta = {

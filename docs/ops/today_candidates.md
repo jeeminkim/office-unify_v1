@@ -29,7 +29,7 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 - **`riskReviewActions`**: `corporateActionRisk.active`·`risk_review` 슬롯 후보에만 내려오는 navigate/api_post 계약. 서버는 리포트 생성·복기 저장을 **자동 실행하지 않음**.
 - **Dashboard**: 「리스크 점검하기」패널 → 확인 체크리스트 · **리포트 확인**(Research Center query) · **복기로 남기기**(confirm 후 `POST …/from-today-candidate`) · **관찰 메모**(Trade Journal seed).
 - **Research Center**: `?symbol=&name=&market=&source=today_candidate&riskReview=1` prefill · 기존 리포트 우선·`forceRefresh`는 명시 버튼만.
-- **후속(TODO)**: `hide_7d` / `mark_reviewed` feedback API — UI에는 deferred 표시만.
+- **피드백 API (EVO-011):** `POST /api/dashboard/today-candidates/feedback` — hide_7d · mark_reviewed · keep_observing. confirm 후 write · idempotency · SQL `append_today_candidate_feedback.sql`.
 
 **연관:** 페르소나 채팅 스트림(`/api/persona-chat/message/stream`)의 최종 `done` 페이로드에도 동일 계약의 `personaStructuredOutput*`가 포함된다(중간 `delta`는 원문일 수 있으나 저장·`body.assistantMessage.content`는 sanitize 후 표시문). PB 주간 리포트는 별도 응답 가드 경로를 유지한다.
 
@@ -42,9 +42,17 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 - **additive 필드:** `scoreBreakdown` / `corporateActionRisk` / `candidateAction`; `displayMetrics`에 `candidateCardKind`, `dataStatusUi`, `mainDeductionLabels`, `neutralObservationCopy`; 후보별 **`decisionTrace`**(선정·억제·제외 감사)·**`judgmentQuality`**; `qualityMeta.todayCandidates`에 `usCoverage`, `scoreBreakdownSummary`, **`decisionTraceSummary`**, **`judgmentQualitySummary`**, **`suppressedCandidates`/`rejectedCandidates`**
 - **관찰 점수 파이프라인(요약):** 풀 후보 생성(`buildTodayStockCandidates`: 희소 base 45–55·품질·미국 부스트·`corporateActionRiskRegistry` 게이트) → 메인 덱 구성(`composeTodayBriefCandidates`: 다양성·리스크 슬롯) → 테마·적합성·집중도 → **7일 반복 감점**(`applyRepeatExposurePenaltiesToDeck`) → 표시 지표 재해석 → 점수 설명 enrich. 매수 권유·자동 주문 없음.
 
+### US 후보 gating · 데이터 점검 카드 (additive)
+
+- 미국 시장 요약·anchor 시세가 **empty/failed/unknown**이면 US 직접 후보(TSLA 등)는 **일반 관찰 덱에 넣지 않음**. `todayCandidateUsGating` → `diagnosticCandidateCards` / `qualityMeta.todayCandidates.usMarketCheckCards`.
+- **`ensureUsMarketCheckInDeck` 슬롯 치환 제거:** 이전에는 `usDirectCandidates[0]`가 국내 `interest_stock` 슬롯을 밀어냈음 — 현재는 국내 3슬롯 우선.
+- US 보유·명시 관심은 「미국 데이터 점검」카드로만 표시 가능(매수 권유 문구 없음). `usCandidateDiagnostics.selectedUsCandidateCount`는 점검 카드 제외.
+- Google Finance read-back: US market anchor·개별 quote **검증**용. sector/theme 직접 제공은 불안정 → registry·수동 검토 병행.
+
 ### 메인 3카드 덱 (additive)
 
 - **`primaryCandidateDeck`**: 관심사 후보 상위 **2** + Sector Radar에서 고른 **대표 ETF 1** (ETF 없으면 관심 후보 **top 3** fallback, `qualityMeta.todayCandidates.composition.fallbackReason`).
+- **`diagnosticCandidateCards`**: 미국 데이터 부족 시 분리(최대 3). UI 접이식 「미국 시장 데이터 점검」.
 - **판단 복기(EVO-008, 선택):** 대시보드 「판단 복기」에서 메인 덱 **첫 후보**를 `POST /api/decision-retrospectives/from-today-candidate`로 시드 저장할 수 있다(서버가 요약 시드만 저장; 수익률 평가·자동 주문 아님). 요청은 **JSON 본문 길이 상한**·**허용 필드 화이트리스트**·관찰 요인 수·요인 메시지 길이 제한을 통과해야 하며, 위반 시 **400** + `actionHint`. **`GET|POST /api/decision-retrospectives/coach`**는 PB **초안 제안**만(`autoSaved: false`); 실제 행 저장은 사용자가 **`POST /api/decision-retrospectives`**로만 한다.
 - 카드 표시는 내부 raw `score` 대신 **`displayMetrics`**(`관찰 점수 n/100`, 신뢰도·데이터 품질 등). 원본 배열 `candidates.*`는 유지.
 - 미국 신호→한국 후보가 비면 **`usKrSignalDiagnostics`**·`usMarketSummary.diagnostics`로 원인 코드를 노출; ops **`us_signal_candidates_empty`**(budget/cooldown·fingerprint).
