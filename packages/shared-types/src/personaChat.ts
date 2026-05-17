@@ -2,6 +2,7 @@
  * 웹 페르소나 채팅(일별 세션 + 장기 기억) 최소 DTO.
  */
 
+import type { CommitteeLineOutputQuality } from './committeeActionRoadmap';
 import type { PersonaStructuredOutput, PersonaStructuredOutputQualitySummary } from './personaStructuredOutput';
 
 /** URL/설정에서 쓰는 슬러그, 예: `ray-dalio` */
@@ -61,6 +62,8 @@ export type CommitteeDiscussionLineDto = {
   /** additive: 구조화 페르소나 산출물(LLM JSON 계약) */
   structuredOutput?: PersonaStructuredOutput;
   structuredParseWarnings?: string[];
+  /** additive: 발언 완성도·프롬프트 잔여물 제거 메타 */
+  outputQuality?: CommitteeLineOutputQuality;
 };
 
 /** POST /api/persona-chat/feedback — 장기 기억에 반영할 답변 평가 */

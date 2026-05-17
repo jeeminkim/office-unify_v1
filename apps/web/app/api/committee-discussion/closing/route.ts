@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import type { CommitteeDiscussionLineDto } from '@office-unify/shared-types';
+import type { CommitteeDiscussionClosingResponseBody, CommitteeDiscussionLineDto } from '@office-unify/shared-types';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import {
@@ -10,11 +10,12 @@ import {
   executeCommitteeDiscussionClosing,
   resolvePersonaChatLlmEnv,
 } from '@/lib/server/runCommitteeDiscussion';
+import { guardCommitteeDiscussionLine, guardCommitteeDiscussionLines } from '@/lib/server/committeeOutputGuard';
+import { buildCommitteeActionRoadmap } from '@/lib/server/committeeActionRoadmapBuilder';
 
 type Body = {
   topic?: string;
   transcript?: CommitteeDiscussionLineDto[];
-  /** 있으면 종료 후 해당 턴의 transcript_excerpt 갱신 */
   committeeTurnId?: string;
 };
 
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
   const committeeTurnId = typeof body.committeeTurnId === 'string' ? body.committeeTurnId.trim() : '';
 
   try {
-    const { cio, drucker } = await executeCommitteeDiscussionClosing({
+    const { cio: cioRaw, drucker: druckerRaw } = await executeCommitteeDiscussionClosing({
       supabase,
       userKey,
       geminiApiKey: llm.geminiApiKey,
@@ -64,6 +65,24 @@ export async function POST(req: Request) {
       topic,
       transcript,
     });
+
+    const cio = guardCommitteeDiscussionLine(cioRaw);
+    const drucker = guardCommitteeDiscussionLine(druckerRaw);
+    const priorGuarded = guardCommitteeDiscussionLines(transcript);
+
+    const actionRoadmap = buildCommitteeActionRoadmap({
+      topic,
+      transcript: priorGuarded,
+      closingLines: [cio, drucker],
+    });
+
+    const truncatedInputLines = [...priorGuarded, cio, drucker]
+      .filter((l) => l.outputQuality.truncated || l.outputQuality.status === 'partial')
+      .map((l) => l.slug);
+
+    const missingBuckets: string[] = [];
+    if (actionRoadmap.actionBuckets.doThisWeek.length === 0) missingBuckets.push('doThisWeek');
+    if (actionRoadmap.actionBuckets.doNotDo.length === 0) missingBuckets.push('doNotDo');
 
     if (committeeTurnId) {
       const full = [...transcript, cio, drucker];
@@ -75,7 +94,19 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ cio, drucker });
+    const response: CommitteeDiscussionClosingResponseBody = {
+      cio,
+      drucker,
+      actionRoadmap,
+      qualityMeta: {
+        actionabilityScore: actionRoadmap.qualityMeta?.actionabilityScore,
+        missingActionBuckets: missingBuckets.length > 0 ? missingBuckets : undefined,
+        truncatedInputLines: truncatedInputLines.length > 0 ? truncatedInputLines : undefined,
+        promptLeakSanitizedCount: actionRoadmap.qualityMeta?.sanitizedPromptLeaks,
+      },
+    };
+
+    return NextResponse.json(response);
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

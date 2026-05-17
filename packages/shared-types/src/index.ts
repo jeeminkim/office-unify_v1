@@ -199,6 +199,14 @@ export type {
   CommitteeFollowupSaveResponse,
   CommitteeFollowupStatus,
 } from './committeeFollowup';
+export type {
+  CommitteeActionItem,
+  CommitteeActionRoadmap,
+  CommitteeActionRoadmapStatus,
+  CommitteeDiscussionClosingResponseBody,
+  CommitteeLineOutputQuality,
+  CommitteePrimaryConcern,
+} from './committeeActionRoadmap';
 export { toPersonaWebKey } from './personaChat';
 export {
   COMMITTEE_DISCUSSION_USER_CONTENT_MAX_CHARS,

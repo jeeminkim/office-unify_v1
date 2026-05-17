@@ -1,3 +1,5 @@
+import type { CommitteeActionRoadmap } from './committeeActionRoadmap';
+
 export type CommitteeFollowupStatus =
   | 'draft'
   | 'accepted'
@@ -42,6 +44,8 @@ export type CommitteeFollowupExtractRequestBody = {
   druckerSummary?: string;
   joMarkdown?: string;
   committeeTurnId: string;
+  /** additive: 토론 액션 로드맵(후속작업 draft 품질 보강) */
+  actionRoadmap?: CommitteeActionRoadmap;
 };
 
 export type CommitteeFollowupExtractResponse = {

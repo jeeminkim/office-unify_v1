@@ -49,6 +49,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+import type { CommitteeActionRoadmap } from '@office-unify/shared-types';
+
+function parseActionRoadmap(raw: unknown): CommitteeActionRoadmap | undefined {
+  if (!isRecord(raw)) return undefined;
+  if (typeof raw.status !== 'string' || !isRecord(raw.decisionFrame) || !isRecord(raw.actionBuckets)) {
+    return undefined;
+  }
+  return raw as CommitteeActionRoadmap;
+}
+
 export function parseFollowupExtractRequest(input: unknown): {
   ok: true;
   value: {
@@ -58,6 +68,7 @@ export function parseFollowupExtractRequest(input: unknown): {
     druckerSummary?: string;
     joMarkdown?: string;
     committeeTurnId: string;
+    actionRoadmap?: CommitteeActionRoadmap;
   };
 } | {
   ok: false;
@@ -75,7 +86,8 @@ export function parseFollowupExtractRequest(input: unknown): {
   if (!transcript) errors.push('transcript_required');
   if (!committeeTurnId) errors.push('committeeTurnId_required');
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, value: { topic, transcript, closing, druckerSummary, joMarkdown, committeeTurnId } };
+  const actionRoadmap = parseActionRoadmap(input.actionRoadmap);
+  return { ok: true, value: { topic, transcript, closing, druckerSummary, joMarkdown, committeeTurnId, actionRoadmap } };
 }
 
 function normalizeDraft(item: CommitteeFollowupDraft): CommitteeFollowupDraft {

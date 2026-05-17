@@ -14,6 +14,7 @@ import {
 } from '@/lib/server/runCommitteeDiscussion';
 import { validateInvestmentAssistantOutput } from '@/lib/server/investmentAssistantOutputFormat';
 import { enrichCommitteeLinesWithStructuredOutput } from '@/lib/server/committeeStructuredOutput';
+import { guardCommitteeDiscussionLines } from '@/lib/server/committeeOutputGuard';
 
 type Body = {
   topic?: string;
@@ -91,21 +92,29 @@ export async function POST(req: Request) {
     });
 
     const enriched = enrichCommitteeLinesWithStructuredOutput(lines);
+    const guardedLines = guardCommitteeDiscussionLines(enriched.lines);
 
-    const fullTranscript = [...priorTranscript, ...enriched.lines];
+    const fullTranscript = [...priorTranscript, ...guardedLines];
     const excerpt = buildCommitteeTranscriptExcerpt(topic, fullTranscript);
     await updateWebCommitteeTurnExcerpt(supabase, userKey, committeeTurnId, excerpt);
 
-    const merged = enriched.lines.map((line) => `## ${line.displayName}\n${line.content}`).join('\n\n');
+    const merged = guardedLines.map((line) => `## ${line.displayName}\n${line.content}`).join('\n\n');
     const outputQuality = validateInvestmentAssistantOutput(merged);
+    const lineQualitySummary = {
+      partialCount: guardedLines.filter((l) => l.outputQuality.status === 'partial').length,
+      formatWarningCount: guardedLines.filter((l) => l.outputQuality.status === 'format_warning').length,
+      sanitizedPromptLeaks: guardedLines.reduce((n, l) => n + (l.outputQuality.sanitizedPromptLeaks ?? 0), 0),
+    };
     const res: CommitteeDiscussionRoundResponseBody & {
       outputQuality?: ReturnType<typeof validateInvestmentAssistantOutput>;
+      lineQualitySummary?: typeof lineQualitySummary;
       modelUsage?: { providerUsed: string; fallbackUsed: boolean };
     } = {
-      lines: enriched.lines,
+      lines: guardedLines,
       committeeTurnId,
       personaStructuredOutputSummary: enriched.personaStructuredOutputSummary,
       outputQuality,
+      lineQualitySummary,
       modelUsage: {
         providerUsed: 'gemini_openai_committee_round',
         fallbackUsed: false,

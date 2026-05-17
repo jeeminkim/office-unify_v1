@@ -75,7 +75,7 @@ function missingPersonaSections(slug: string, text: string): string[] {
   return keys.filter((k) => !hasLabeledSection(text, k));
 }
 
-/** 사용자 메모 감정 표현이 과도하게 반복되면 한 줄 메타 안내(강한 리라이트 없음) */
+/** 사용자 메모 감정 표현 반복 — 본문에 메타 문구를 붙이지 않고 태그만 남긴다 */
 function appendEchoGuardIfNeeded(slug: string, text: string): { text: string; applied: boolean } {
   if (!isCommitteePersonaSlug(slug)) return { text, applied: false };
   const patterns =
@@ -83,24 +83,16 @@ function appendEchoGuardIfNeeded(slug: string, text: string): { text: string; ap
   const matches = text.match(patterns);
   const n = matches?.length ?? 0;
   if (n < 2) return { text, applied: false };
-  return {
-    text: `${text.trim()}\n\n[작성 참고] 사용자 메모의 감정 표현이 반복됩니다. 공감은 하되, 핵심 결론은 포트 구조·비중·리스크 전이·실행 우선순위로 옮겨 주세요.`,
-    applied: true,
-  };
+  return { text, applied: true };
 }
 
-/** 티커 나열이 과다하면 버킷 표현 유도(소프트) */
 function appendListingGuardIfNeeded(slug: string, text: string): { text: string; applied: boolean } {
   if (!isCommitteePersonaSlug(slug)) return { text, applied: false };
   const tickers = text.match(/\b[A-Z]{1,5}\b/g) ?? [];
   if (tickers.length <= 8) return { text, applied: false };
-  return {
-    text: `${text.trim()}\n\n[작성 참고] 티커·종목 나열이 많습니다. 대표 2~4개만 예시로 남기고 레버리지·고변동·이벤트 민감·섹터 편중 등 버킷으로 묶어 주세요.`,
-    applied: true,
-  };
+  return { text, applied: true };
 }
 
-/** 거시·구조·실행 층이 너무 약하면 한 줄 유도 */
 function appendStructureHintIfNeeded(slug: string, text: string): { text: string; applied: boolean } {
   if (!isCommitteePersonaSlug(slug)) return { text, applied: false };
   const t = text.slice(0, 2600);
@@ -109,10 +101,7 @@ function appendStructureHintIfNeeded(slug: string, text: string): { text: string
   const hasAction = /실행|우선순위|할\s*일|보류|다음\s*점검|하지\s*말/i.test(t);
   const score = [hasStructure, hasTransmission, hasAction].filter(Boolean).length;
   if (score >= 2) return { text, applied: false };
-  return {
-    text: `${text.trim()}\n\n[작성 참고] 거시(외부 변수)·포트 구조·실행 우선순위 중 최소 2가지 층이 드러나도록 한 문장씩 보강해 주세요.`,
-    applied: true,
-  };
+  return { text, applied: true };
 }
 
 /** 가드 체인 + 메타 태그(서버 디버그용, 과다 로그 금지) */
@@ -183,21 +172,17 @@ export function remediateCommitteePersonaReply(slug: string, raw: string): Commi
   }
 
   if (COMMITTEE_SOFT_REMEDIATION_SLUGS.has(slug)) {
-    const footer = softRemediationFooter(slug);
     let out = withGuards;
-    if ((missing.length > 0 || !commonOk) && footer) {
-      out += `\n\n${footer}`;
-    }
     if (out.length > MAX_TOTAL_CHARS) {
-      out = `${withGuards.slice(0, MAX_TOTAL_CHARS - 120)}…\n[형식 안내]`;
+      out = `${withGuards.slice(0, MAX_TOTAL_CHARS - 40)}…`;
     }
     return {
       text: out.trim(),
       note:
         missing.length > 0 || !commonOk
-          ? `응답 형식 보정을 완화했습니다(위원회 필수 대괄호 생략 시).${guardNoteParts.length ? ` ${guardNoteParts.join('·')} 안내 포함.` : ''}${stripped.removed ? ' 형식 메타 문구 제거.' : ''}`
+          ? `필수 대괄호 섹션 일부 누락(사용자 화면에는 형식 안내 미노출).${guardNoteParts.length ? ` ${guardNoteParts.join('·')}.` : ''}${stripped.removed ? ' 형식 메타 문구 제거.' : ''}`
           : guardNoteParts.length > 0
-            ? `${guardNoteParts.join('·')} 안내를 추가했습니다.${stripped.removed ? ' 형식 메타 문구 제거.' : ''}`
+            ? `${guardNoteParts.join('·')}.${stripped.removed ? ' 형식 메타 문구 제거.' : ''}`
             : null,
       debugTags: [...guarded.debugTags, ...(missing.length > 0 ? ['missing-sections'] : []), ...(!commonOk ? ['weak-common-four'] : []), ...(stripped.removed ? ['meta-guidance-removed'] : [])],
     };

@@ -14,6 +14,20 @@
 
 ---
 
+### 2026-05-17 — 위원회 토론의 결과물은 액션 로드맵으로 수렴한다
+
+- **결정:** 채택
+- **이유:** 페르소나 발언만 쌓이면 사용자가 다음 행동을 알기 어렵다. Hindenburg/Jim/CIO/Drucker 역할을 action buckets로 합성해야 한다.
+- **대안:** 라운드별 발언만 표시.
+- **링크:** `committeeActionRoadmap.ts`, `committeeActionRoadmapBuilder.ts`
+
+### 2026-05-17 — 위원회 발언은 completeness guard를 통과하지 않으면 partial로 표시한다
+
+- **결정:** 채택
+- **이유:** 중간에 끊긴 Peter Drucker/CIO 발언이 정상 판단처럼 보이면 사용자가 오해한다.
+- **대안:** 모델 출력을 그대로 노출.
+- **링크:** `committeeOutputGuard.ts`
+
 ### 2026-05-17 — 미국 데이터 부족 시 US 종목은 일반 후보가 아니라 diagnostics로 분리한다
 
 - **결정:** 채택

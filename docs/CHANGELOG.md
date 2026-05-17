@@ -4,6 +4,13 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-17 Committee Action Roadmap · output completeness guard
+
+- **closing:** `actionRoadmap`·`qualityMeta` additive; `committeeOutputGuard` on round/closing lines.
+- **followups/extract:** optional `actionRoadmap` → draft merge.
+- **UI:** 「토론 후 내가 확인할 것」패널·발언 `outputQuality` 배지.
+- **프롬프트 잔여물:** `[형식 안내]`·소제목 유지 문구 사용자 화면 미노출.
+
 ### 2026-05-17 US 후보 gating · 관심종목 섹터 매핑
 
 - **US gating:** 미국 시장 데이터 부족 시 US 종목은 `primaryCandidateDeck`이 아닌 `diagnosticCandidateCards` / `usMarketCheckCards`로 분리(`todayCandidateUsGating`, `ensureUsMarketCheckInDeck` 슬롯 치환 제거). 국내 후보 슬롯 보호.

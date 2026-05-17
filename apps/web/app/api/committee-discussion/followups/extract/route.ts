@@ -11,6 +11,7 @@ import {
   parseFollowupExtractRequest,
   validateExtractedFollowups,
 } from '@/lib/server/committeeFollowupValidation';
+import { followupDraftsFromActionRoadmap } from '@/lib/server/committeeActionRoadmapFollowups';
 
 export async function POST(req: Request) {
   const auth = await requirePersonaChatAuth();
@@ -64,9 +65,19 @@ export async function POST(req: Request) {
     });
 
     const checked = validateExtractedFollowups(extracted);
+    const roadmapDrafts = followupDraftsFromActionRoadmap(parsedReq.value.actionRoadmap);
+    const mergedByTitle = new Map<string, (typeof checked.validItems)[number]>();
+    for (const d of [...roadmapDrafts, ...checked.validItems]) {
+      const k = d.title.trim().toLowerCase();
+      if (!mergedByTitle.has(k)) mergedByTitle.set(k, d);
+    }
     const result: CommitteeFollowupExtractResponse = {
-      items: checked.validItems,
-      warnings: [...checked.warnings, ...checked.blockingErrors],
+      items: [...mergedByTitle.values()],
+      warnings: [
+        ...checked.warnings,
+        ...checked.blockingErrors,
+        ...(roadmapDrafts.length > 0 ? ['action_roadmap_drafts_merged'] : []),
+      ],
     };
     return NextResponse.json(result);
   } catch (error: unknown) {

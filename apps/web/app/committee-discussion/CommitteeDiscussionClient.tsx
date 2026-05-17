@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type {
+  CommitteeActionRoadmap,
   CommitteeDiscussionLineDto,
   CommitteeFollowupDraft,
   CommitteeFollowupExtractResponse,
@@ -170,6 +171,12 @@ export function CommitteeDiscussionClient() {
     warnings: string[];
   } | null>(null);
   const [reportModelUsage, setReportModelUsage] = useState<{ providerUsed: string; fallbackUsed: boolean } | null>(null);
+  const [actionRoadmap, setActionRoadmap] = useState<CommitteeActionRoadmap | null>(null);
+  const [closingQualityMeta, setClosingQualityMeta] = useState<{
+    actionabilityScore?: number;
+    truncatedInputLines?: string[];
+    promptLeakSanitizedCount?: number;
+  } | null>(null);
 
   const loadCommitteeMemory = useCallback(async () => {
     try {
@@ -253,6 +260,12 @@ export function CommitteeDiscussionClient() {
       const data = (await res.json()) as {
         cio?: CommitteeDiscussionLineDto;
         drucker?: CommitteeDiscussionLineDto;
+        actionRoadmap?: CommitteeActionRoadmap;
+        qualityMeta?: {
+          actionabilityScore?: number;
+          truncatedInputLines?: string[];
+          promptLeakSanitizedCount?: number;
+        };
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -260,6 +273,8 @@ export function CommitteeDiscussionClient() {
         setTranscript((prev) => [...prev, data.cio!, data.drucker!]);
         setClosingSummary(`${data.cio.content}\n\n${data.drucker.content}`);
       }
+      setActionRoadmap(data.actionRoadmap ?? null);
+      setClosingQualityMeta(data.qualityMeta ?? null);
       setPhase("closed");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "정리 발언 실패");
@@ -342,6 +357,7 @@ export function CommitteeDiscussionClient() {
           druckerSummary,
           joMarkdown: reportMd ?? undefined,
           committeeTurnId,
+          ...(actionRoadmap ? { actionRoadmap } : {}),
         }),
       });
       const data = (await res.json()) as CommitteeFollowupExtractResponse & { error?: string };
@@ -510,10 +526,28 @@ export function CommitteeDiscussionClient() {
           ) : (
             transcript.map((line, i) => (
               <div key={`${line.slug}-${i}`} className="border-b border-slate-100 pb-3 last:border-0">
-                <div className="text-xs font-semibold text-slate-500">
-                  {line.displayName}{" "}
-                  <span className="font-mono text-slate-400">({line.slug})</span>
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                  <span>
+                    {line.displayName}{" "}
+                    <span className="font-mono text-slate-400">({line.slug})</span>
+                  </span>
+                  {line.outputQuality?.status === "partial" ? (
+                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-950">
+                      중간에 끊김
+                    </span>
+                  ) : line.outputQuality?.status === "format_warning" ? (
+                    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
+                      일부 누락
+                    </span>
+                  ) : line.outputQuality?.sanitizedPromptLeaks ? (
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
+                      형식 잔여물 제거됨
+                    </span>
+                  ) : null}
                 </div>
+                {line.outputQuality?.actionHint ? (
+                  <p className="mt-1 text-[10px] text-amber-900">{line.outputQuality.actionHint}</p>
+                ) : null}
                 <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{line.content}</p>
               </div>
             ))
@@ -566,6 +600,83 @@ export function CommitteeDiscussionClient() {
         {showClosed ? (
           <div className="border-t border-slate-100 pt-3">
             <p className="text-xs text-slate-600">정리 발언이 위 기록에 추가되었습니다.</p>
+          </div>
+        ) : null}
+
+        {actionRoadmap ? (
+          <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 text-sm shadow-sm">
+            <h3 className="font-semibold text-violet-950">토론 후 내가 확인할 것</h3>
+            <p className="mt-1 text-[11px] text-violet-900/90">
+              매수 추천·자동 주문이 아닙니다. 토론에서 발견한 점검·복기·리서치 항목을 작업 큐로 정리합니다.
+            </p>
+            {closingQualityMeta?.truncatedInputLines?.length ? (
+              <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-950">
+                일부 발언이 완성되지 않았습니다({closingQualityMeta.truncatedInputLines.join(", ")}). 아래 로드맵과 정리 발언을 함께 확인하세요.
+              </p>
+            ) : null}
+            <p className="mt-2 text-xs text-violet-900">
+              관점: {actionRoadmap.decisionFrame.primaryConcern} · stance {actionRoadmap.decisionFrame.stance} · 신뢰도{" "}
+              {actionRoadmap.decisionFrame.confidence}
+            </p>
+            {[
+              { title: "이번 주 할 일", items: actionRoadmap.actionBuckets.doThisWeek },
+              { title: "지금 보류할 행동", items: actionRoadmap.actionBuckets.doNotDo },
+              { title: "모니터링", items: actionRoadmap.actionBuckets.monitor },
+              { title: "복기로 남길 판단", items: actionRoadmap.actionBuckets.retrospectiveNeeded },
+              { title: "리서치 필요", items: actionRoadmap.actionBuckets.researchNeeded },
+            ].map(
+              (sec) =>
+                sec.items.length > 0 ? (
+                  <div key={sec.title} className="mt-3">
+                    <p className="text-xs font-semibold text-violet-950">{sec.title}</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-violet-900">
+                      {sec.items.map((it, idx) => (
+                        <li key={`${sec.title}-${idx}`}>{it.title}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null,
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded border border-violet-400 bg-white px-3 py-1.5 text-xs text-violet-900 disabled:opacity-50"
+                disabled={extractingFollowups || !committeeTurnId}
+                onClick={() => void extractFollowups()}
+              >
+                후속작업으로 추출
+              </button>
+              <Link
+                href={`/research-center?source=committee_discussion&riskReview=1`}
+                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800"
+              >
+                Research Center
+              </Link>
+              <Link href="/trade-journal" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800">
+                Trade Journal
+              </Link>
+              <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800">
+                포트폴리오 노출
+              </Link>
+              <button
+                type="button"
+                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800"
+                onClick={async () => {
+                  const lines = [
+                    ...actionRoadmap.actionBuckets.doThisWeek.map((x) => `[할 일] ${x.title}`),
+                    ...actionRoadmap.actionBuckets.doNotDo.map((x) => `[보류] ${x.title}`),
+                    ...actionRoadmap.actionBuckets.monitor.map((x) => `[모니터] ${x.title}`),
+                  ];
+                  try {
+                    await navigator.clipboard.writeText(lines.join("\n"));
+                  } catch {
+                    setError("체크리스트 복사에 실패했습니다.");
+                  }
+                }}
+              >
+                체크리스트 복사
+              </button>
+            </div>
           </div>
         ) : null}
 
