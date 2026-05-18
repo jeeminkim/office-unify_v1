@@ -164,6 +164,16 @@ export type WatchlistSectorMatchResult = {
   matchScores?: WatchlistSectorMatchScores;
   /** additive: UI용 미매칭/검토 사유(한글). */
   reviewHint?: string;
+  /** additive: apply 필터 버킷 */
+  applyBucket?:
+    | 'already_matched'
+    | 'manual_locked'
+    | 'needs_review'
+    | 'no_match'
+    | 'quote_missing'
+    | 'low_confidence'
+    | 'ready_to_apply';
+  bucketReason?: string;
 };
 
 export type WatchlistSectorMatchApiResponse = {

@@ -26,6 +26,7 @@ export const DECISION_RETRO_SOURCE_TYPES: readonly DecisionRetroSourceType[] = [
   'research_followup',
   'pb_weekly_review',
   'pb_message',
+  'monthly_judgment_review',
   'manual',
 ] as const;
 

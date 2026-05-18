@@ -216,6 +216,30 @@ export function TradeJournalClient() {
     }));
   }, [searchParams]);
 
+  const actionItemIdParam = searchParams.get('actionItemId') ?? '';
+  const actionItemSeedNote = searchParams.get('seedNote') ?? '';
+  const actionItemSummary = searchParams.get('summary') ?? '';
+  const retroSeed = searchParams.get('retroSeed') ?? '';
+
+  useEffect(() => {
+    if (searchParams.get('seed') !== 'action_item' && retroSeed !== 'action_item') return;
+    const sym = searchParams.get('symbol')?.trim() ?? '';
+    const market = (searchParams.get('market') ?? 'KR').toUpperCase();
+    if (sym) {
+      setDraft((d) => ({ ...d, symbol: sym, market: market === 'US' ? 'US' : 'KR' }));
+    }
+    if (actionItemSeedNote) {
+      setDraft((d) => ({ ...d, note: actionItemSeedNote.slice(0, 800) }));
+    }
+    if (retroSeed === 'action_item' && actionItemSummary) {
+      setReflection((r) => ({
+        ...r,
+        whatWentWrong: actionItemSummary.slice(0, 500),
+        nextRuleAdjustment: 'Action Item에서 넘어온 후속 규칙을 정리합니다.',
+      }));
+    }
+  }, [searchParams, actionItemSeedNote, actionItemSummary, retroSeed]);
+
   useEffect(() => {
     void (async () => {
       setLoading(true);
@@ -452,6 +476,20 @@ export function TradeJournalClient() {
         </div>
       </div>
       {message ? <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{message}</div> : null}
+      {searchParams.get('seed') === 'action_item' && actionItemIdParam ? (
+        <div className="rounded border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950">
+          <p className="font-semibold">Action Item에서 넘어왔습니다.</p>
+          <p className="mt-1">이 작업을 관찰 메모 또는 실제 매매 복기로 남길 수 있습니다. 매매·자동주문은 실행되지 않습니다.</p>
+          {actionItemSummary ? <p className="mt-1 text-violet-800">맥락: {actionItemSummary}</p> : null}
+          <p className="mt-1 text-[10px] text-violet-700">actionItemId: {actionItemIdParam}</p>
+        </div>
+      ) : null}
+      {retroSeed === 'action_item' ? (
+        <div className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-950">
+          <p className="font-semibold">이 작업을 판단 복기로 전환합니다.</p>
+          <p className="mt-1">회고 필드에 Action Item 맥락이 prefill 되었습니다.</p>
+        </div>
+      ) : null}
       {pendingSeed?.source === 'today_candidate' ? (
         <div className="rounded border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950">
           <p className="font-semibold">

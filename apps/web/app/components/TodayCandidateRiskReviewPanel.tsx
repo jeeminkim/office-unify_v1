@@ -9,6 +9,7 @@ import type {
 import type { TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import { riskReviewChecklistItems } from "@/lib/todayCandidateUiCopy";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { buildActionItemDetailFromTodayCandidate } from "@/lib/actionItemDetailBuilders";
 
 type Props = {
   candidate: TodayStockCandidate;
@@ -197,6 +198,9 @@ export function TodayCandidateRiskReviewPanel({
             sourceLabel: candidate.name ?? candidate.stockCode,
             symbol: candidate.stockCode,
             idempotencyKey: `today-candidate-risk:${candidate.candidateId}`,
+            detailJson: buildActionItemDetailFromTodayCandidate(candidate, {
+              whyCreated: "리스크 점검 패널에서 저장됨",
+            }),
           }}
         />
         {journalHref ? (

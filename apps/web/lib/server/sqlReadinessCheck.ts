@@ -44,8 +44,27 @@ function isColumnMissingError(message: string, column: string): boolean {
 
 function isRoutineMissingError(message: string): boolean {
   const m = message.toLowerCase();
-  return m.includes('could not find the function') || m.includes('function') && m.includes('does not exist');
+  return (
+    m.includes('could not find the function') ||
+    (m.includes('function') && m.includes('does not exist')) ||
+    m.includes('schema cache') && m.includes('function')
+  );
 }
+
+/** RPC 시그니처별 read-only 존재 확인용 최소 인자 */
+const ROUTINE_PROBE_ARGS: Record<string, Record<string, unknown>> = {
+  upsert_web_ops_event_by_fingerprint: {
+    p_user_key: '__sql_readiness_probe__',
+    p_domain: 'sql_readiness',
+    p_event_type: 'info',
+    p_severity: 'info',
+    p_code: 'sql_readiness_probe',
+    p_message: 'readiness probe (no side effect expected)',
+    p_detail: { probe: true },
+    p_fingerprint: '__sql_readiness_probe__',
+    p_status: 'open',
+  },
+};
 
 /** PostgREST read-only: HEAD/limit(0) SELECT only. */
 export function createSupabaseSqlReadinessProbes(supabase: SupabaseClient): SqlReadinessProbeDeps {
@@ -71,10 +90,11 @@ export function createSupabaseSqlReadinessProbes(supabase: SupabaseClient): SqlR
       return null;
     },
     async routineExists(routine) {
-      const { error } = await supabase.rpc(routine, {} as Record<string, never>);
+      const args = ROUTINE_PROBE_ARGS[routine] ?? ({} as Record<string, never>);
+      const { error } = await supabase.rpc(routine, args);
       if (!error) return true;
       if (isRoutineMissingError(error.message)) return false;
-      // Wrong arity / validation → routine is present (read-only probe, no successful write)
+      // Wrong arity / validation / RLS on probe → routine likely present
       return true;
     },
   };
@@ -242,7 +262,7 @@ export async function evaluateSqlReadinessItem(
   const checkedObjects: SqlReadinessCheckedObjects = { tables, columns, indexes, routines };
   const status = evaluateItemStatus(reg, checkedObjects, probeFailed);
 
-  return {
+  const base: SqlReadinessItem = {
     order: reg.order,
     sqlFile: reg.sqlFile,
     label: reg.label,
@@ -257,6 +277,74 @@ export async function evaluateSqlReadinessItem(
     checkSqlPreview: reg.checkSqlPreview,
     checkDescription: reg.checkDescription,
     sqlFileOnDisk: sqlFileOnDiskBestEffort(reg.sqlFile),
+  };
+  return enrichSqlReadinessItem(base, reg);
+}
+
+function listDetected(objects: SqlReadinessCheckedObjects): string[] {
+  return [
+    ...objects.tables.filter((t) => t.exists === true).map((t) => t.name),
+    ...objects.columns.filter((c) => c.exists === true).map((c) => c.name),
+    ...objects.routines.filter((r) => r.exists === true).map((r) => r.name),
+  ];
+}
+
+function listMissing(objects: SqlReadinessCheckedObjects): string[] {
+  return [
+    ...objects.tables.filter((t) => t.exists === false).map((t) => t.name),
+    ...objects.columns.filter((c) => c.exists === false).map((c) => c.name),
+    ...objects.routines.filter((r) => r.exists === false).map((r) => r.name),
+  ];
+}
+
+export function enrichSqlReadinessItem(
+  item: SqlReadinessItem,
+  reg: SqlReadinessRegistryEntry,
+): SqlReadinessItem {
+  const detectedObjects = listDetected(item.checkedObjects);
+  const missingObjects = listMissing(item.checkedObjects);
+  const lastCheckedAt = new Date().toISOString();
+  const tablesOk = reg.expectedTables.every((t) => item.checkedObjects.tables.find((x) => x.name === t)?.exists === true);
+  const routinesMissing = missingObjects.filter((n) => reg.expectedRoutines.includes(n));
+
+  const likelyCauses: string[] = [];
+  let partialExplanation: string | undefined;
+  let canAppWorkWithoutThis = reg.requiredLevel === 'optional';
+  let degradedButUsable = false;
+
+  if (item.status === 'partial' && tablesOk && routinesMissing.length > 0) {
+    likelyCauses.push('테이블은 PostgREST에서 확인됐지만 RPC/함수가 감지되지 않았습니다.');
+    likelyCauses.push('다른 Supabase 프로젝트에 SQL을 적용했거나 public 스키마가 아닐 수 있습니다.');
+    likelyCauses.push('함수명 대소문자·인자 시그니처가 다르면 앱 probe가 실패할 수 있습니다 — 아래 확인 쿼리로 직접 검증하세요.');
+    likelyCauses.push('서비스 role 권한으로 information_schema/routine을 앱이 읽지 못하는 경우 수동 확인이 필요합니다.');
+    partialExplanation =
+      '테이블은 확인됐지만 RPC가 감지되지 않았습니다. 앱은 기본 동작 가능하지만, 동일 fingerprint ops upsert가 fallback으로 동작할 수 있습니다.';
+    degradedButUsable = true;
+    canAppWorkWithoutThis = true;
+  }
+  if (item.status === 'partial' && missingObjects.some((m) => m.includes('.'))) {
+    likelyCauses.push('일부 컬럼이 누락되었습니다. 해당 append SQL을 다시 적용하세요.');
+  }
+  if (item.status === 'missing') {
+    likelyCauses.push('필수 테이블이 없습니다. applySqlFile을 Supabase SQL Editor에서 실행하세요.');
+  }
+  if (reg.featureArea === 'ops' && reg.order === 16) {
+    canAppWorkWithoutThis = true;
+    degradedButUsable = item.status === 'partial';
+  }
+
+  return {
+    ...item,
+    detectedObjects,
+    missingObjects,
+    likelyCauses: likelyCauses.length ? likelyCauses : undefined,
+    verifySql: item.checkSqlPreview,
+    applySqlFile: reg.sqlFile,
+    canAppWorkWithoutThis,
+    degradedButUsable,
+    lastCheckedAt,
+    checkSource: 'postgrest_read_probe',
+    partialExplanation,
   };
 }
 

@@ -40,6 +40,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
       if (body.status === 'done') patch.completed_at = new Date().toISOString();
       if (body.status === 'open' || body.status === 'in_progress') patch.completed_at = null;
     }
+    if (body.dismissReason) {
+      const prev = (existing.detail_json ?? {}) as Record<string, unknown>;
+      patch.detail_json = { ...prev, dismissReason: body.dismissReason };
+    }
 
     const row = await patchActionItemForUser(supabase, auth.userKey as string, id, patch);
     return NextResponse.json({ ok: true, item: row });

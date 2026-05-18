@@ -41,6 +41,7 @@ npm run pre-live-smoke --workspace=apps/web
 - [ ] Sector Radar 「최근 스냅샷」read-only 조회(run/items).
 - [ ] Research Center: 기존 리포트 재사용·forceRefresh·7일+ diff 표시.
 - [ ] `npm run build --workspace=apps/web` · `npm run pre-live-smoke --workspace=apps/web` (dry-run 최소) 통과.
+- [ ] **EVO-012** `/judgment-review` · `GET /api/judgment-review/monthly` read-only(저장 0) · 명시 POST save/action-items · Dashboard 30일 카드 · 매수/자동주문 문구 없음 (`docs/ops/judgment_review.md`).
 - [ ] 후보 점수가 “항상 60”처럼 보이지 않는지(희소 데이터는 45–55대 등 분산).
 - [ ] 응답에 `scoreBreakdown`(additive)이 있는지, 기존 `score` 필드가 유지되는지.
 - [ ] `028300`(HLB 예시) 등 **기업 이벤트 리스크** 레지스트리가 켜진 종목은 **50점 이하·리스크 점검 톤**으로 보이는지.

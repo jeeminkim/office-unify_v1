@@ -56,6 +56,17 @@ export type SqlReadinessItem = {
   checkSqlPreview?: string;
   checkDescription?: string;
   sqlFileOnDisk?: boolean | null;
+  /** additive: 점검 결과 요약 */
+  detectedObjects?: string[];
+  missingObjects?: string[];
+  likelyCauses?: string[];
+  verifySql?: string;
+  applySqlFile?: string;
+  canAppWorkWithoutThis?: boolean;
+  degradedButUsable?: boolean;
+  lastCheckedAt?: string;
+  checkSource?: 'postgrest_read_probe' | 'postgrest_rpc_probe';
+  partialExplanation?: string;
 };
 
 export type SqlReadinessGroup = {

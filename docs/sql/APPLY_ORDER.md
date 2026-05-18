@@ -113,6 +113,7 @@ select count(*) from information_schema.tables
 | 20 | `append_watchlist_recommendation_candidates.sql` | 관심 등록 후보(pending) | 승인형 관찰 후보 저장 불가 |
 | 21 | `append_today_candidate_feedback.sql` | 사용자 피드백(hide_7d·mark_reviewed·keep_observing) | 피드백 저장 불가 · 리스크 점검 후보 사용자 제어 degraded |
 | 22 | `append_web_action_items.sql` | 통합 Action Item 인박스 | **`GET/POST /api/action-items` → `action_item_table_missing`** · 7개 출처에서 「액션 인박스에 저장」 불가 |
+| 23 | `append_daily_review_notes.sql` | Daily Review 일일 점검 메모 | **`POST /api/daily-review/notes` → table_missing** · 30일 복기 dailyReviewNotes partial · `/daily-review` 메모 저장 불가 |
 
 > `append_web_portfolio_ledger.sql`(관심·보유) 이후 적용 권장. Research follow-up(§3)과 병행 가능.
 > 피드백은 **confirm 후 POST**만 저장하며, impressions(노출 이력)와 분리합니다.
@@ -130,9 +131,17 @@ select table_name from information_schema.tables
      'research_report_diffs',
      'watchlist_recommendation_candidates',
      'today_candidate_feedback',
-     'web_action_items'
+     'web_action_items',
+     'web_daily_review_notes'
    )
  order by 1;
+```
+
+```sql
+-- daily review notes idempotency · saved subject unique
+select indexname from pg_indexes
+ where tablename = 'web_daily_review_notes'
+   and indexname in ('web_daily_review_notes_idempotency_uidx', 'web_daily_review_notes_saved_subject_uidx');
 ```
 
 ```sql

@@ -27,6 +27,14 @@ export type UsCandidateDiagnostics = {
     maxUsCandidateTarget: number;
   };
   actionHint?: string;
+  /** additive: 사용자가 수행할 수 있는 점검 단계 */
+  remediationSteps?: Array<{
+    key: string;
+    label: string;
+    description: string;
+    href?: string;
+    actionType?: 'navigate' | 'refresh_quotes' | 'save_action_item' | 'disabled_todo';
+  }>;
 };
 
 export type TodayCandidateExposureDiagnostics = {

@@ -404,9 +404,32 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     checkSqlPreview: `select table_name from information_schema.tables
  where table_schema = 'public' and table_name = 'web_action_items';`,
   }),
-  // §9 선택
   entry({
     order: 23,
+    sqlFile: 'append_daily_review_notes.sql',
+    groupName: 'Today Candidates · Sector Radar · Research · 관심 등록 후보',
+    label: 'Daily Review 일일 점검 메모',
+    purpose: 'web_daily_review_notes — 명시 저장만',
+    requiredLevel: 'recommended',
+    featureArea: 'daily_review',
+    expectedTables: ['web_daily_review_notes'],
+    expectedColumns: [
+      { table: 'web_daily_review_notes', columns: ['note_summary', 'subject_type', 'idempotency_key', 'status'] },
+    ],
+    expectedIndexes: ['web_daily_review_notes_idempotency_uidx', 'web_daily_review_notes_saved_subject_uidx'],
+    expectedRoutines: [],
+    degradedSymptoms: [
+      'Daily Review 메모 저장 불가',
+      '30일 복기 dailyReviewNotes missing',
+      'preview는 동작·저장만 degraded',
+    ],
+    actionHint: 'docs/sql/APPLY_ORDER.md §8 #23 append_daily_review_notes.sql을 적용하세요.',
+    checkSqlPreview: `select table_name from information_schema.tables
+ where table_schema = 'public' and table_name = 'web_daily_review_notes';`,
+  }),
+  // §9 선택
+  entry({
+    order: 24,
     sqlFile: 'append_web_committee_turns.sql',
     groupName: '기타 선택 기능',
     label: '위원회 토론 턴',
@@ -527,6 +550,38 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
   }),
   entry({
     order: 31,
+    sqlFile: 'judgment_review_prerequisites.sql',
+    groupName: 'Today Candidates · Sector Radar · Research · 관심 등록 후보',
+    label: '30일 판단 품질 복기 prerequisites',
+    purpose: 'EVO-012 monthly judgment review — 기존 테이블 조합(신규 SQL 없음)',
+    requiredLevel: 'recommended',
+    featureArea: 'judgment_review',
+    expectedTables: [
+      'today_candidate_impressions',
+      'today_candidate_feedback',
+      'web_action_items',
+      'web_decision_retrospectives',
+      'research_report_runs',
+      'research_report_diffs',
+    ],
+    expectedColumns: [],
+    expectedIndexes: [],
+    expectedRoutines: [],
+    degradedSymptoms: [
+      '30일 복기 리포트 status partial/insufficient_data',
+      '패턴·지표 일부 누락',
+    ],
+    actionHint:
+      'docs/sql/APPLY_ORDER.md §8의 impressions(17), feedback(21), action_items(22), decision_retrospectives(12), research history(19)를 적용하세요. 신규 SQL 파일은 없습니다.',
+    checkDescription: '복합 점검 — 위 테이블이 각각 registry 항목으로도 등록되어 있습니다.',
+    checkSqlPreview: `select table_name from information_schema.tables
+ where table_schema = 'public' and table_name in (
+   'today_candidate_impressions','today_candidate_feedback','web_action_items',
+   'web_decision_retrospectives','research_report_runs','research_report_diffs'
+ );`,
+  }),
+  entry({
+    order: 32,
     sqlFile: 'append_web_trend_memory_phase1.sql',
     groupName: '기타 선택 기능',
     label: '트렌드 메모리 phase1',

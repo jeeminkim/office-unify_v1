@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { buildGenericActionItemDetail } from "@/lib/actionItemDetailBuilders";
 import { useSearchParams } from "next/navigation";
 import {
   parseResearchCenterTotalTimeoutMs,
@@ -55,6 +56,11 @@ export function ResearchCenterClient() {
   const searchParams = useSearchParams();
   const riskReviewEntry = searchParams.get("riskReview") === "1";
   const entrySource = searchParams.get("source") ?? "";
+  const actionItemIdParam = searchParams.get("actionItemId") ?? "";
+  const actionItemQuestion = searchParams.get("question") ?? "";
+  const actionItemChecklist = searchParams.get("checklist") ?? "";
+  const actionItemSeedNote = searchParams.get("seedNote") ?? "";
+  const actionItemEvidence = searchParams.get("evidence") ?? "";
 
   const [market, setMarket] = useState<"KR" | "US">("KR");
   const [symbol, setSymbol] = useState("");
@@ -117,7 +123,14 @@ export function ResearchCenterClient() {
     else if (searchParams.get("riskType") === "rights_offering") {
       setKnownRisk("유상증자·주주배정 등 기업 이벤트 — Today Candidate 리스크 점검에서 넘어옴");
     }
-  }, [searchParams]);
+    if (entrySource === "action_item") {
+      if (actionItemQuestion) setKeyQuestion(actionItemQuestion);
+      if (actionItemSeedNote) setUserHypothesis(actionItemSeedNote.slice(0, 500));
+      if (actionItemEvidence) setKnownRisk(actionItemEvidence.slice(0, 500));
+    }
+    const rf = searchParams.get("riskFlags")?.trim();
+    if (rf) setKnownRisk((prev) => (prev ? `${prev}; ${rf}` : rf));
+  }, [searchParams, entrySource, actionItemQuestion, actionItemSeedNote, actionItemEvidence]);
 
   const fetchOpsTrace = useCallback(async (rid: string) => {
     const trimmed = rid.trim();
@@ -591,6 +604,15 @@ export function ResearchCenterClient() {
             </p>
           </div>
         ) : null}
+        {entrySource === "action_item" && actionItemIdParam ? (
+          <div className="mt-3 rounded border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950">
+            <p className="font-semibold">Action Item에서 넘어왔습니다.</p>
+            {actionItemQuestion ? <p className="mt-1">확인할 질문: {actionItemQuestion}</p> : null}
+            {actionItemChecklist ? <p className="mt-1">체크리스트: {actionItemChecklist}</p> : null}
+            {actionItemEvidence ? <p className="mt-1">필요한 증거: {actionItemEvidence}</p> : null}
+            <p className="mt-1 text-violet-800">매수·자동주문 지시가 아닌 리서치 확인용입니다.</p>
+          </div>
+        ) : null}
         <p className="mt-2 text-sm text-slate-600">
           단일 종목 심층 분석 전용입니다. 포트폴리오 전체 판단은{" "}
           <Link href="/committee-discussion" className="text-slate-800 underline underline-offset-2">
@@ -877,6 +899,19 @@ export function ResearchCenterClient() {
                   symbol: symbol.trim(),
                   links: { researchReportId: result.requestId },
                   idempotencyKey: `research-report:${result.requestId}`,
+                  detailJson: buildGenericActionItemDetail({
+                    sourceType: "research_report",
+                    title: name.trim(),
+                    symbol: symbol.trim(),
+                    market,
+                    description: result.reportDiff?.diffSummary ?? result.contextNote,
+                    whyCreated: "Research Report 생성 후 후속 점검",
+                    checklist: [
+                      "새 리스크 확인",
+                      "데이터 품질 변화 확인",
+                      "후속 리포트 필요 여부 판단",
+                    ],
+                  }),
                 }}
               />
             ) : null}

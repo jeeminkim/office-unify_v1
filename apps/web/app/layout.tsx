@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthToolbar } from "@/components/AuthToolbar";
+import { AppNav } from "@/components/AppNav";
 import { getOfficeUnifyWorkspaceSmoke } from "@/lib/office-unify-packages";
 import "./globals.css";
 
@@ -29,7 +30,8 @@ export default function RootLayout({
           data-office-unify-version={pkgSmoke.decisionEngineVersion}
         />
         <AuthToolbar />
-        {children}
+        <AppNav />
+        <main className="pb-16 md:pb-0">{children}</main>
       </body>
     </html>
   );

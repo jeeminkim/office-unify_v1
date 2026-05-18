@@ -7,6 +7,7 @@ export type DecisionRetroSourceType =
   | 'research_followup'
   | 'pb_weekly_review'
   | 'pb_message'
+  | 'monthly_judgment_review'
   | 'manual';
 
 export type DecisionRetroStatus = 'draft' | 'reviewed' | 'learned' | 'archived';

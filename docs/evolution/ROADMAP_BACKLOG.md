@@ -11,6 +11,7 @@
 | EVO-003 | Research Center follow-up 추적함 | `#research-center` `#pb` | discussing · 1차 shipped | PATCH·GET summary·정규화 dedupe·선택 DB unique index·archived/메모 UI·GET read-only 테스트·ops에 note 원문 미저장. 자동매매 없음. |
 | EVO-004 | PB 주간 점검 리포트 | `#pb` `#dashboard` | discussing · 1차 shipped + 안정화 | GET 미리보기+`recommendedIdempotencyKey`, POST 멱등. **`sqlReadiness`(테이블 미적용 actionHints)**. responseGuard는 지시형·위험 문맥만. 자동 주문·리밸런싱 없음. |
 | EVO-010 | 실사용 전 SQL 순서·스모크 | `#ops` `#dashboard` | shipped | `docs/sql/APPLY_ORDER.md`(append 순서·중복 인덱스 사전 점검). `npm run pre-live-smoke`(dry-run 기본). 홈 **실사용 점검** 패널. 자동매매 없음. |
+| EVO-012 | 30일 판단 품질 복기 리포트 | `#dashboard` `#ops` | **1차 shipped** | GET read-only preview · POST save/action-items · `/judgment-review` · Dashboard 카드. `monthly_judgment_review` 복기 저장. 신규 SQL 없음. 수익률·자동주문 아님. |
 
 ## 아이디어 풀 (미정)
 
@@ -26,7 +27,7 @@
 | ID | 요약 | 사유 |
 |----|------|------|
 | EVO-011 | Today Candidate feedback API | **1차 shipped** — `POST …/today-candidates/feedback`, `today_candidate_feedback` SQL, 덱·exposureDiagnostics 반영, 리스크 패널 UI. confirm 후 write · idempotency · GET read-only. |
-| EVO-012 | 30일 판단 품질 복기 리포트 | 반복 실수 감소 지표; 수익률 자랑·자동 실행 아님. |
+| EVO-012 | (진행 중 표로 이동) | — | — | — |
 | EVO-013 | Dashboard CandidateCard / RiskReviewPanel 추가 분리 | `DashboardClient` 책임 과다 완화. |
 | EVO-014 | SQL readiness Dashboard 요약 고도화 | `/ops/sql-readiness` 링크 1차 반영; registry 전체 요약은 후속. |
 | EVO-009 | 자동 주문 또는 자동 포트폴리오 변경 | 제품 원칙상 비범위. 사용자의 명시 승인 없는 자동 실행 금지. |

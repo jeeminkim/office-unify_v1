@@ -202,6 +202,7 @@ export type {
 export type {
   ActionItemCreateRequest,
   ActionItemCreateResponse,
+  ActionItemDismissReason,
   ActionItemLinks,
   ActionItemListResponse,
   ActionItemPatchRequest,
@@ -216,6 +217,13 @@ export {
   ACTION_ITEM_SOURCE_LABELS,
   normalizeActionItemDedupeTitle,
 } from './actionItems';
+export type {
+  ActionItemChecklistEntry,
+  ActionItemDecisionContext,
+  ActionItemDetailJson,
+  ActionItemRecommendedLink,
+} from './actionItemDetail';
+export { parseActionItemDetailJson } from './actionItemDetail';
 export type {
   CommitteeActionItem,
   CommitteeActionRoadmap,
@@ -400,6 +408,30 @@ export type {
   DecisionRetroSourceType,
   DecisionRetroStatus,
 } from './decisionRetrospective';
+export type { DailyReviewResponse } from './dailyReview';
+export type {
+  DailyReviewNote,
+  DailyReviewNoteGeneratedBy,
+  DailyReviewNotePatchRequest,
+  DailyReviewNotePreview,
+  DailyReviewNoteSaveRequest,
+  DailyReviewNoteSaveResponse,
+  DailyReviewNotesListResponse,
+  DailyReviewNoteSourceRef,
+  DailyReviewNoteStatus,
+  DailyReviewNoteSubjectType,
+} from './dailyReviewNotes';
+export { DAILY_REVIEW_NOTE_SUBJECT_LABELS } from './dailyReviewNotes';
+export type {
+  JudgmentReviewDataCoverage,
+  JudgmentReviewWindow,
+  MonthlyJudgmentReview,
+  MonthlyJudgmentReviewActionItemsResponse,
+  MonthlyJudgmentReviewPreviewResponse,
+  MonthlyJudgmentReviewPrimaryPattern,
+  MonthlyJudgmentReviewSaveResponse,
+  MonthlyJudgmentReviewStatus,
+} from './monthlyJudgmentReview';
 export type {
   TrendAnalysisGenerateRequestBody,
   TrendAnalysisGenerateResponseBody,

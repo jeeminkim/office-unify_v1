@@ -103,6 +103,14 @@ function ItemCard({ item }: { item: SqlReadinessItem }) {
         </div>
       </div>
       <p className="mt-2 text-[11px] leading-snug">{item.purpose}</p>
+      {item.partialExplanation ? (
+        <p className="mt-2 rounded border border-amber-200 bg-amber-50/80 p-2 text-[11px] text-amber-950">
+          {item.partialExplanation}
+        </p>
+      ) : null}
+      {item.degradedButUsable ? (
+        <p className="mt-1 text-[10px] text-emerald-800">앱은 degraded 상태로 사용 가능합니다.</p>
+      ) : null}
       {item.status !== "ready" ? (
         <p className="mt-1 text-[11px] font-medium">다음 행동: {item.actionHint}</p>
       ) : null}
@@ -112,6 +120,7 @@ function ItemCard({ item }: { item: SqlReadinessItem }) {
           <CopyButton label="확인 쿼리" text={item.checkSqlPreview} />
         ) : null}
         <CopyButton label="문서 경로" text={item.docsPath} />
+        <CopyButton label="APPLY_ORDER" text={`${item.docsPath} — ${item.applySqlFile ?? item.sqlFile}`} />
       </div>
       <button
         type="button"
@@ -128,6 +137,16 @@ function ItemCard({ item }: { item: SqlReadinessItem }) {
               <ul className="mt-0.5 list-disc pl-4">
                 {item.degradedSymptoms.map((s) => (
                   <li key={s}>{s}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {item.likelyCauses?.length ? (
+            <div>
+              <p className="font-semibold">이미 적용했는데 partial일 때</p>
+              <ul className="mt-0.5 list-disc pl-4">
+                {item.likelyCauses.map((c) => (
+                  <li key={c}>{c}</li>
                 ))}
               </ul>
             </div>

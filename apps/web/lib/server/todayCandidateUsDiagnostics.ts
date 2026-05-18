@@ -94,8 +94,47 @@ export function buildUsCandidateDiagnostics(input: {
     actionHint = '미국 시세가 부족한 후보가 있습니다. quote_missing·stale 여부를 점검하세요.';
   }
 
+  const anchorRequested = diag?.anchorSymbolsRequested ?? input.seedSymbolCount ?? 0;
+  const anchorOk = diag?.yahooQuoteResultCount ?? input.usMarketSummary.signals?.length ?? 0;
+  const remediationSteps: UsCandidateDiagnostics['remediationSteps'] = [
+    {
+      key: 'check_anchor',
+      label: '미국 anchor 시세 상태 확인',
+      description: `요청 anchor ${anchorRequested}건 · 수신 ${anchorOk}건. SPY/QQQ/SMH 등 시트·시세 탭을 확인하세요.`,
+      href: '/system-status',
+      actionType: 'navigate',
+    },
+    {
+      key: 'refresh_quotes',
+      label: '시세 새로고침',
+      description: 'Portfolio 시세 refresh 후 Today Brief를 다시 불러옵니다.',
+      href: '/portfolio',
+      actionType: 'refresh_quotes',
+    },
+    {
+      key: 'ticker_resolver',
+      label: 'ticker 매핑 확인',
+      description: '미국 관심종목의 google_ticker·quote_symbol 형식을 확인합니다.',
+      href: '/portfolio-ledger',
+      actionType: 'navigate',
+    },
+    {
+      key: 'us_data_check_cards',
+      label: '미국 데이터 점검 카드 보기',
+      description: '일반 관찰 후보가 아닌 점검 카드로 분리된 종목을 확인합니다.',
+      actionType: 'navigate',
+    },
+    {
+      key: 'focus_kr_sector',
+      label: '오늘은 국내·섹터 후보 중심',
+      description: '미국 데이터가 부족할 때는 국내·섹터 관찰 후보를 우선 점검합니다.',
+      actionType: 'navigate',
+    },
+  ];
+
   return {
     status,
+    remediationSteps,
     userUsWatchlistCount: input.userUsWatchlistCount,
     userUsHoldingCount: input.userUsHoldingCount,
     seedSymbolCount: input.seedSymbolCount ?? diag?.anchorSymbolsRequested ?? 0,

@@ -88,7 +88,13 @@ export async function POST(req: Request) {
       results.push(r);
     }
     if (batch.length === 1) {
-      return NextResponse.json({ ok: true, item: results[0]!.item, deduped: results[0]!.deduped });
+      const r0 = results[0]!;
+      return NextResponse.json({
+        ok: true,
+        item: r0.item,
+        deduped: r0.deduped,
+        qualityMeta: { detailCompleteness: r0.detailCompleteness },
+      });
     }
     return NextResponse.json({ ok: true, items: results, created: results.filter((x) => !x.deduped).length });
   } catch (e: unknown) {

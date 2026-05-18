@@ -10,6 +10,16 @@ export type WatchlistSectorMatchStatus =
   | 'needs_review'
   | 'no_match';
 
+/** UI·apply 필터용 버킷 (additive) */
+export type WatchlistSectorApplyBucket =
+  | 'already_matched'
+  | 'manual_locked'
+  | 'needs_review'
+  | 'no_match'
+  | 'quote_missing'
+  | 'low_confidence'
+  | 'ready_to_apply';
+
 export interface WatchlistSectorMatchInput {
   id?: string;
   symbol?: string;
@@ -34,6 +44,55 @@ export interface WatchlistSectorMatchResult {
   relatedAnchors?: SectorRadarAnchorAsset[];
   matchScores?: WatchlistSectorMatchScores;
   reviewHint?: string;
+  applyBucket?: WatchlistSectorApplyBucket;
+  bucketReason?: string;
+}
+
+export function classifyWatchlistSectorApplyBucket(
+  res: WatchlistSectorMatchResult,
+  row?: { sector_is_manual?: boolean | null; google_ticker?: string | null; quote_symbol?: string | null },
+): WatchlistSectorApplyBucket {
+  if (row?.sector_is_manual) {
+    return 'manual_locked';
+  }
+  if (res.status === 'matched_existing_sector') {
+    return 'already_matched';
+  }
+  const quoteScore = res.matchScores?.quoteValidationScore ?? 0;
+  if (!row?.google_ticker?.trim() && !row?.quote_symbol?.trim() && quoteScore < 50) {
+    return 'quote_missing';
+  }
+  if (res.status === 'no_match' || !res.matchedSector) {
+    return 'no_match';
+  }
+  if (res.needsReview && res.matchedSector) {
+    return 'needs_review';
+  }
+  if (res.confidence < 75) {
+    return 'low_confidence';
+  }
+  return 'ready_to_apply';
+}
+
+export function bucketReasonLabel(bucket: WatchlistSectorApplyBucket): string {
+  switch (bucket) {
+    case 'already_matched':
+      return '현재 섹터가 있어 자동 매칭 대상에서 제외';
+    case 'manual_locked':
+      return '수동 지정 보호';
+    case 'needs_review':
+      return '검토 후 적용';
+    case 'quote_missing':
+      return '시세/ticker 확인 필요';
+    case 'low_confidence':
+      return '키워드만 일치해 검토 필요';
+    case 'no_match':
+      return 'registry 없음';
+    case 'ready_to_apply':
+      return '자동 적용 가능';
+    default:
+      return '';
+  }
 }
 
 type KnownEntry = { sector: string; keywords: string[]; confidence: number; reason: string };

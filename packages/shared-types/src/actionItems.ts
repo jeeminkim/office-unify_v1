@@ -69,6 +69,7 @@ export type ActionItemCreateResponse = {
   ok: true;
   item: ActionItemRowDto;
   deduped: boolean;
+  qualityMeta?: { detailCompleteness?: 'full' | 'partial' | 'minimal' };
 };
 
 export type ActionItemListResponse = {
@@ -78,12 +79,19 @@ export type ActionItemListResponse = {
   qualityMeta?: { summary?: ActionItemSummary };
 };
 
+export type ActionItemDismissReason =
+  | 'already_confirmed'
+  | 'no_longer_relevant'
+  | 'duplicate'
+  | 'insufficient_data';
+
 export type ActionItemPatchRequest = {
   status?: ActionItemStatus;
   title?: string;
   description?: string;
   priority?: ActionItemPriority;
   links?: ActionItemLinks;
+  dismissReason?: ActionItemDismissReason;
 };
 
 export const ACTION_ITEM_DEDUPE_POLICY_SUMMARY =

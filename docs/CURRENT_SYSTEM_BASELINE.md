@@ -20,6 +20,8 @@
 - `/research-center`
 - `/committee-discussion`
 - `/trade-journal`
+- `/judgment-review` (EVO-012 30일 판단 품질 복기)
+- `/action-items`
 - `/ops-events`
 
 ## 현재 핵심 기능

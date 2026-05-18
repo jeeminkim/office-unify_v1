@@ -12,6 +12,14 @@ import type {
 import type { SectorWatchlistCandidateItem } from "@/lib/sectorRadarContract";
 import { LAST_TICKER_RESOLVER_REQUEST_ID_KEY } from "@/lib/lastTickerResolverRequestId";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
+import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { buildSectorMatchReviewDetail } from "@/lib/actionItemDetailBuilders";
+import {
+  filterSectorMatchByTab,
+  sectorMatchRowHint,
+  sectorMatchSummary,
+  type SectorMatchViewTab,
+} from "@/lib/watchlistSectorMatchUi";
 
 const jsonHeaders: HeadersInit = { "Content-Type": "application/json" };
 
@@ -266,6 +274,13 @@ export function PortfolioLedgerClient() {
   const [watchSectorMatchBusy, setWatchSectorMatchBusy] = useState<null | "preview" | "apply">(null);
   const [watchSectorMatchPreview, setWatchSectorMatchPreview] = useState<WatchlistSectorMatchResult[]>([]);
   const [watchSectorMatchMeta, setWatchSectorMatchMeta] = useState<WatchlistSectorMatchApiResponse["qualityMeta"] | null>(null);
+  const [watchSectorTab, setWatchSectorTab] = useState<SectorMatchViewTab>("actionable");
+
+  const watchSectorFiltered = useMemo(
+    () => filterSectorMatchByTab(watchSectorMatchPreview, watchSectorTab),
+    [watchSectorMatchPreview, watchSectorTab],
+  );
+  const watchSectorCounts = useMemo(() => sectorMatchSummary(watchSectorMatchPreview), [watchSectorMatchPreview]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2120,28 +2135,68 @@ export function PortfolioLedgerClient() {
                 disabled={watchSectorMatchBusy != null}
                 onClick={() => void runWatchlistSectorMatch("apply")}
               >
-                {watchSectorMatchBusy === "apply" ? "적용 중..." : "섹터 자동 매칭 적용"}
+                {watchSectorMatchBusy === "apply" ? "적용 중..." : "적용 가능 항목만 적용"}
               </button>
-              {watchSectorMatchMeta ? (
+              {watchSectorMatchPreview.length > 0 ? (
                 <span className="rounded bg-slate-100 px-2 py-1 text-slate-700">
-                  매칭 {watchSectorMatchMeta.sectorMatch.matched} · 적용 {watchSectorMatchMeta.sectorMatch.applied} · 검토필요{" "}
-                  {watchSectorMatchMeta.sectorMatch.needsReview} · 미매칭 {watchSectorMatchMeta.sectorMatch.noMatch}
+                  전체 {watchSectorCounts.total} · 적용 가능 {watchSectorCounts.ready} · 검토 {watchSectorCounts.needsReview} · 이미 매칭{" "}
+                  {watchSectorCounts.alreadyMatched} · 미매칭 {watchSectorCounts.unmatched}
+                </span>
+              ) : watchSectorMatchMeta ? (
+                <span className="rounded bg-slate-100 px-2 py-1 text-slate-700">
+                  매칭 {watchSectorMatchMeta.sectorMatch.matched} · 검토 {watchSectorMatchMeta.sectorMatch.needsReview}
                 </span>
               ) : null}
             </div>
+            <p className="mt-1 text-[10px] text-slate-600">
+              미리보기는 DB write 없음. 적용은 ready_to_apply만 반영하며 already_matched·manual_locked·low_confidence·no_match는 제외됩니다.
+            </p>
             {watchSectorMatchPreview.length > 0 ? (
               <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700">
-                <p className="font-medium">자동 매칭 미리보기 (상위 8건)</p>
-                <ul className="mt-1 list-disc pl-4">
-                  {watchSectorMatchPreview.slice(0, 8).map((x) => (
-                    <li key={`${x.name}-${x.rawTicker ?? ""}-${x.status}`}>
-                      {x.name} ({x.rawTicker ?? "-"}) → {x.matchedSector ?? "미매칭"} · {x.confidence}점 ·{" "}
-                      {x.needsReview ? "검토 필요" : "적용 가능"}
-                      {(x.relatedAnchors?.length ?? 0) > 0
-                        ? ` · 관련 표본 ${x.relatedAnchors!.slice(0, 3).map((a) => a.name).join(", ")}${
-                            (x.relatedAnchors?.length ?? 0) > 3 ? ` 외 ${(x.relatedAnchors?.length ?? 0) - 3}개` : ""
-                          }`
-                        : ""}
+                <div className="flex flex-wrap gap-1">
+                  {(
+                    [
+                      ["actionable", "적용·검토"],
+                      ["needs_check", "확인 필요"],
+                      ["matched", "이미 매칭/수동"],
+                    ] as const
+                  ).map(([tab, label]) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      className={`rounded px-2 py-0.5 ${watchSectorTab === tab ? "bg-slate-800 text-white" : "border bg-white"}`}
+                      onClick={() => setWatchSectorTab(tab)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <ul className="mt-2 space-y-2">
+                  {watchSectorFiltered.slice(0, 12).map((x) => (
+                    <li key={`${x.name}-${x.rawTicker ?? ""}-${x.applyBucket}`} className="rounded border bg-white p-2">
+                      <p className="font-medium">
+                        {x.name} ({x.rawTicker ?? "-"}) → {x.matchedSector ?? "미매칭"} · {x.confidence}점
+                      </p>
+                      <p className="text-slate-600">{sectorMatchRowHint(x)}</p>
+                      {(x.applyBucket === "no_match" || x.applyBucket === "low_confidence") && (
+                        <SaveToActionInboxButton
+                          compact
+                          label="섹터 매칭 검토 작업으로 저장"
+                          request={{
+                            title: `섹터 매칭 검토: ${x.name}`,
+                            sourceType: "sector_radar",
+                            symbol: x.rawTicker,
+                            sourceLabel: x.name,
+                            idempotencyKey: `sector-match:${x.name}:${x.rawTicker ?? ""}`,
+                            detailJson: buildSectorMatchReviewDetail({
+                              name: x.name,
+                              symbol: x.rawTicker,
+                              applyBucket: x.applyBucket ?? "no_match",
+                              bucketReason: sectorMatchRowHint(x),
+                            }),
+                          }}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>

@@ -10,6 +10,8 @@ import type {
   ActionItemSummary,
 } from '@office-unify/shared-types';
 import { normalizeActionItemDedupeTitle } from '@office-unify/shared-types';
+import { scoreActionItemDetailCompleteness } from '@/lib/actionItemDetailCompleteness';
+import { buildCommitteeRoadmapItemDetail } from '@/lib/actionItemDetailBuilders';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WebActionItemRow } from '@office-unify/supabase-access';
 import {
@@ -128,7 +130,7 @@ export async function createActionItemWithDedupe(
   supabase: SupabaseClient,
   userKey: string,
   req: ActionItemCreateRequest,
-): Promise<{ item: ActionItemRowDto; deduped: boolean }> {
+): Promise<{ item: ActionItemRowDto; deduped: boolean; detailCompleteness: ReturnType<typeof scoreActionItemDetailCompleteness> }> {
   const title = req.title.trim();
   if (title.length < 4) throw new Error('title_too_short');
   if (TRADE_BLOCK.test(title) || TRADE_BLOCK.test(req.description ?? '')) {
@@ -138,13 +140,19 @@ export async function createActionItemWithDedupe(
   const dedupeNorm = normalizeActionItemDedupeTitle(title);
   const sourceId = req.sourceId?.trim() || null;
 
+  const detailJson = {
+    ...(req.detailJson ?? {}),
+    notTradeInstruction: true,
+  };
+  const detailCompleteness = scoreActionItemDetailCompleteness(detailJson);
+
   if (req.idempotencyKey?.trim()) {
     const existing = await findActionItemByIdempotency(supabase, userKey, req.idempotencyKey.trim());
-    if (existing) return { item: rowToDto(existing), deduped: true };
+    if (existing) return { item: rowToDto(existing), deduped: true, detailCompleteness };
   }
 
   const dup = await findActionItemByDedupe(supabase, userKey, req.sourceType, sourceId, dedupeNorm);
-  if (dup) return { item: rowToDto(dup), deduped: true };
+  if (dup) return { item: rowToDto(dup), deduped: true, detailCompleteness };
 
   const sourceHref = buildActionItemSourceHref({
     sourceType: req.sourceType,
@@ -164,15 +172,12 @@ export async function createActionItemWithDedupe(
     sourceHref,
     symbol: req.symbol?.trim() || null,
     linksJson: req.links ?? {},
-    detailJson: {
-      ...(req.detailJson ?? {}),
-      notTradeInstruction: true,
-    },
+    detailJson,
     idempotencyKey: req.idempotencyKey?.trim() || null,
     dedupeTitleNorm: dedupeNorm,
   });
 
-  return { item: rowToDto(row), deduped: false };
+  return { item: rowToDto(row), deduped: false, detailCompleteness };
 }
 
 export function actionItemsFromCommitteeRoadmap(input: {
@@ -187,6 +192,7 @@ export function actionItemsFromCommitteeRoadmap(input: {
     sourceId: input.committeeTurnId ?? `roadmap-${idx}`,
     sourceLabel: `위원회: ${input.topic.slice(0, 80)}`,
     links: input.committeeTurnId ? { committeeTurnId: input.committeeTurnId } : undefined,
+    detailJson: buildCommitteeRoadmapItemDetail(it),
     idempotencyKey: input.committeeTurnId
       ? `committee-roadmap:${input.committeeTurnId}:${normalizeActionItemDedupeTitle(it.title)}`
       : undefined,

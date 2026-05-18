@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { buildGenericActionItemDetail } from "@/lib/actionItemDetailBuilders";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WatchlistSectorMatchApiResponse } from "@office-unify/shared-types";
 import type {
@@ -782,6 +783,18 @@ export function SectorRadarClient() {
                           sourceLabel: c.sectorName,
                           symbol: c.symbol,
                           idempotencyKey: `sector-radar:${c.market}:${c.symbol}`,
+                          detailJson: buildGenericActionItemDetail({
+                            sourceType: "sector_radar",
+                            title: c.name,
+                            symbol: c.symbol,
+                            market: c.market,
+                            whyCreated: "Sector Radar 관찰 우선순위에서 저장",
+                            checklist: [
+                              "섹터 온도·readiness 확인",
+                              "ticker·registry 매칭 확인",
+                              "수동 override 필요 여부 판단",
+                            ],
+                          }),
                         }}
                       />
                     </td>

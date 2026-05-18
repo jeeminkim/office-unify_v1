@@ -4,6 +4,44 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-18 EVO-015 Daily Review Notes (1차 shipped)
+
+- **SQL:** `append_daily_review_notes.sql` · `web_daily_review_notes` · idempotency + saved subject unique.
+- **API:** `GET/POST /api/daily-review/notes` · `PATCH .../notes/[id]` — GET `/daily-review` read-only 유지.
+- **Deterministic preview:** 보유·관심·US·ops·sector 점검 메모 생성 · 명시 「오늘 메모 저장」만 write.
+- **UI:** `/daily-review` 점검 메모 카드 · Action Item detail 연동 · PB 초안 disabled_todo.
+- **30일 복기:** `dailyReviewNotes` source · `metrics.dailyReviewNoteCount` · repeated US/sector patterns.
+
+### 2026-05-18 Operational UX Consolidation 1.5 (follow-through)
+
+- **Action Item detail builders:** 출처별 `detail_json` 전면 연결(Today Candidate·US diagnostics·Committee·Research·Sector·Daily Review·복기).
+- **Action Items UX:** 카드 펼치기·dismiss 사유·완료 confirm·Research/Journal/복기 맥락 전달.
+- **US diagnostics:** Dashboard 전용 점검 카드·당일 anchor Action Item idempotency.
+- **Sector matching UI:** `applyBucket` 탭·요약·no_match/low_confidence → Action Item 저장.
+- **Daily Review:** 섹션별 Action Item 저장 버튼(GET read-only 유지).
+- **Research/Journal:** Action Item seed 배너·query prefill.
+- **Navigation:** 모바일 Home/Action/Daily/Research/More 축약.
+
+### 2026-05-18 Operational UX · Action Inbox · Daily Review (1차)
+
+- **SQL readiness:** partial 원인 설명(`likelyCauses`, `partialExplanation`, `degradedButUsable`), RPC probe 인자 개선, UI 복사·재점검.
+- **US diagnostics:** `remediationSteps` + Dashboard 점검 카드 연결.
+- **Action Items:** `detail_json` 체크리스트·doNotDo·evidence·Research/Journal/복기 prefill 링크.
+- **Sector matching:** `applyBucket` · `ready_to_apply`만 apply · already_matched 제외.
+- **Daily Review:** `/daily-review` · `GET /api/daily-review` read-only.
+- **Navigation:** `AppNav` 상단/하단(모바일).
+- **SQL 설계:** `append_daily_review_notes.sql` (EVO-015, 미적용).
+
+### 2026-05-18 EVO-012 30일 판단 품질 복기 리포트 (1차 shipped)
+
+- **GET** `/api/judgment-review/monthly` — read-only preview (`qualityMeta.readOnlyPreview = true`), DB write 없음.
+- **POST** `/api/judgment-review/monthly/save` — 명시 저장 → `web_decision_retrospectives` (`source_type = monthly_judgment_review`, window 멱등).
+- **POST** `/api/judgment-review/monthly/action-items` — `confirm:true` 후 `nextMonthRules` → `web_action_items` (매수/매도·자동주문 문구 차단).
+- **UI** `/judgment-review` · Dashboard 요약 카드.
+- **타입** `packages/shared-types/src/monthlyJudgmentReview.ts` · 패턴 탐지 휴리스틱(수익률 중심 아님).
+- **SQL** 신규 테이블 없음 · sql-readiness 「30일 판단 품질 복기 prerequisites」additive.
+- **문서** `docs/ops/judgment_review.md`.
+
 ### 2026-05-17 Committee Action Roadmap · output completeness guard
 
 - **closing:** `actionRoadmap`·`qualityMeta` additive; `committeeOutputGuard` on round/closing lines.

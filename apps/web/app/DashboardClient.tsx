@@ -29,6 +29,7 @@ import type {
   DecisionRetrospectivesQualityMeta,
   DecisionRetroStatus,
   PbWeeklyReview,
+  MonthlyJudgmentReview,
 } from "@office-unify/shared-types";
 import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import {
@@ -39,7 +40,9 @@ import {
   scrubTodayCandidateUiCopy,
 } from "@/lib/todayCandidateUiCopy";
 import { TodayCandidateRiskReviewPanel } from "@/app/components/TodayCandidateRiskReviewPanel";
+import { UsDiagnosticsCard } from "@/app/components/UsDiagnosticsCard";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { buildActionItemDetailFromTodayCandidate, buildGenericActionItemDetail } from "@/lib/actionItemDetailBuilders";
 import { filterCandidatesByConfidence } from "@/lib/todayCandidateDataQuality";
 import { readLastTickerResolverRequestId } from "@/lib/lastTickerResolverRequestId";
 
@@ -296,6 +299,8 @@ export function DashboardClient() {
   const [weeklyPreview, setWeeklyPreview] = useState<PbWeeklyReview | null>(null);
   const [weeklyRecommendedIdempotencyKey, setWeeklyRecommendedIdempotencyKey] = useState<string | null>(null);
   const [weeklyPreviewLoading, setWeeklyPreviewLoading] = useState(false);
+  const [monthlyJudgmentPreview, setMonthlyJudgmentPreview] = useState<MonthlyJudgmentReview | null>(null);
+  const [monthlyJudgmentLoading, setMonthlyJudgmentLoading] = useState(false);
   const [weeklySqlReadiness, setWeeklySqlReadiness] = useState<{
     investorProfileTableMissing?: boolean;
     researchFollowupTableMissing?: boolean;
@@ -493,6 +498,17 @@ export function DashboardClient() {
         setWeeklySqlReadiness(null);
       } finally {
         setWeeklyPreviewLoading(false);
+      }
+      setMonthlyJudgmentLoading(true);
+      try {
+        const mjRes = await fetch("/api/judgment-review/monthly?days=30", { credentials: "same-origin" });
+        const mj = (await mjRes.json()) as { ok?: boolean; review?: MonthlyJudgmentReview };
+        if (mjRes.ok && mj.ok && mj.review) setMonthlyJudgmentPreview(mj.review);
+        else setMonthlyJudgmentPreview(null);
+      } catch {
+        setMonthlyJudgmentPreview(null);
+      } finally {
+        setMonthlyJudgmentLoading(false);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "대시보드 로드 실패");
@@ -1431,6 +1447,7 @@ export function DashboardClient() {
                         sourceLabel: c.name ?? c.stockCode,
                         symbol: c.stockCode,
                         idempotencyKey: `today-candidate:${c.candidateId}`,
+                        detailJson: buildActionItemDetailFromTodayCandidate(c),
                       }}
                     />
                   </div>
@@ -1460,52 +1477,31 @@ export function DashboardClient() {
                 ) : null}
               </details>
             ) : null}
+            {todayBrief?.qualityMeta?.todayCandidates?.usCandidateDiagnostics ? (
+              <UsDiagnosticsCard
+                diagnostics={todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics}
+                anchorCoverageLabel={todayBrief.qualityMeta.todayCandidates.usMarketAnchorCoverageLabel}
+                diagnosticCardCount={todayBrief.diagnosticCandidateCards?.length ?? 0}
+                onRefreshQuotes={() => {
+                  void fetch("/api/portfolio/quotes/refresh", { method: "POST", credentials: "same-origin" }).then(() =>
+                    window.location.reload(),
+                  );
+                }}
+              />
+            ) : null}
             {(todayBrief?.diagnosticCandidateCards?.length ?? 0) > 0 ? (
-              <details className="mt-3 rounded border border-slate-300 bg-slate-50/90 p-2" open>
-                <summary className="cursor-pointer select-none text-xs font-semibold text-slate-900">
-                  미국 시장 데이터 점검 ({todayBrief?.diagnosticCandidateCards?.length ?? 0}건 · 일반 관찰 후보와 분리)
+              <details className="mt-2 rounded border border-slate-200 bg-slate-50/80 p-2">
+                <summary className="cursor-pointer select-none text-[10px] font-medium text-slate-800">
+                  미국 점검 카드 {todayBrief?.diagnosticCandidateCards?.length ?? 0}건 (요약은 위 카드 참고)
                 </summary>
-                <p className="mt-1 text-[10px] text-slate-700">
-                  미국 데이터가 부족해 일반 관찰 후보로 사용하지 않았습니다. 시세·시장 anchor 확인 후 다시 평가됩니다. 매수 권유 아님.
-                </p>
-                {todayBrief?.qualityMeta?.todayCandidates?.usMarketAnchorCoverageLabel ? (
-                  <p className="mt-1 text-[10px] text-slate-600">
-                    {todayBrief.qualityMeta.todayCandidates.usMarketAnchorCoverageLabel}
-                  </p>
-                ) : null}
                 <ul className="mt-2 grid gap-2 md:grid-cols-2">
-                  {(todayBrief?.diagnosticCandidateCards ?? []).map((c) => (
-                    <li key={c.candidateId} className="rounded border border-slate-200 bg-white p-2">
-                      <p className="text-xs font-medium text-slate-900">
-                        {c.name} · {c.sector ?? "미국"}
-                      </p>
-                      <p className="mt-0.5 text-[10px] font-medium text-slate-700">
-                        {candidateCardKindLabel(c.displayMetrics?.candidateCardKind)} ·{" "}
-                        {candidateDataStatusLabel(c.displayMetrics?.dataStatusUi)}
-                      </p>
-                      <p className="mt-1 text-[11px] text-slate-800">{scrubTodayCandidateUiCopy(c.reasonSummary)}</p>
-                      {c.displayMetrics?.neutralObservationCopy ? (
-                        <p className="mt-0.5 text-[10px] text-slate-600">{c.displayMetrics.neutralObservationCopy}</p>
-                      ) : null}
+                  {(todayBrief?.diagnosticCandidateCards ?? []).slice(0, 6).map((c) => (
+                    <li key={c.candidateId} className="rounded border border-slate-200 bg-white p-2 text-[10px]">
+                      <p className="font-medium">{c.name}</p>
+                      <p className="text-slate-600">{scrubTodayCandidateUiCopy(c.reasonSummary).slice(0, 120)}</p>
                     </li>
                   ))}
                 </ul>
-              </details>
-            ) : null}
-            {todayBrief?.qualityMeta?.todayCandidates?.usCandidateDiagnostics ? (
-              <details className="mt-2 rounded border border-sky-200 bg-sky-50/80 p-2 text-[10px] text-sky-950">
-                <summary className="cursor-pointer select-none font-medium">미국 후보 진단 (데이터 상태 점검)</summary>
-                <p className="mt-1">
-                  상태: {todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.status} · 미국 관심{" "}
-                  {todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.userUsWatchlistCount} · 일반 덱 US{" "}
-                  {todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.selectedUsCandidateCount}
-                  {(todayBrief?.diagnosticCandidateCards?.length ?? 0) > 0
-                    ? ` · 점검 카드 ${todayBrief?.diagnosticCandidateCards?.length ?? 0}`
-                    : ""}
-                </p>
-                {todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.actionHint ? (
-                  <p className="mt-1 text-sky-800">{todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics.actionHint}</p>
-                ) : null}
               </details>
             ) : null}
             {todayBrief?.qualityMeta?.todayCandidates?.exposureDiagnostics ? (
@@ -2226,6 +2222,40 @@ export function DashboardClient() {
         </div>
       </section>
 
+      <section className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-indigo-950">30일 판단 품질 복기</h2>
+            <p className="mt-0.5 text-[11px] text-indigo-900/90">수익률 평가가 아닌 판단 과정 복기 · 자동 주문 없음</p>
+          </div>
+          <Link href="/judgment-review" className="rounded border border-indigo-300 bg-white px-2 py-1 text-[11px] font-medium text-indigo-950">
+            자세히 보기
+          </Link>
+        </div>
+        {monthlyJudgmentLoading ? (
+          <p className="mt-2 text-xs text-indigo-800">불러오는 중…</p>
+        ) : monthlyJudgmentPreview ? (
+          <div className="mt-2 grid gap-2 text-xs text-indigo-950 sm:grid-cols-3">
+            <p>
+              상태: <span className="font-medium">{monthlyJudgmentPreview.status}</span>
+            </p>
+            <p>
+              주요 패턴: <span className="font-medium">{monthlyJudgmentPreview.headline.primaryPattern}</span>
+            </p>
+            <p>
+              방치 open: <span className="font-medium">{monthlyJudgmentPreview.actionQueueReview.staleOpenItems.length}</span>
+            </p>
+            <p className="sm:col-span-3 text-[11px] leading-relaxed">
+              {monthlyJudgmentPreview.headline.summary.length > 160
+                ? `${monthlyJudgmentPreview.headline.summary.slice(0, 160)}…`
+                : monthlyJudgmentPreview.headline.summary}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-indigo-800">미리보기를 불러오지 못했습니다. SQL readiness를 확인하세요.</p>
+        )}
+      </section>
+
       <section className="mb-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
         <details className="group">
           <summary className="cursor-pointer text-sm font-semibold text-violet-950">
@@ -2856,6 +2886,14 @@ export function DashboardClient() {
                         symbol: it.symbol ?? undefined,
                         links: { retrospectiveId: it.id },
                         idempotencyKey: `decision-retro:${it.id}`,
+                        detailJson: buildGenericActionItemDetail({
+                          sourceType: "decision_retrospective",
+                          title: it.title,
+                          symbol: it.symbol ?? undefined,
+                          description: it.summary,
+                          whyCreated: "판단 복기에서 후속 규칙으로 저장",
+                          checklist: ["nextRule 정리", "missingEvidence 보완", "반복 실수 패턴 기록"],
+                        }),
                       }}
                     />
                   </div>

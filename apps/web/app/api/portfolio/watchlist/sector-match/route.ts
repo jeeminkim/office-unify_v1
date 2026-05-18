@@ -3,7 +3,12 @@ import type { WatchlistSectorMatchApiResponse, WatchlistSectorMatchResult } from
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { logOpsEvent } from '@/lib/server/opsEventLogger';
-import { mapWatchlistRowToSectorMatchInput, matchWatchlistSector } from '@/lib/server/watchlistSectorMatcher';
+import {
+  bucketReasonLabel,
+  classifyWatchlistSectorApplyBucket,
+  mapWatchlistRowToSectorMatchInput,
+  matchWatchlistSector,
+} from '@/lib/server/watchlistSectorMatcher';
 import { listRelatedAnchorsBySectorName } from '@/lib/server/sectorRadarRegistry';
 
 const WATCHLIST_SECTOR_WARNING_CODES = {
@@ -161,7 +166,17 @@ export async function POST(req: Request) {
       });
       const matchedResult = matchWatchlistSector(onlyUnmatched ? { ...input, existingSector: null } : input);
       const relatedAnchors = matchedResult.matchedSector ? listRelatedAnchorsBySectorName(matchedResult.matchedSector, 5) : [];
-      const res: WatchlistSectorMatchResult = { ...matchedResult, relatedAnchors };
+      const applyBucket = classifyWatchlistSectorApplyBucket(matchedResult, row);
+      const res: WatchlistSectorMatchResult = {
+        ...matchedResult,
+        relatedAnchors,
+        applyBucket,
+        bucketReason: bucketReasonLabel(applyBucket),
+        status:
+          matchedResult.needsReview && matchedResult.matchedSector && matchedResult.status !== 'matched_existing_sector'
+            ? 'needs_review'
+            : matchedResult.status,
+      };
       items.push(res);
       if (res.matchedSector) matched += 1;
       if (res.status === 'no_match') noMatch += 1;
@@ -198,8 +213,8 @@ export async function POST(req: Request) {
           );
           continue;
         }
+        if (res.applyBucket !== 'ready_to_apply') continue;
         if (!res.matchedSector) continue;
-        if (res.confidence < minConfidenceToApply || res.needsReview) continue;
         try {
           const patch: Record<string, unknown> = {
             sector: res.matchedSector,
