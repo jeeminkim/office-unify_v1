@@ -44,6 +44,25 @@ export function ActionItemsClient() {
     void load();
   }, [load]);
 
+  const patchStep = async (id: string, stepId: string) => {
+    setPatchingId(id);
+    try {
+      const res = await fetch(`/api/action-items/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ stepId, stepStatus: "done" }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "step 저장 실패");
+    } finally {
+      setPatchingId(null);
+    }
+  };
+
   const patchStatus = async (id: string, status: ActionItemStatus, dismissReason?: ActionItemDismissReason) => {
     setPatchingId(id);
     try {
@@ -116,7 +135,13 @@ export function ActionItemsClient() {
           </li>
         ) : null}
         {items.map((it) => (
-          <ActionItemCard key={it.id} it={it} patchingId={patchingId} onPatch={(id, st, r) => void patchStatus(id, st, r)} />
+          <ActionItemCard
+            key={it.id}
+            it={it}
+            patchingId={patchingId}
+            onPatch={(id, st, r) => void patchStatus(id, st, r)}
+            onStepDone={(id, stepId) => void patchStep(id, stepId)}
+          />
         ))}
       </ul>
     </div>

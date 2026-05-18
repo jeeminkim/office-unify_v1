@@ -44,6 +44,32 @@ function mapPriority(priority?: 'low' | 'medium' | 'high'): string | null {
   return '중';
 }
 
+/** GET — 관심종목 목록 read-only */
+export async function GET() {
+  const auth = await requirePersonaChatAuth();
+  if (!auth.ok) return auth.response;
+  const supabase = getServiceSupabase();
+  if (!supabase) {
+    return NextResponse.json({ error: 'Supabase is not configured.' }, { status: 503 });
+  }
+  const rows = await listWebPortfolioWatchlistForUser(supabase, auth.userKey);
+  return NextResponse.json({
+    ok: true,
+    readOnly: true,
+    items: rows.map((r) => ({
+      market: r.market,
+      symbol: r.symbol,
+      name: r.name,
+      sector: r.sector ?? null,
+      googleTicker: r.google_ticker ?? null,
+      quoteSymbol: r.quote_symbol ?? null,
+      investmentMemo: r.investment_memo ?? null,
+      interestReason: r.interest_reason ?? null,
+      updatedAt: r.updated_at ?? null,
+    })),
+  });
+}
+
 export async function POST(req: Request) {
   const auth = await requirePersonaChatAuth();
   if (!auth.ok) return auth.response;

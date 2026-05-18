@@ -23,8 +23,14 @@ npm run pre-live-smoke --workspace=apps/web
 
 ## 2b. read-only GET (ops/DB write 없음)
 
-- [ ] `GET /api/system/sql-readiness` · `GET /api/research-center/reports/diff` · `GET /api/watchlist/recommendations` 호출 시 **DB insert/update·ops upsert 없음**(단위 테스트 `readOnlyRouteAudit.test.ts`).
+- [ ] `GET /api/system/sql-readiness` · `GET /api/research-center/reports/diff` · `GET /api/watchlist/recommendations` · `GET /api/daily-review` · `GET /api/daily-review/notes` · `GET /api/judgment-review/monthly` 호출 시 **DB insert/update·ops upsert 없음**(단위 테스트 `readOnlyRouteAudit.test.ts`).
 - [ ] 예외: `GET /api/dashboard/today-candidates/ops-summary`는 조회 실패 시에만 fingerprint upsert(문서화됨). `GET /api/sector-radar/summary`는 Supabase 미설정·예외 시에만 `logOpsEvent`.
+
+## 2d. Daily Review Notes (EVO-015 · SQL #23)
+
+- [ ] `append_daily_review_notes.sql` 미적용 시 `/daily-review` preview는 보이나 저장 시 `table_missing` + `/ops/sql-readiness` #23 안내.
+- [ ] SQL #23 적용 후: 「오늘 메모 저장」·중복 저장(`already_applied`)·Action Inbox dedupe·dismiss PATCH 동작.
+- [ ] `/judgment-review`에 Daily Review Notes 데이터 소스·저장 건수 표시 · 테이블 없어도 preview 실패하지 않음.
 
 ## 2c. Today Candidate feedback (EVO-011)
 
@@ -49,6 +55,22 @@ npm run pre-live-smoke --workspace=apps/web
 - [ ] 같은 종목이 반복 노출되면 `repeatExposurePenalty`가 점수·설명에 반영되는지(운영 스냅샷/이벤트에 따라 다름).
 - [ ] 후보 카드에 **후보 선정 근거**(왜 올라왔나요·부족 데이터·다음 확인)·**판단 품질** 문구가 보이고 매수 추천 톤이 없는지.
 - [ ] `Trade Journal`로 「관찰 메모로 남기기」 링크 시 시드 배너가 뜨고 저장 노트에 접두가 붙는지.
+
+## 3c. Navigation IA · Watchlist · Google Finance Setup
+
+- [ ] 데스크톱 상단 nav 트리(투자 운영·포트폴리오·리서치·판단/복기·운영/설정) · 모바일 5탭+More 트리.
+- [ ] `/portfolio` 「보유 현황」·`/portfolio-ledger` 「보유/거래 원장」 역할 설명 배너.
+- [ ] `/watchlist` 관심종목 필터·메모 저장·등록 후보 승인(승인 전 write 없음).
+- [ ] `/ops/google-finance-setup` sample formula 복사 · `GET /api/system/google-finance-setup` read-only.
+- [ ] 외부 보유 import·금융 로그인 UI **추가되지 않음**.
+
+## 3b. US data setup · Action Step Runner · Long response fallback
+
+- [ ] Dashboard 「미국 시장 데이터 점검」: anchor `0/18` 시 setupDiagnosis·설정 점검 접이식·복사·Action Item 저장(클릭 시만).
+- [ ] PB 주간 점검 2000자 초과: 「응답이 길어 핵심만 표시」카드 · 요약/전문 복사 · 위원회/PB 이어가기(URL에 긴 원문 없음, sessionStorage).
+- [ ] `/persona-chat` · `/committee-discussion`: `Message exceeds 2000 characters.`만 단독 노출되지 않음.
+- [ ] HLB 리스크 카드: 개별 step Action Inbox 저장 · `/action-items`에서 step별 Research/PB/위원회 · **완료** 시 PATCH만 write.
+- [ ] 매수 추천·자동 주문 문구 없음.
 
 ## 3a. Persona chat · NDJSON · 구조화 응답
 

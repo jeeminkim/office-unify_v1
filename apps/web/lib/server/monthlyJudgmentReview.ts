@@ -149,7 +149,7 @@ export function assembleMonthlyJudgmentReview(
     committee: 'partial' as JudgmentReviewDataCoverage,
     dailyReviewNotes: coverageFrom(
       sources.dailyReviewNotes?.tableMissing ?? true,
-      sources.dailyReviewNotes?.rows.length ?? 0,
+      sources.dailyReviewNotes?.rows.filter((r) => r.status === 'saved').length ?? 0,
     ),
   };
 
@@ -194,6 +194,8 @@ export function assembleMonthlyJudgmentReview(
       watchlistRecommendationApprovedCount: watchApproved,
       watchlistRecommendationRejectedCount: watchRejected,
       dailyReviewNoteCount: sources.dailyReviewNotes?.rows.length ?? 0,
+      savedDailyNoteCount: sources.dailyReviewNotes?.rows.filter((r) => r.status === 'saved').length ?? 0,
+      dismissedDailyNoteCount: sources.dailyReviewNotes?.rows.filter((r) => r.status === 'dismissed').length ?? 0,
     },
     repeatedPatterns,
     missedChecks,

@@ -227,6 +227,23 @@ export async function buildDailyReview(
     }
   }
 
+  let savedNotes: DailyReviewResponse['savedNotes'] = [];
+  let notesTableMissing = false;
+  try {
+    const listed = await listDailyReviewNotes(supabase, userKey, { date, status: 'saved' });
+    savedNotes = listed.notes;
+    notesTableMissing = listed.tableMissing;
+  } catch {
+    notesTableMissing = true;
+  }
+
+  let sectorNoMatch = 0;
+  let sectorLowConf = 0;
+  for (const w of watchlistForPreview) {
+    if (!w.sector?.trim()) sectorNoMatch += 1;
+    if (w.sectorMatchConfidence != null && w.sectorMatchConfidence < 50) sectorLowConf += 1;
+  }
+
   const previewCtx: DailyReviewPreviewContext = {
     reviewDate: date,
     userKey,
@@ -244,22 +261,12 @@ export async function buildDailyReview(
       warningCount: opsSummary.warningCount,
       errorCount: opsSummary.errorCount,
       topCodes: opsSummary.topCodes,
-      sqlPartial: false,
+      sqlPartial: notesTableMissing,
     },
-    sector: { noMatchCount: 0, lowConfidenceCount: 0, radarStale: false },
+    sector: { noMatchCount: sectorNoMatch, lowConfidenceCount: sectorLowConf, radarStale: false },
   };
 
   const previewNotes = buildDailyReviewNotePreviews(previewCtx);
-
-  let savedNotes: DailyReviewResponse['savedNotes'] = [];
-  let notesTableMissing = false;
-  try {
-    const listed = await listDailyReviewNotes(supabase, userKey, { date, status: 'saved' });
-    savedNotes = listed.notes;
-    notesTableMissing = listed.tableMissing;
-  } catch {
-    notesTableMissing = true;
-  }
 
   return {
     ok: true,

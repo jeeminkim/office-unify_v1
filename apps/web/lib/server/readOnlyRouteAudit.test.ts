@@ -49,6 +49,64 @@ vi.mock('@/lib/server/sectorRadarSummaryService', () => ({
   })),
 }));
 
+vi.mock('@/lib/server/dailyReviewService', () => ({
+  buildDailyReview: vi.fn(async () => ({
+    ok: true,
+    readOnly: true,
+    reviewDate: '2026-05-18',
+    todayCandidates: { selected: [], suppressed: [], diagnostic: [] },
+    usData: { status: 'ok', summary: '' },
+    actionItems: { createdToday: 0, doneToday: 0, staleOpen: 0, highPriorityOpen: 0 },
+    opsSummary: { warningCount: 0, errorCount: 0, topCodes: [], tableMissing: false },
+    watchlistNotes: [],
+    holdingNotes: [],
+    previewNotes: [],
+    savedNotes: [],
+    qualityMeta: { generatedAt: new Date().toISOString(), notTradeInstruction: true },
+  })),
+}));
+
+vi.mock('@/lib/server/dailyReviewNotesStore', () => ({
+  listDailyReviewNotes: vi.fn(async () => ({ notes: [], tableMissing: false })),
+}));
+
+vi.mock('@/lib/server/monthlyJudgmentReview', () => ({
+  buildMonthlyJudgmentReview: vi.fn(async () => ({
+    window: { startDate: '2026-05-01', endDate: '2026-05-18', days: 30 },
+    status: 'partial',
+    headline: { summary: 'test', primaryPattern: 'balanced', confidence: 0.5 },
+    metrics: { actionItemCompletionRatio: 0, riskReviewCount: 0 },
+    repeatedPatterns: [],
+    missedChecks: [],
+    improvedBehaviors: [],
+    actionQueueReview: { overdueCount: 0, doneCount: 0, dismissedCount: 0, staleOpenItems: [] },
+    portfolioBehaviorSignals: {
+      concentrationWarnings: [],
+      leverageWarnings: [],
+      repeatedSectorMentions: [],
+      symbolsMentionedOften: [],
+    },
+    nextMonthRules: [],
+    qualityMeta: {
+      dataCoverage: {
+        todayCandidates: 'partial',
+        actionItems: 'partial',
+        tradeJournal: 'partial',
+        retrospectives: 'partial',
+        researchReports: 'partial',
+        committee: 'partial',
+        dailyReviewNotes: 'partial',
+      },
+      warnings: [],
+      readOnlyPreview: true,
+      generatedAt: new Date().toISOString(),
+    },
+  })),
+  buildMonthlyJudgmentReviewIdempotencyKey: vi.fn(() => 'k'),
+  buildMonthlyJudgmentReviewWindowKey: vi.fn(() => 'w'),
+  resolveJudgmentReviewWindow: vi.fn(() => ({ startDate: '2026-05-01', endDate: '2026-05-18', days: 30 })),
+}));
+
 function resetWriteMocks() {
   hoisted.logOpsEvent.mockReset();
   hoisted.logOpsEvent.mockResolvedValue(undefined);
@@ -105,6 +163,15 @@ describe('read-only GET route audit (no ops/DB writes)', () => {
     expect(j.readOnly).toBe(true);
   });
 
+  it('GET /api/system/google-finance-setup — 0 ops writes', async () => {
+    const { GET } = await import('@/app/api/system/google-finance-setup/route');
+    const res = await GET();
+    expect(res.ok).toBe(true);
+    expectNoWrites();
+    const j = (await res.json()) as { readOnly?: boolean };
+    expect(j.readOnly).toBe(true);
+  });
+
   it('GET /api/watchlist/recommendations — 0 ops writes', async () => {
     hoisted.listPendingRecommendations.mockResolvedValue([]);
     const { GET } = await import('@/app/api/watchlist/recommendations/route');
@@ -118,6 +185,31 @@ describe('read-only GET route audit (no ops/DB writes)', () => {
   it('GET /api/sector-radar/summary success — 0 ops writes', async () => {
     const { GET } = await import('@/app/api/sector-radar/summary/route');
     const res = await GET();
+    expect(res.ok).toBe(true);
+    expectNoWrites();
+  });
+
+  it('GET /api/daily-review — 0 ops writes', async () => {
+    const { GET } = await import('@/app/api/daily-review/route');
+    const res = await GET(new Request('http://local/api/daily-review'));
+    expect(res.ok).toBe(true);
+    expectNoWrites();
+    const j = (await res.json()) as { readOnly?: boolean };
+    expect(j.readOnly).toBe(true);
+  });
+
+  it('GET /api/daily-review/notes — 0 ops writes', async () => {
+    const { GET } = await import('@/app/api/daily-review/notes/route');
+    const res = await GET(new Request('http://local/api/daily-review/notes'));
+    expect(res.ok).toBe(true);
+    expectNoWrites();
+    const j = (await res.json()) as { qualityMeta?: { readOnly?: boolean } };
+    expect(j.qualityMeta?.readOnly).toBe(true);
+  });
+
+  it('GET /api/judgment-review/monthly — 0 ops writes', async () => {
+    const { GET } = await import('@/app/api/judgment-review/monthly/route');
+    const res = await GET(new Request('http://local/api/judgment-review/monthly?days=30'));
     expect(res.ok).toBe(true);
     expectNoWrites();
   });

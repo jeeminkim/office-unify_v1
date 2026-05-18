@@ -11,6 +11,12 @@ export const PERSONA_CHAT_USER_MESSAGE_MAX_CHARS = 2000;
  */
 export const COMMITTEE_DISCUSSION_USER_CONTENT_MAX_CHARS = 28_000;
 
+/** PB 주간 점검 등 서버 합성 프롬프트 상한(자) */
+export const PERSONA_CHAT_SERVER_SYNTHESIZED_MAX_CHARS = 28_000;
+
+/** UI에 먼저 보여 줄 assistant/preview 요약 상한(자) */
+export const LONG_RESPONSE_DISPLAY_LIMIT_CHARS = 2000;
+
 /** assistant 응답 목표 상한(자) — generationConfig와 시스템 지시에 맞춤 */
 export const PERSONA_CHAT_ASSISTANT_TARGET_MAX_CHARS = 2000;
 

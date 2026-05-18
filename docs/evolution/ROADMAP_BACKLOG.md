@@ -12,6 +12,7 @@
 | EVO-004 | PB 주간 점검 리포트 | `#pb` `#dashboard` | discussing · 1차 shipped + 안정화 | GET 미리보기+`recommendedIdempotencyKey`, POST 멱등. **`sqlReadiness`(테이블 미적용 actionHints)**. responseGuard는 지시형·위험 문맥만. 자동 주문·리밸런싱 없음. |
 | EVO-010 | 실사용 전 SQL 순서·스모크 | `#ops` `#dashboard` | shipped | `docs/sql/APPLY_ORDER.md`(append 순서·중복 인덱스 사전 점검). `npm run pre-live-smoke`(dry-run 기본). 홈 **실사용 점검** 패널. 자동매매 없음. |
 | EVO-012 | 30일 판단 품질 복기 리포트 | `#dashboard` `#ops` | **1차 shipped** | GET read-only preview · POST save/action-items · `/judgment-review` · Dashboard 카드. `monthly_judgment_review` 복기 저장. 신규 SQL 없음. 수익률·자동주문 아님. |
+| EVO-015 | Daily Review Notes | `#daily-review` `#ops` | **1차 shipped** + E2E hardening | `web_daily_review_notes` SQL #23 · deterministic preview · 명시 저장만 · Action Item·30일 복기 연동. PB LLM 일일 메모는 EVO-015-2. |
 
 ## 아이디어 풀 (미정)
 

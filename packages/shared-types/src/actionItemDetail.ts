@@ -1,5 +1,7 @@
 /** Action Item detail_json 구조 (additive, 출처별 확장). */
 
+import type { ActionItemStep } from './actionItemSteps';
+
 export type ActionItemChecklistEntry = {
   label: string;
   reason?: string;
@@ -29,6 +31,8 @@ export type ActionItemDetailJson = {
   doNotDo?: string[];
   evidenceNeeded?: string[];
   checklist?: ActionItemChecklistEntry[];
+  /** additive: 순차 실행 가능한 step (checklist/doNotDo/evidence에서 생성) */
+  actionSteps?: ActionItemStep[];
   decisionContext?: ActionItemDecisionContext;
   recommendedNextLinks?: ActionItemRecommendedLink[];
   sourceSummary?: string;
@@ -48,6 +52,7 @@ export function parseActionItemDetailJson(raw: Record<string, unknown> | undefin
     doNotDo: Array.isArray(d.doNotDo) ? d.doNotDo.map(String) : undefined,
     evidenceNeeded: Array.isArray(d.evidenceNeeded) ? d.evidenceNeeded.map(String) : undefined,
     checklist: Array.isArray(d.checklist) ? (d.checklist as ActionItemChecklistEntry[]) : undefined,
+    actionSteps: Array.isArray(d.actionSteps) ? (d.actionSteps as ActionItemStep[]) : undefined,
     decisionContext:
       d.decisionContext && typeof d.decisionContext === 'object'
         ? (d.decisionContext as ActionItemDecisionContext)

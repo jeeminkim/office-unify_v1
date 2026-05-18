@@ -30,7 +30,10 @@ import type {
   DecisionRetroStatus,
   PbWeeklyReview,
   MonthlyJudgmentReview,
+  LongResponseFallback,
 } from "@office-unify/shared-types";
+import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
+import { isMessageExceedsLimitError } from "@/lib/longResponseFallback";
 import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import {
   isRiskReviewCandidateClient,
@@ -323,6 +326,7 @@ export function DashboardClient() {
     deduplicated?: boolean;
     missingSections: string[];
     policyPhraseWarnings?: string[];
+    longResponseFallback?: LongResponseFallback;
   } | null>(null);
 
   type DecisionRetroFilter = "all" | DecisionRetroStatus;
@@ -1019,8 +1023,10 @@ export function DashboardClient() {
             {reloading ? "새로고침 중..." : "요약 새로고침"}
           </button>
           <Link href="/dev-assistant" className="rounded border border-slate-300 bg-white px-3 py-1.5">Dev Assistant</Link>
-          <Link href="/portfolio" className="rounded border border-slate-300 bg-white px-3 py-1.5">Portfolio</Link>
-          <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">Portfolio Ledger</Link>
+          <Link href="/portfolio" className="rounded border border-slate-300 bg-white px-3 py-1.5">보유 현황</Link>
+          <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">보유/거래 원장</Link>
+          <Link href="/watchlist" className="rounded border border-slate-300 bg-white px-3 py-1.5">관심종목 관리</Link>
+          <Link href="/ops/google-finance-setup" className="rounded border border-slate-300 bg-white px-3 py-1.5">Google Finance 설정</Link>
           <Link href="/sector-radar" className="rounded border border-slate-300 bg-white px-3 py-1.5">Sector Radar</Link>
           <Link href="/realized-pnl" className="rounded border border-slate-300 bg-white px-3 py-1.5">Realized PnL</Link>
           <Link href="/financial-goals" className="rounded border border-slate-300 bg-white px-3 py-1.5">Financial Goals</Link>
@@ -2342,6 +2348,7 @@ export function DashboardClient() {
                   });
                   const j = (await res.json()) as {
                     error?: string;
+                    longResponseFallback?: import("@office-unify/shared-types").LongResponseFallback;
                     report?: {
                       preview?: PbWeeklyReview;
                       qualityMeta?: PbWeeklyReview["qualityMeta"];
@@ -2352,8 +2359,18 @@ export function DashboardClient() {
                     pbTurnId?: string;
                     deduplicated?: boolean;
                   };
-                  if (!res.ok) {
+                  if (!res.ok && !j.longResponseFallback) {
                     setWeeklyGenError(j.error ?? `HTTP ${res.status}`);
+                    return;
+                  }
+                  if (j.longResponseFallback?.exceededLimit && !j.report?.assistantPreview) {
+                    setWeeklyGenResult({
+                      preview: weeklyPreview,
+                      assistantPreview: j.longResponseFallback.displayText,
+                      longResponseFallback: j.longResponseFallback,
+                      missingSections: [],
+                    });
+                    setWeeklyGenError(null);
                     return;
                   }
                   const guard = j.report?.qualityMeta?.privateBanker?.responseGuard;
@@ -2365,6 +2382,7 @@ export function DashboardClient() {
                     deduplicated: j.deduplicated,
                     missingSections: guard?.missingSections ?? [],
                     policyPhraseWarnings: guard?.policyPhraseWarnings,
+                    longResponseFallback: j.longResponseFallback,
                   });
                   if (j.report?.preview) setWeeklyPreview(j.report.preview);
                 } catch (e: unknown) {
@@ -2413,7 +2431,12 @@ export function DashboardClient() {
             </button>
           </div>
           {retroPbMsg ? <p className="mt-1 text-[11px] text-emerald-900">{retroPbMsg}</p> : null}
-          {weeklyGenError ? <p className="mt-2 text-xs text-red-700">{weeklyGenError}</p> : null}
+          {weeklyGenError && !isMessageExceedsLimitError(weeklyGenError) ? (
+            <p className="mt-2 text-xs text-red-700">{weeklyGenError}</p>
+          ) : null}
+          {weeklyGenResult?.longResponseFallback?.exceededLimit ? (
+            <LongResponseFallbackCard fallback={weeklyGenResult.longResponseFallback} source="pb_weekly" />
+          ) : null}
           {weeklyGenResult ? (
             <div className="mt-3 rounded border border-violet-100 bg-white/90 p-2 text-[11px] text-violet-950">
               <p className="font-medium">PB 응답 요약</p>

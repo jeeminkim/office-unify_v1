@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { UsCandidateDiagnostics } from '@office-unify/shared-types';
 import type { TodayStockCandidate, UsMarketMorningSummary } from '@/lib/todayCandidatesContract';
+import { buildUsSetupDiagnosis } from '@/lib/server/usSetupDiagnosis';
 import type { CandidateDecisionTrace } from '@office-unify/shared-types';
 
 function countReasons(traces: CandidateDecisionTrace[], field: 'rejectedReasons' | 'suppressedReasons'): string[] {
@@ -132,7 +133,7 @@ export function buildUsCandidateDiagnostics(input: {
     },
   ];
 
-  return {
+  const base: UsCandidateDiagnostics = {
     status,
     remediationSteps,
     userUsWatchlistCount: input.userUsWatchlistCount,
@@ -159,4 +160,13 @@ export function buildUsCandidateDiagnostics(input: {
     },
     actionHint,
   };
+
+  if (status !== 'ok' || anchorOk < anchorRequested) {
+    base.setupDiagnosis = buildUsSetupDiagnosis({
+      usMarketSummary: input.usMarketSummary,
+      diagnostics: base,
+    });
+  }
+
+  return base;
 }

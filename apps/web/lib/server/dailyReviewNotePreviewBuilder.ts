@@ -8,6 +8,13 @@ const DEFAULT_DO_NOT = [
   '매수 추천이 아님 — 오늘의 점검 메모입니다',
 ];
 
+const RISK_REVIEW_CHECKS = [
+  '공시·기업 이벤트 일정 확인',
+  '권리락·신주배정 기준일 확인',
+  '최근 시세·거래량 확인',
+  '리포트 이력 또는 7일 diff 확인',
+];
+
 export type DailyReviewPreviewContext = {
   reviewDate: string;
   userKey: string;
@@ -19,6 +26,7 @@ export type DailyReviewPreviewContext = {
     qty?: number | string | null;
     avgPrice?: number | string | null;
     openActionItemSymbols?: Set<string>;
+    riskReview?: boolean;
   }>;
   watchlist: Array<{
     symbol: string;
@@ -40,6 +48,28 @@ function previewKey(subjectType: DailyReviewNoteSubjectType, symbol?: string): s
   return `${subjectType}:${symbol ?? '_'}`;
 }
 
+function isRiskSymbol(symbol: string, name: string): boolean {
+  const s = symbol.toUpperCase();
+  const n = name.toUpperCase();
+  return s === '028300' || n.includes('HLB');
+}
+
+function hasNoteContent(input: {
+  nextChecks: string[];
+  riskFlags?: string[];
+  evidenceNeeded?: string[];
+  doNotDo?: string[];
+  noteSummary: string;
+}): boolean {
+  if (!input.noteSummary.trim()) return false;
+  return (
+    input.nextChecks.length > 0 ||
+    (input.riskFlags?.length ?? 0) > 0 ||
+    (input.evidenceNeeded?.length ?? 0) > 0 ||
+    (input.doNotDo?.length ?? 0) > 0
+  );
+}
+
 function basePreview(
   ctx: DailyReviewPreviewContext,
   input: {
@@ -56,7 +86,8 @@ function basePreview(
     sourceRefs?: DailyReviewNotePreview['sourceRefs'];
     generatedBy?: DailyReviewNotePreview['generatedBy'];
   },
-): DailyReviewNotePreview {
+): DailyReviewNotePreview | null {
+  if (!hasNoteContent(input)) return null;
   const generatedBy = input.generatedBy ?? 'deterministic';
   const idempotencyKey = buildDailyReviewNoteIdempotencyKey({
     userKey: ctx.userKey,
@@ -79,6 +110,18 @@ function basePreview(
   };
 }
 
+function dedupePreviews(notes: DailyReviewNotePreview[]): DailyReviewNotePreview[] {
+  const seen = new Set<string>();
+  const out: DailyReviewNotePreview[] = [];
+  for (const n of notes) {
+    const key = `${n.subjectType}:${n.symbol ?? ''}:${n.noteSummary.trim()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(n);
+  }
+  return out;
+}
+
 export function buildDailyReviewNotePreviews(ctx: DailyReviewPreviewContext): DailyReviewNotePreview[] {
   const out: DailyReviewNotePreview[] = [];
 
@@ -89,24 +132,31 @@ export function buildDailyReviewNotePreviews(ctx: DailyReviewPreviewContext): Da
     const risks: string[] = [];
     if (incomplete) risks.push('holding_incomplete');
     if (h.openActionItemSymbols?.has(h.symbol.toUpperCase())) risks.push('open_action_item');
+    const riskReview = h.riskReview || isRiskSymbol(h.symbol, h.name);
+    if (riskReview) risks.push('risk_review');
 
-    out.push(
-      basePreview(ctx, {
-        subjectType: 'holding',
-        symbol: h.symbol,
-        name: h.name,
-        market: h.market,
-        noteSummary: incomplete
-          ? `${h.name}: 수량·평단 정보가 불완전해 평가에서 제외될 수 있습니다. 원장 정보를 보강하세요.`
+    const nextChecks = riskReview
+      ? RISK_REVIEW_CHECKS
+      : incomplete
+        ? ['원장 수량·평단 보강', '시세 확인', '관련 Action Item 확인']
+        : ['비중·집중도 확인', '섹터/테마 겹침 확인', '최근 리포트 diff 확인'];
+
+    const note = basePreview(ctx, {
+      subjectType: 'holding',
+      symbol: h.symbol,
+      name: h.name,
+      market: h.market,
+      noteSummary: incomplete
+        ? `${h.name}: 수량·평단 정보가 불완전해 오늘 점검에서 제외될 수 있습니다. 원장을 보강하세요.`
+        : riskReview
+          ? `${h.name}: 리스크 점검 메모 — 공시·권리 일정을 오늘 확인할 항목으로 남깁니다.`
           : `${h.name}: 보유 비중·테마·리스크를 오늘 점검 메모로 확인하세요.`,
-        riskFlags: risks,
-        nextChecks: incomplete
-          ? ['원장 수량·평단 보강', '시세 확인', '관련 Action Item 확인']
-          : ['비중·집중도 확인', '섹터/테마 겹침 확인', '최근 리포트 diff 확인'],
-        evidenceNeeded: incomplete ? ['qty', 'avg_price'] : ['quote', 'sector'],
-        sourceRefs: [{ sourceType: 'portfolio', href: '/portfolio-ledger' }],
-      }),
-    );
+      riskFlags: risks,
+      nextChecks,
+      evidenceNeeded: incomplete ? ['qty', 'avg_price'] : riskReview ? ['disclosure', 'corporate_action'] : ['quote', 'sector'],
+      sourceRefs: [{ sourceType: 'portfolio', href: '/portfolio-ledger' }],
+    });
+    if (note) out.push(note);
   }
 
   for (const w of ctx.watchlist.slice(0, 12)) {
@@ -116,78 +166,89 @@ export function buildDailyReviewNotePreviews(ctx: DailyReviewPreviewContext): Da
     if (w.riskReview) risks.push('risk_review');
     if (w.inTodayCandidate) risks.push('today_candidate_exposure');
 
-    out.push(
-      basePreview(ctx, {
-        subjectType: 'watchlist',
-        symbol: w.symbol,
-        name: w.name,
-        market: w.market,
-        noteSummary: !w.sector?.trim()
-          ? `${w.name}: 섹터 미매칭 — registry·ticker를 확인하세요.`
+    const riskReview = w.riskReview || isRiskSymbol(w.symbol, w.name);
+    const nextChecks = riskReview
+      ? RISK_REVIEW_CHECKS
+      : ['섹터 매칭·Sector Radar 상태 확인', 'ticker·시세 확인', '리포트 이력·7일 diff 확인'];
+
+    const note = basePreview(ctx, {
+      subjectType: 'watchlist',
+      symbol: w.symbol,
+      name: w.name,
+      market: w.market,
+      noteSummary: !w.sector?.trim()
+        ? `${w.name}: 섹터 미매칭 — registry·ticker를 오늘 확인할 항목으로 점검하세요.`
+        : riskReview
+          ? `${w.name}: 리스크 점검 — 공시·권리 일정을 오늘 확인할 항목으로 남깁니다.`
           : w.sector?.includes('조선') || w.sector?.includes('LNG')
-            ? `${w.name}: ${w.sector} 섹터로 매칭되어 있습니다. 섹터 과열·보유 겹침을 함께 확인하세요.`
-            : `${w.name}: 관심종목 점검 — 섹터·시세·반복 노출을 확인하세요.`,
-        riskFlags: risks,
-        nextChecks: [
-          '섹터 매칭·Sector Radar 상태 확인',
-          'ticker·시세 확인',
-          '리포트 이력·7일 diff 확인',
-        ],
-        evidenceNeeded: w.sectorMatchConfidence != null ? [`sector_confidence_${w.sectorMatchConfidence}`] : [],
-        sourceRefs: [{ sourceType: 'watchlist', href: '/portfolio-ledger' }],
-      }),
-    );
+            ? `${w.name}: ${w.sector} 섹터 매칭 — 과열·보유 겹침을 오늘 점검하세요.`
+            : `${w.name}: 관심종목 — 섹터·시세·반복 노출을 오늘 점검하세요.`,
+      riskFlags: risks,
+      nextChecks,
+      evidenceNeeded:
+        w.sectorMatchConfidence != null
+          ? [`sector_confidence_${w.sectorMatchConfidence}`]
+          : riskReview
+            ? ['disclosure']
+            : ['quote'],
+      sourceRefs: [{ sourceType: 'watchlist', href: '/portfolio-ledger' }],
+    });
+    if (note) out.push(note);
   }
 
   if (ctx.usData.status === 'degraded' || ctx.usData.diagnosticCount > 0) {
-    out.push(
-      basePreview(ctx, {
-        subjectType: 'us_data',
-        noteSummary:
-          '미국 anchor 데이터가 부족하면 US 종목은 일반 관찰 후보에서 제외됩니다. anchor·시트·ticker를 점검하세요.',
-        noteDetail: ctx.usData.summary,
-        riskFlags: ['us_anchor_degraded'],
-        nextChecks: [
-          'SPY/QQQ/SMH anchor 확인',
-          'Google Sheets range 확인',
-          'ticker resolver 확인',
-          '시세 refresh 후 Today Brief 재확인',
-        ],
-        doNotDo: ['미국 데이터 empty 상태에서 US 종목을 일반 후보로 판단하지 않기'],
-        evidenceNeeded: ['anchor_coverage'],
-        sourceRefs: [{ sourceType: 'today_candidate', href: '/' }],
-      }),
-    );
+    const note = basePreview(ctx, {
+      subjectType: 'us_data',
+      noteSummary:
+        '미국 anchor·시트·ticker가 부족하면 US 종목은 일반 관찰 후보에서 제외됩니다. 오늘 확인할 데이터 경로를 점검하세요.',
+      noteDetail: ctx.usData.summary,
+      riskFlags: ['us_anchor_degraded'],
+      nextChecks: [
+        'SPY/QQQ/SMH anchor 확인',
+        'Google Sheets range 확인',
+        'ticker resolver 확인',
+        '시세 refresh 후 Today Brief 재확인',
+      ],
+      doNotDo: ['미국 데이터 empty 상태에서 US 종목을 일반 후보로 판단하지 않기'],
+      evidenceNeeded: ['anchor_coverage', 'sheet_range', 'ticker_resolver'],
+      sourceRefs: [{ sourceType: 'today_candidate', href: '/' }],
+    });
+    if (note) out.push(note);
   }
 
   if (ctx.ops.warningCount > 0 || ctx.ops.errorCount > 0 || ctx.ops.sqlPartial) {
     const codes = ctx.ops.topCodes.slice(0, 3).join(', ') || 'ops_events';
-    out.push(
-      basePreview(ctx, {
-        subjectType: 'ops',
-        noteSummary: `운영 경고 ${ctx.ops.warningCount}건 · 오류 ${ctx.ops.errorCount}건 — ${codes}를 확인하세요.`,
-        riskFlags: ctx.ops.sqlPartial ? ['sql_readiness_partial'] : [],
-        nextChecks: ['ops 이벤트 상세 확인', 'SQL readiness partial 항목 점검', '반복 경고 원인 기록'],
-        evidenceNeeded: ctx.ops.topCodes.slice(0, 5),
-        sourceRefs: [
-          { sourceType: 'ops', href: '/ops-events' },
-          { sourceType: 'sql_readiness', href: '/ops/sql-readiness' },
-        ],
-      }),
-    );
+    const note = basePreview(ctx, {
+      subjectType: 'ops',
+      noteSummary: ctx.ops.sqlPartial
+        ? `SQL readiness가 partial입니다 — Daily Review 메모 저장·30일 복기가 제한될 수 있습니다. 운영 경고 ${ctx.ops.warningCount}건도 확인하세요.`
+        : `운영 경고 ${ctx.ops.warningCount}건 · 오류 ${ctx.ops.errorCount}건 — ${codes}를 오늘 점검하세요.`,
+      riskFlags: ctx.ops.sqlPartial ? ['sql_readiness_partial'] : [],
+      nextChecks: [
+        'ops 이벤트 상세 확인',
+        'SQL readiness #23 (Daily Review Notes) 적용 여부',
+        '반복 경고 원인 기록',
+      ],
+      evidenceNeeded: ctx.ops.topCodes.slice(0, 5).length ? ctx.ops.topCodes.slice(0, 5) : ['sql_readiness'],
+      sourceRefs: [
+        { sourceType: 'ops', href: '/ops-events' },
+        { sourceType: 'sql_readiness', href: '/ops/sql-readiness' },
+      ],
+    });
+    if (note) out.push(note);
   }
 
   if ((ctx.sector.noMatchCount ?? 0) > 0 || (ctx.sector.lowConfidenceCount ?? 0) > 0 || ctx.sector.radarStale) {
-    out.push(
-      basePreview(ctx, {
-        subjectType: 'sector',
-        noteSummary: `섹터 매칭 검토 필요: 미매칭 ${ctx.sector.noMatchCount ?? 0} · 저신뢰 ${ctx.sector.lowConfidenceCount ?? 0}건.`,
-        nextChecks: ['섹터 registry 보강', '수동 override 검토', 'Sector Radar 스냅샷 신선도 확인'],
-        riskFlags: ['sector_match_review'],
-        sourceRefs: [{ sourceType: 'sector_radar', href: '/sector-radar' }],
-      }),
-    );
+    const note = basePreview(ctx, {
+      subjectType: 'sector',
+      noteSummary: `섹터 매칭 점검: 미매칭 ${ctx.sector.noMatchCount ?? 0} · 저신뢰 ${ctx.sector.lowConfidenceCount ?? 0}건 — registry·override를 오늘 확인하세요.`,
+      nextChecks: ['섹터 registry 보강', '수동 override 검토', 'Sector Radar 스냅샷 신선도 확인'],
+      riskFlags: ['sector_match_review'],
+      evidenceNeeded: ['sector_registry', 'sector_match_confidence'],
+      sourceRefs: [{ sourceType: 'sector_radar', href: '/sector-radar' }],
+    });
+    if (note) out.push(note);
   }
 
-  return out;
+  return dedupePreviews(out);
 }

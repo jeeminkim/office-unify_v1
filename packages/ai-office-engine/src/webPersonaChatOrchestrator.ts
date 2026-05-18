@@ -9,6 +9,7 @@ import type {
 } from '@office-unify/shared-types';
 import {
   PERSONA_CHAT_ASSISTANT_TARGET_MAX_CHARS,
+  PERSONA_CHAT_SERVER_SYNTHESIZED_MAX_CHARS,
   PERSONA_CHAT_USER_MESSAGE_MAX_CHARS,
 } from '@office-unify/shared-types';
 import { getKstDateString } from '@office-unify/shared-utils';
@@ -156,6 +157,12 @@ function resolvePersonaStrict(personaKeyRaw: string | undefined): WebPersonaDefi
 export function assertPersonaChatUserContentLength(text: string): void {
   if (text.length > PERSONA_CHAT_USER_MESSAGE_MAX_CHARS) {
     throw new Error(`Message exceeds ${PERSONA_CHAT_USER_MESSAGE_MAX_CHARS} characters.`);
+  }
+}
+
+export function assertPersonaChatServerSynthesizedContentLength(text: string): void {
+  if (text.length > PERSONA_CHAT_SERVER_SYNTHESIZED_MAX_CHARS) {
+    throw new Error(`Server prompt exceeds ${PERSONA_CHAT_SERVER_SYNTHESIZED_MAX_CHARS} characters.`);
   }
 }
 

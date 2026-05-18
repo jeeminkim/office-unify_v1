@@ -8,6 +8,7 @@ import {
   buildRetrospectiveHrefFromActionItem,
 } from '@/lib/actionItemLinks';
 import { scoreActionItemDetailCompleteness } from '@/lib/actionItemDetailCompleteness';
+import { attachActionStepsToDetail } from '@/lib/actionSteps';
 
 export { scoreActionItemDetailCompleteness };
 
@@ -130,32 +131,80 @@ export function buildActionItemDetailFromTodayCandidate(
     name: candidate.name,
     market: candidate.market,
   };
-  return detail;
+  return attachActionStepsToDetail(detail);
+}
+
+export function buildWatchlistCheckActionItemDetail(item: {
+  market: string;
+  symbol: string;
+  name: string;
+  sector?: string | null;
+  googleTicker?: string | null;
+}): ActionItemDetailJson {
+  return attachActionStepsToDetail({
+    notTradeInstruction: true,
+    actionCategory: 'check_now',
+    symbol: item.symbol,
+    name: item.name,
+    market: item.market === 'US' ? 'US' : 'KR',
+    whyCreated: `관심종목 ${item.name} 점검`,
+    checklist: [
+      { label: 'ticker·quote 매핑 확인', source: 'watchlist' },
+      { label: '섹터 매칭 확인', source: 'watchlist' },
+      { label: '시세 상태 확인', source: 'watchlist' },
+    ],
+    doNotDo: ['자동 등록·자동 주문 없음', '매수/매도 지시 없음'],
+    decisionContext: {
+      sourceSummary: `sector=${item.sector ?? '—'} google=${item.googleTicker ?? '—'}`,
+    },
+  });
 }
 
 export function buildUsDiagnosticsActionItemDetail(): ActionItemDetailJson {
-  return {
+  return attachActionStepsToDetail({
     notTradeInstruction: true,
     actionCategory: 'check_now',
-    whyCreated: '미국 시장 데이터가 부족해 일반 관찰 후보로 쓰지 않음',
+    whyCreated: '미국 anchor 데이터가 0개라 미국 후보가 일반 관찰 후보에서 제외됨',
     confirmNow: ['미국 anchor 시세 상태 확인', 'Today Brief 재확인'],
     checklist: [
-      { label: 'SPY/QQQ/SMH 또는 anchor quote 확인' },
-      { label: 'Google Sheets tab/range 확인' },
-      { label: '미국 관심종목 ticker 형식 확인' },
-      { label: '시세 refresh 후 Today Brief 재확인' },
+      { label: 'Google Sheets tab 존재 확인', source: 'us_setup' },
+      { label: 'SPY/QQQ/SMH GOOGLEFINANCE 수식 결과 확인', source: 'us_setup' },
+      { label: 'range parse 오류 확인', source: 'us_setup' },
+      { label: 'ticker format 확인', source: 'us_setup' },
+      { label: 'refresh 후 Today Brief 재실행', source: 'us_setup' },
     ],
-    doNotDo: ['미국 데이터가 empty인 상태에서 미국 종목을 일반 후보로 판단하지 않기', '즉시 매수·매도·자동 주문 금지'],
-    evidenceNeeded: ['anchor coverage', 'quote provider status'],
+    doNotDo: ['미국 데이터 empty 상태에서 미국 종목을 일반 후보로 판단하지 않기', '즉시 매수·매도·자동 주문 금지'],
+    evidenceNeeded: ['anchor_coverage', 'quote_provider', 'sheets_tab'],
     decisionContext: {
-      sourceQuestion: '미국 시장 anchor 데이터가 충분한가?',
-      sourceSummary: '미국 후보는 점검 카드로 분리됩니다. 국내·섹터 후보 중심으로 오늘을 운영하세요.',
+      sourceQuestion: '미국 시장 anchor·Google Sheets 설정이 충분한가?',
+      sourceSummary: '미국 후보는 점검 카드로 분리됩니다. SQL이 아니라 quote provider·Sheets 문제일 수 있습니다.',
     },
     recommendedNextLinks: linksFor('pending', {
       whyCreated: 'US diagnostics',
       decisionContext: { sourceQuestion: '미국 anchor 확인' },
     }),
-  };
+  });
+}
+
+/** Risk review panel — 개별 step 저장용 */
+export function buildRiskReviewStepActionItemDetail(
+  candidate: TodayStockCandidate,
+  stepLabel: string,
+  opts?: { whyCreated?: string },
+): ActionItemDetailJson {
+  const sym = candidate.symbol ?? candidate.stockCode;
+  const base = buildActionItemDetailFromTodayCandidate(candidate, opts);
+  return attachActionStepsToDetail({
+    ...base,
+    whyCreated: opts?.whyCreated ?? `리스크 점검 step: ${stepLabel}`,
+    confirmNow: [stepLabel],
+    checklist: [{ label: stepLabel, source: 'risk_review_step' }],
+    decisionContext: {
+      ...base.decisionContext,
+      sourceSummary: `${candidate.name ?? sym}: ${stepLabel}`,
+    },
+    sourceSummary: stepLabel,
+  });
 }
 
 export function buildCommitteeRoadmapItemDetail(input: {
@@ -176,7 +225,7 @@ export function buildCommitteeRoadmapItemDetail(input: {
   } else {
     checklist.push({ label: input.title });
   }
-  return {
+  return attachActionStepsToDetail({
     notTradeInstruction: true,
     actionCategory: input.bucket === 'retrospectiveNeeded' ? 'retrospective_needed' : 'check_now',
     whyCreated: `위원회 roadmap (${input.bucket})`,
@@ -189,7 +238,7 @@ export function buildCommitteeRoadmapItemDetail(input: {
       whyCreated: input.reason,
       sourceSummary: input.reason,
     }),
-  };
+  });
 }
 
 export function buildSectorMatchReviewDetail(input: {
@@ -198,7 +247,7 @@ export function buildSectorMatchReviewDetail(input: {
   applyBucket: string;
   bucketReason?: string;
 }): ActionItemDetailJson {
-  return {
+  return attachActionStepsToDetail({
     notTradeInstruction: true,
     actionCategory: 'check_now',
     whyCreated: `섹터 매칭 검토 (${input.applyBucket})`,
@@ -218,7 +267,7 @@ export function buildSectorMatchReviewDetail(input: {
       name: input.name,
       sourceSummary: input.bucketReason,
     }),
-  };
+  });
 }
 
 export function buildDailyReviewActionItemDetail(input: {
@@ -352,10 +401,10 @@ export function buildDailyReviewNoteActionItemDetail(
   >,
 ): ActionItemDetailJson {
   const checklist = preview.nextChecks.map((label) => ({ label, source: 'daily_review_note' }));
-  return {
+  return attachActionStepsToDetail({
     notTradeInstruction: true,
     actionCategory: preview.subjectType === 'us_data' ? 'check_now' : 'monitor',
-    whyCreated: `Daily Review 점검 메모 (${preview.subjectType})`,
+    whyCreated: 'Daily Review note에서 생성',
     confirmNow: preview.nextChecks.slice(0, 4),
     doNotDo: preview.doNotDo,
     evidenceNeeded: preview.evidenceNeeded,
@@ -378,7 +427,7 @@ export function buildDailyReviewNoteActionItemDetail(
       checklist,
       decisionContext: { riskFlags: preview.riskFlags },
     }),
-  };
+  });
 }
 
 export function buildGenericActionItemDetail(input: {
@@ -393,7 +442,7 @@ export function buildGenericActionItemDetail(input: {
   doNotDo?: string[];
 }): ActionItemDetailJson {
   const checklist = (input.checklist ?? ['원본 맥락을 확인합니다.']).map((label) => ({ label }));
-  return {
+  return attachActionStepsToDetail({
     notTradeInstruction: true,
     actionCategory: 'check_now',
     whyCreated: input.whyCreated ?? `${input.sourceType}에서 저장됨`,
@@ -414,16 +463,16 @@ export function buildGenericActionItemDetail(input: {
       checklist,
       sourceSummary: input.description,
     }),
-  };
+  });
 }
 
 export function enrichCreateRequestWithDetail(
   req: ActionItemCreateRequest,
 ): ActionItemCreateRequest & { detailCompleteness: ReturnType<typeof scoreActionItemDetailCompleteness> } {
-  const detail = {
+  const detail = attachActionStepsToDetail({
     ...(req.detailJson ?? {}),
     notTradeInstruction: true,
-  } as ActionItemDetailJson;
+  } as ActionItemDetailJson);
   return {
     ...req,
     detailJson: detail,

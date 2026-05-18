@@ -50,6 +50,8 @@ export type MonthlyJudgmentReview = {
     watchlistRecommendationRejectedCount: number;
     /** additive: EVO-015 daily review notes in window */
     dailyReviewNoteCount?: number;
+    savedDailyNoteCount?: number;
+    dismissedDailyNoteCount?: number;
   };
 
   repeatedPatterns: Array<{

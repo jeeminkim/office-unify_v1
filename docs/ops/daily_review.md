@@ -13,13 +13,14 @@
   - `POST /api/daily-review/notes` — **명시 저장만**
   - `PATCH /api/daily-review/notes/[id]` — dismissed/archived
 
-## 저장 정책 (EVO-015)
+## 저장 정책 (EVO-015 · 1차 shipped)
 
-- **자동 저장 없음** — GET 시 DB write 0
-- deterministic 점검 메모는 `previewNotes`로만 표시
-- 사용자가 「오늘 메모 저장」 클릭 시에만 `POST /notes`
-- idempotency: 같은 날·subject_type·symbol·generated_by → `already_applied`
-- PB 일일 메모: **disabled_todo** (EVO-015-2 후속)
+- **자동 저장 없음** — GET `/api/daily-review`·`/notes` 시 DB write 0
+- deterministic 점검 메모는 `previewNotes`로만 표시 (**shipped**)
+- 사용자가 「오늘 메모 저장」 클릭 시에만 `POST /notes` (저장 중 UI·중복 클릭 방지)
+- idempotency: 서버 키 + DB unique index → `already_applied`
+- dismissed: confirm + 선택 사유 · 매매/관심종목에 영향 없음
+- **PB 일일 메모(LLM):** EVO-015-2 후속 · UI `disabled_todo`
 
 ## SQL
 

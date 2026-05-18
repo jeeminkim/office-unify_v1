@@ -42,10 +42,58 @@ describe('buildDailyReviewNotePreviews', () => {
     expect(notes.some((n) => n.subjectType === 'sector')).toBe(true);
   });
 
+  it('HLB holding risk note includes disclosure and rights checks', () => {
+    const notes = buildDailyReviewNotePreviews(ctx);
+    const hlb = notes.find((n) => n.symbol === '028300');
+    expect(hlb?.nextChecks.some((c) => c.includes('공시'))).toBe(true);
+    expect(hlb?.nextChecks.some((c) => c.includes('권리'))).toBe(true);
+  });
+
+  it('US degraded note includes anchor, sheet, ticker checks', () => {
+    const notes = buildDailyReviewNotePreviews(ctx);
+    const us = notes.find((n) => n.subjectType === 'us_data');
+    const joined = us?.nextChecks.join(' ') ?? '';
+    expect(joined).toMatch(/anchor|SPY/i);
+    expect(joined).toMatch(/Sheets|range/i);
+    expect(joined).toMatch(/ticker/i);
+  });
+
+  it('ops partial note mentions SQL readiness', () => {
+    const notes = buildDailyReviewNotePreviews(ctx);
+    const ops = notes.find((n) => n.subjectType === 'ops');
+    expect(ops?.noteSummary).toMatch(/SQL readiness/i);
+    expect(ops?.nextChecks.some((c) => c.includes('SQL'))).toBe(true);
+  });
+
+  it('dedupes same subject/symbol/summary', () => {
+    const dupCtx = {
+      ...ctx,
+      holdings: [
+        ...ctx.holdings,
+        { ...ctx.holdings[0] },
+      ],
+    };
+    const notes = buildDailyReviewNotePreviews(dupCtx);
+    const hlbCount = notes.filter((n) => n.symbol === '028300').length;
+    expect(hlbCount).toBe(1);
+  });
+
   it('does not include buy/sell instruction in summaries', () => {
     const notes = buildDailyReviewNotePreviews(ctx);
-    const text = JSON.stringify(notes);
-    expect(text).not.toMatch(/즉시\s*매수|자동\s*주문\s*실행/);
+    const summaries = notes.map((n) => n.noteSummary).join(' ');
+    expect(summaries).not.toMatch(/즉시\s*매수|자동\s*주문\s*실행|매수\s*추천/);
     expect(notes.every((n) => n.doNotDo.some((d) => d.includes('자동')))).toBe(true);
+  });
+
+  it('each note has checklist content', () => {
+    const notes = buildDailyReviewNotePreviews(ctx);
+    for (const n of notes) {
+      const has =
+        n.nextChecks.length > 0 ||
+        n.riskFlags.length > 0 ||
+        n.evidenceNeeded.length > 0 ||
+        n.doNotDo.length > 0;
+      expect(has).toBe(true);
+    }
   });
 });

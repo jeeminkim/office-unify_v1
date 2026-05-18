@@ -52,3 +52,4 @@ create index if not exists web_daily_review_notes_user_status_date_idx
   on public.web_daily_review_notes (user_key, status, review_date desc);
 
 comment on table public.web_daily_review_notes is 'Daily Review 일일 점검 메모. GET /daily-review는 write 없음. POST /api/daily-review/notes만 저장.';
+comment on column public.web_daily_review_notes.updated_at is '앱 서버가 POST 저장·PATCH(dismissed/archived) 시에만 갱신합니다. DB 트리거 없음.';

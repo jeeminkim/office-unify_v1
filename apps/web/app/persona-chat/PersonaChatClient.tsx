@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PersonaChatMessageDto, PersonaChatSessionInitResponseBody, PersonaChatMessageResponseBody } from "@office-unify/shared-types";
+import type {
+  LongResponseFallback,
+  PersonaChatMessageDto,
+  PersonaChatSessionInitResponseBody,
+  PersonaChatMessageResponseBody,
+} from "@office-unify/shared-types";
 import {
   PERSONA_CHAT_STREAM_FLUSH_CHARS,
   PERSONA_CHAT_USER_MESSAGE_MAX_CHARS,
@@ -10,6 +15,8 @@ import { listRegisteredPersonaWebKeys, resolveWebPersona } from "@office-unify/a
 import Link from "next/link";
 import { PersonaAssistantFeedbackRow } from "@/components/PersonaAssistantFeedbackRow";
 import { JoIlHyeonLedgerForm } from "@/components/JoIlHyeonLedgerForm";
+import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
+import { buildLongResponseFallbackFromError } from "@/lib/longResponseFallback";
 
 const jsonHeaders: HeadersInit = {
   "Content-Type": "application/json",
@@ -84,10 +91,12 @@ export function PersonaChatClient() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [streamPreview, setStreamPreview] = useState<string | null>(null);
   const [structuredNotice, setStructuredNotice] = useState<string | null>(null);
+  const [longResponseFallback, setLongResponseFallback] = useState<LongResponseFallback | null>(null);
 
   const sendInFlightRef = useRef(false);
   const idempotencyKeyRef = useRef<string | null>(null);
   const lastAttemptContentRef = useRef<string>("");
+  const streamPartialRef = useRef("");
 
   const loadSession = useCallback(async () => {
     setError(null);
@@ -144,6 +153,8 @@ export function PersonaChatClient() {
     sendInFlightRef.current = true;
     setLoadingSend(true);
     setStreamPreview("");
+    setLongResponseFallback(null);
+    streamPartialRef.current = "";
     try {
       const res = await fetch("/api/persona-chat/message/stream", {
         method: "POST",
@@ -166,6 +177,7 @@ export function PersonaChatClient() {
       const onDelta = (t: string) => {
         const wasEmpty = acc.length === 0;
         acc += t;
+        streamPartialRef.current = acc;
         sinceFlush += t.length;
         const isFirstChunk = wasEmpty && acc.length > 0;
         if (isFirstChunk || sinceFlush >= PERSONA_CHAT_STREAM_FLUSH_CHARS) {
@@ -214,7 +226,15 @@ export function PersonaChatClient() {
       setInput("");
       if (body.longTermMemorySummary) setLongTerm(body.longTermMemorySummary);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "전송 실패");
+      const msg = e instanceof Error ? e.message : "전송 실패";
+      const partial = streamPartialRef.current;
+      const fallback = buildLongResponseFallbackFromError(msg, partial || undefined);
+      if (fallback) {
+        setLongResponseFallback(fallback);
+        setError(null);
+      } else {
+        setError(msg);
+      }
     } finally {
       setStreamPreview(null);
       sendInFlightRef.current = false;
@@ -314,6 +334,10 @@ export function PersonaChatClient() {
             </button>
           </div>
         </div>
+      ) : null}
+
+      {longResponseFallback ? (
+        <LongResponseFallbackCard fallback={longResponseFallback} source="pb_weekly" />
       ) : null}
 
       {error ? (

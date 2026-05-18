@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
-import { listWebPortfolioWatchlistForUser, upsertPortfolioWatchlist } from '@office-unify/supabase-access';
+import {
+  deletePortfolioWatchlist,
+  listWebPortfolioWatchlistForUser,
+  upsertPortfolioWatchlist,
+} from '@office-unify/supabase-access';
 import type { PortfolioLedgerWatchlistInput } from '@office-unify/shared-types';
 
 type Params = { params: Promise<{ id: string }> };
@@ -64,6 +68,26 @@ export async function PATCH(req: Request, context: Params) {
   try {
     await upsertPortfolioWatchlist(supabase, auth.userKey, patch);
     return NextResponse.json({ ok: true });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: Request, context: Params) {
+  const auth = await requirePersonaChatAuth();
+  if (!auth.ok) return auth.response;
+  const parsed = parseWatchlistId((await context.params).id);
+  if (!parsed) {
+    return NextResponse.json({ error: 'Invalid id. Use market:symbol.' }, { status: 400 });
+  }
+  const supabase = getServiceSupabase();
+  if (!supabase) {
+    return NextResponse.json({ error: 'Supabase is not configured.' }, { status: 503 });
+  }
+  try {
+    await deletePortfolioWatchlist(supabase, auth.userKey, parsed.market, parsed.symbol);
+    return NextResponse.json({ ok: true, message: '관심종목을 제외했습니다.' });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

@@ -416,12 +416,16 @@ export const SQL_READINESS_REGISTRY: SqlReadinessRegistryEntry[] = [
     expectedColumns: [
       { table: 'web_daily_review_notes', columns: ['note_summary', 'subject_type', 'idempotency_key', 'status'] },
     ],
-    expectedIndexes: ['web_daily_review_notes_idempotency_uidx', 'web_daily_review_notes_saved_subject_uidx'],
+    expectedIndexes: [
+      'web_daily_review_notes_idempotency_uidx',
+      'web_daily_review_notes_saved_subject_uidx',
+      'web_daily_review_notes_user_date_idx',
+    ],
     expectedRoutines: [],
     degradedSymptoms: [
-      'Daily Review 메모 저장 불가',
-      '30일 복기 dailyReviewNotes missing',
-      'preview는 동작·저장만 degraded',
+      'Daily Review 메모 저장',
+      '미적용 시 preview는 가능하지만 저장은 불가',
+      '30일 복기 dailyReviewNotes 데이터는 partial',
     ],
     actionHint: 'docs/sql/APPLY_ORDER.md §8 #23 append_daily_review_notes.sql을 적용하세요.',
     checkSqlPreview: `select table_name from information_schema.tables

@@ -31,6 +31,10 @@ function patternLabel(key: string): string {
     action_queue_stall: "Action 큐 정체",
     repeated_hidden_candidates: "숨김 후보 반복",
     good_behavior: "개선 행동",
+    repeated_us_data_notes: "미국 데이터 메모 반복",
+    repeated_sector_mismatch_notes: "섹터 매칭 메모 반복",
+    daily_note_without_action_followup: "메모 후 Action 미연결",
+    improved_daily_note_to_action_done: "메모 → Action 완료",
   };
   return map[key] ?? key;
 }
@@ -169,7 +173,23 @@ export function JudgmentReviewClient() {
             <p className="mt-1 text-xs text-slate-600">주요 패턴: {patternLabel(review.headline.primaryPattern)}</p>
           </section>
 
-          <section className="mb-5 grid gap-2 sm:grid-cols-3">
+          <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4 text-xs shadow-sm">
+            <h2 className="text-sm font-semibold">데이터 소스</h2>
+            <ul className="mt-2 space-y-1 text-slate-700">
+              <li>
+                Daily Review Notes:{" "}
+                {review.qualityMeta.dataCoverage.dailyReviewNotes === "missing"
+                  ? "테이블 없음 (30일 복기 partial)"
+                  : (review.metrics.savedDailyNoteCount ?? 0) > 0
+                    ? `저장 ${review.metrics.savedDailyNoteCount}건 · 보류 ${review.metrics.dismissedDailyNoteCount ?? 0}건`
+                    : "아직 저장된 일일 점검 메모가 없습니다."}
+              </li>
+              <li>Today Candidates: {review.qualityMeta.dataCoverage.todayCandidates}</li>
+              <li>Action Items: {review.qualityMeta.dataCoverage.actionItems}</li>
+            </ul>
+          </section>
+
+          <section className="mb-5 grid gap-2 sm:grid-cols-4">
             <div className="rounded-lg border bg-slate-50 p-3 text-center">
               <p className="text-[10px] text-slate-500">Action 완료율</p>
               <p className="text-lg font-semibold">{Math.round(review.metrics.actionItemCompletionRatio * 100)}%</p>
@@ -181,6 +201,10 @@ export function JudgmentReviewClient() {
             <div className="rounded-lg border bg-slate-50 p-3 text-center">
               <p className="text-[10px] text-slate-500">방치 open</p>
               <p className="text-lg font-semibold">{review.actionQueueReview.staleOpenItems.length}</p>
+            </div>
+            <div className="rounded-lg border bg-slate-50 p-3 text-center">
+              <p className="text-[10px] text-slate-500">저장된 일일 메모</p>
+              <p className="text-lg font-semibold">{review.metrics.savedDailyNoteCount ?? 0}</p>
             </div>
           </section>
 

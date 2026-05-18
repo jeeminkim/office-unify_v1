@@ -15,6 +15,7 @@ import {
   sanitizeWeeklyReviewContext,
 } from '@/lib/server/privateBankerWeeklyReview';
 import { auditPrivateBankerStructuredResponse, mergePbWeeklyReviewQualityMetaWithGuard } from '@/lib/server/privateBankerResponseGuard';
+import { buildLongResponseFallback } from '@/lib/longResponseFallback';
 import { INVESTOR_PROFILE_TABLE_ACTION_HINT } from '@/lib/server/investorProfileSupabaseErrors';
 import { RESEARCH_FOLLOWUP_TABLE_ACTION_HINT } from '@/lib/server/researchFollowupSupabaseErrors';
 
@@ -145,6 +146,7 @@ export async function POST(req: Request) {
       supabase,
       userKey,
       userContent: messageContent,
+      contentPolicy: 'server_synthesized',
     });
     const pbSessionId = prepared.sessionId;
 
@@ -164,6 +166,8 @@ export async function POST(req: Request) {
     }
 
     const normalized = normalizeInvestmentAssistantOutput(result.body.assistantMessage.content);
+    const longResponseFallback = buildLongResponseFallback(normalized.text);
+    const displayText = longResponseFallback.displayText;
     const fallbackUsed = Boolean(result.body.llmProviderNote && result.body.llmProviderNote.toLowerCase().includes('gemini'));
     const guard = auditPrivateBankerStructuredResponse(normalized.text);
     const qualityMeta = mergePbWeeklyReviewQualityMetaWithGuard(preview.qualityMeta, guard);
@@ -172,8 +176,9 @@ export async function POST(req: Request) {
       ...result.body,
       assistantMessage: {
         ...result.body.assistantMessage,
-        content: normalized.text,
+        content: displayText,
       },
+      longResponseFallback,
       outputQuality: normalized.quality,
       modelUsage: {
         providerUsed: fallbackUsed ? 'gemini_fallback_after_openai' : 'openai_primary',
@@ -187,11 +192,20 @@ export async function POST(req: Request) {
       report: {
         preview,
         qualityMeta,
-        assistantPreview: normalized.text.slice(0, 4000),
+        assistantPreview: displayText.slice(0, 4000),
       },
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
+    const exceedFallback = buildLongResponseFallback(message);
+    if (exceedFallback.exceededLimit || /exceeds \d+ characters/i.test(message)) {
+      return NextResponse.json({
+        ok: false,
+        error: exceedFallback.actionHint,
+        longResponseFallback: exceedFallback,
+        code: 'response_too_long',
+      }, { status: 200 });
+    }
     const isSchema =
       message.includes('web_persona_chat_requests') ||
       message.includes('does not exist') ||

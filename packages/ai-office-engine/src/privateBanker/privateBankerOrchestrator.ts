@@ -16,6 +16,7 @@ import { generateGeminiPersonaReply, type GeminiChatTurn } from '../geminiWebPer
 import { executeOpenAiWithBudgetAndGeminiFallback } from '../openAiBudgetRunner';
 import { resolveGeminiModelForWebPersonaSlug } from '../webPersonaLlmModels';
 import {
+  assertPersonaChatServerSynthesizedContentLength,
   assertPersonaChatUserContentLength,
   persistPersonaChatAfterLlm,
   type PersonaChatTurnPrepared,
@@ -158,12 +159,18 @@ export async function preparePrivateBankerTurnContext(params: {
   supabase: SupabaseClient;
   userKey: OfficeUserKey;
   userContent: string;
+  /** 주간 점검 등 서버 합성 프롬프트 — 28k 한도 */
+  contentPolicy?: 'user' | 'server_synthesized';
 }): Promise<PersonaChatTurnPrepared> {
   const personaKey = toPersonaWebKey(PRIVATE_BANKER_PERSONA_SLUG);
   const kst = getKstDateString();
   const text = params.userContent.trim();
   if (!text) throw new Error('Empty message');
-  assertPersonaChatUserContentLength(text);
+  if (params.contentPolicy === 'server_synthesized') {
+    assertPersonaChatServerSynthesizedContentLength(text);
+  } else {
+    assertPersonaChatUserContentLength(text);
+  }
 
   const { sessionId, sessionDateKst } = await getOrCreateWebPersonaSession(
     params.supabase,

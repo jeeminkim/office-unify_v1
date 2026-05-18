@@ -225,6 +225,13 @@ export type {
 } from './actionItemDetail';
 export { parseActionItemDetailJson } from './actionItemDetail';
 export type {
+  ActionItemStep,
+  ActionItemStepActionKey,
+  ActionItemStepCategory,
+  ActionItemStepRecommendedAction,
+} from './actionItemSteps';
+export type { LongResponseFallback } from './longResponseFallback';
+export type {
   CommitteeActionItem,
   CommitteeActionRoadmap,
   CommitteeActionRoadmapStatus,
@@ -240,6 +247,8 @@ export {
   PERSONA_CHAT_MEMORY_SNIPPET_TARGET_MIN_CHARS,
   PERSONA_CHAT_STREAM_FLUSH_CHARS,
   PERSONA_CHAT_USER_MESSAGE_MAX_CHARS,
+  PERSONA_CHAT_SERVER_SYNTHESIZED_MAX_CHARS,
+  LONG_RESPONSE_DISPLAY_LIMIT_CHARS,
   PERSONA_CHAT_FEEDBACK_NOTE_MAX_CHARS,
 } from './personaChatLimits';
 export type {
@@ -334,6 +343,8 @@ export type {
   TodayCandidateExposureDiagnostics,
   UsCandidateDiagnostics,
   UsCandidateDiagnosticsStatus,
+  UsCandidateSetupDiagnosis,
+  UsCandidateSetupRootCause,
   WatchlistRecommendationCandidate,
   WatchlistRecommendationCandidateSourceRef,
 } from './todayCandidateIntegration';

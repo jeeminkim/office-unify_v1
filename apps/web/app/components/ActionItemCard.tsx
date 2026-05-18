@@ -9,6 +9,7 @@ import {
   buildResearchHrefFromActionItem,
   buildRetrospectiveHrefFromActionItem,
 } from "@/lib/actionItemLinks";
+import { ActionStepRunner } from "@/components/ActionStepRunner";
 
 const DISMISS_OPTIONS: { value: ActionItemDismissReason; label: string }[] = [
   { value: "already_confirmed", label: "이미 확인함" },
@@ -36,10 +37,12 @@ export function ActionItemCard({
   it,
   patchingId,
   onPatch,
+  onStepDone,
 }: {
   it: ActionItemRowDto;
   patchingId: string | null;
   onPatch: (id: string, status: ActionItemStatus, dismissReason?: ActionItemDismissReason) => void;
+  onStepDone?: (id: string, stepId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [dismissOpen, setDismissOpen] = useState(false);
@@ -141,6 +144,11 @@ export function ActionItemCard({
               ))}
             </ul>
           ) : null}
+          <ActionStepRunner
+            actionItemId={it.id}
+            detail={detail}
+            onStepDone={onStepDone ? (stepId) => onStepDone(it.id, stepId) : undefined}
+          />
         </div>
       ) : null}
 

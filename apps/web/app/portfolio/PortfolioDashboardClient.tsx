@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
+import { PortfolioRoleBanner } from "@/components/PortfolioRoleBanner";
 
 type SummaryResponse = {
   ok: boolean;
@@ -523,11 +524,12 @@ export function PortfolioDashboardClient() {
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-slate-900">
+      <PortfolioRoleBanner variant="holdings" />
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">포트폴리오 현황 대시보드</h1>
+          <h1 className="text-2xl font-bold tracking-tight">보유 현황</h1>
           <p className="mt-1 text-sm text-slate-600">
-            현재 포지션 상태 점검 화면입니다. 주문 실행이 아니라 사후 기록/원장 반영 기준입니다.
+            현재 보유 상태·평가·시세 품질·집중도를 보는 화면입니다. 매매 기록·수량/평단 수정은 보유/거래 원장에서 합니다.
           </p>
           <OpsFeedbackButton domain="portfolio" className="mt-2" />
         </div>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildActionItemDetailFromTodayCandidate,
   buildCommitteeRoadmapItemDetail,
+  buildDailyReviewNoteActionItemDetail,
   buildGenericActionItemDetail,
   buildUsDiagnosticsActionItemDetail,
 } from '@/lib/actionItemDetailBuilders';
@@ -53,5 +54,25 @@ describe('actionItemDetailBuilders', () => {
     const d = buildUsDiagnosticsActionItemDetail();
     expect(d.checklist?.some((c) => c.label.includes('SPY'))).toBe(true);
     expect(d.doNotDo?.some((x) => x.includes('empty'))).toBe(true);
+  });
+
+  it('daily review note detail maps checklist and source summary', () => {
+    const d = buildDailyReviewNoteActionItemDetail({
+      subjectType: 'holding',
+      symbol: '028300',
+      name: 'HLB',
+      market: 'KR',
+      noteSummary: '오늘 확인할 보유 점검',
+      noteDetail: '',
+      riskFlags: ['risk_review'],
+      nextChecks: ['공시 확인', '권리 일정 확인'],
+      doNotDo: ['자동 주문 없음'],
+      evidenceNeeded: ['disclosure'],
+      idempotencyKey: 'k1',
+    });
+    expect(d.whyCreated).toContain('Daily Review note');
+    expect(d.decisionContext?.sourceSummary).toBe('오늘 확인할 보유 점검');
+    expect(d.checklist?.map((c) => c.label)).toEqual(['공시 확인', '권리 일정 확인']);
+    expect(d.recommendedNextLinks?.length).toBeGreaterThan(0);
   });
 });

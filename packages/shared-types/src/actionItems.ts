@@ -92,6 +92,9 @@ export type ActionItemPatchRequest = {
   priority?: ActionItemPriority;
   links?: ActionItemLinks;
   dismissReason?: ActionItemDismissReason;
+  /** additive: actionSteps[].status 갱신 (완료 버튼만 write) */
+  stepId?: string;
+  stepStatus?: 'open' | 'selected' | 'done' | 'dismissed';
 };
 
 export const ACTION_ITEM_DEDUPE_POLICY_SUMMARY =

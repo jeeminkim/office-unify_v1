@@ -3,6 +3,8 @@ import type { ActionItemPatchRequest, ActionItemStatus } from '@office-unify/sha
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { getActionItemForUser, patchActionItemForUser } from '@office-unify/supabase-access';
+import { parseActionItemDetailJson } from '@office-unify/shared-types';
+import { patchActionStepStatus } from '@/lib/actionSteps';
 import {
   actionItemTableMissingJson,
   assertActionItemStatusTransition,
@@ -40,9 +42,19 @@ export async function PATCH(req: Request, ctx: Ctx) {
       if (body.status === 'done') patch.completed_at = new Date().toISOString();
       if (body.status === 'open' || body.status === 'in_progress') patch.completed_at = null;
     }
+    const prevDetail = parseActionItemDetailJson(
+      (existing.detail_json ?? {}) as Record<string, unknown>,
+    );
+
     if (body.dismissReason) {
-      const prev = (existing.detail_json ?? {}) as Record<string, unknown>;
-      patch.detail_json = { ...prev, dismissReason: body.dismissReason };
+      patch.detail_json = { ...prevDetail, dismissReason: body.dismissReason };
+    }
+
+    if (body.stepId && body.stepStatus) {
+      const nextDetail = patchActionStepStatus(prevDetail, body.stepId, body.stepStatus);
+      patch.detail_json = body.dismissReason
+        ? { ...nextDetail, dismissReason: body.dismissReason }
+        : nextDetail;
     }
 
     const row = await patchActionItemForUser(supabase, auth.userKey as string, id, patch);

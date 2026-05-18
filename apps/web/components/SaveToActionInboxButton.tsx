@@ -10,6 +10,8 @@ type Props = {
   label?: string;
   className?: string;
   compact?: boolean;
+  savedHint?: string;
+  dedupedHint?: string;
   onSaved?: (result: { deduped: boolean }) => void;
 };
 
@@ -18,6 +20,8 @@ export function SaveToActionInboxButton({
   label = "액션 인박스에 저장",
   className,
   compact,
+  savedHint = "저장했습니다.",
+  dedupedHint = "이미 인박스에 있습니다.",
   onSaved,
 }: Props) {
   const [busy, setBusy] = useState(false);
@@ -32,7 +36,7 @@ export function SaveToActionInboxButton({
         setHint(r.actionHint ?? r.error ?? "저장 실패");
         return;
       }
-      setHint(r.deduped ? "이미 인박스에 있습니다." : "저장했습니다.");
+      setHint(r.deduped ? dedupedHint : savedHint);
       onSaved?.({ deduped: r.deduped ?? false });
     } catch (e: unknown) {
       setHint(e instanceof Error ? e.message : "저장 실패");

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { createServerSupabaseAuthClient } from "@/lib/supabase/server";
 import { isAllowedPersonaChatEmail } from "@/lib/server/allowed-user";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
@@ -46,5 +47,9 @@ export default async function CommitteeDiscussionPage() {
     );
   }
 
-  return <CommitteeDiscussionClient />;
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-3xl p-8 text-sm text-slate-600">로딩…</div>}>
+      <CommitteeDiscussionClient />
+    </Suspense>
+  );
 }

@@ -4,6 +4,27 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-18 Navigation IA · Watchlist Manager · Google Finance Setup Assistant
+
+- **메뉴 IA:** `AppNav` 트리 구조(데스크톱 드롭다운·모바일 More)·`navConfig` — Portfolio/ Ledger/ Watchlist 역할 라벨 정리.
+- **Watchlist Manager:** `/watchlist` · `GET /api/portfolio/watchlist` · 승인 전 pending 후보 표시.
+- **Google Finance Setup:** `/ops/google-finance-setup` · `GET /api/system/google-finance-setup` (read-only, Sheets 자동 수정 없음).
+- **Portfolio:** 보유 현황/보유·거래 원장 상단 역할 설명 배너.
+
+### 2026-05-18 Action Step Runner · US Setup Guide · Long Response Fallback
+
+- **US data:** `usCandidateDiagnostics.setupDiagnosis` · Google Sheets/GOOGLEFINANCE 설정 점검 카드 · 설정 복사·Action Item.
+- **Long response:** `buildLongResponseFallback` · PB 주간 점검 2000자 초과 시 요약·복사·위원회/PB 연계 (deterministic, LLM 재호출 없음).
+- **Action Steps:** `detail_json.actionSteps` · step 완료 PATCH · Risk Review 개별 step 저장 · Research/PB/위원회 seed hub.
+
+### 2026-05-18 EVO-015 Stabilization · Daily Review Notes E2E Hardening
+
+- **SQL readiness #23:** `user_date` index probe · partial/missing UI 문구 · `enrichSqlReadinessItem` daily_review 설명.
+- **UX:** 저장 중/중복 클릭 방지 · table_missing → `/ops/sql-readiness` · dismiss confirm·사유 · Action Inbox 힌트.
+- **Preview:** HLB/US/ops 품질 · dedupe · sector `evidenceNeeded` · ops `sqlPartial` 연동.
+- **30일 복기:** `savedDailyNoteCount` · `daily_note_without_action_followup` · `improved_daily_note_to_action_done` 패턴.
+- **감사:** `readOnlyRouteAudit` daily-review·judgment-review GET 추가.
+
 ### 2026-05-18 EVO-015 Daily Review Notes (1차 shipped)
 
 - **SQL:** `append_daily_review_notes.sql` · `web_daily_review_notes` · idempotency + saved subject unique.

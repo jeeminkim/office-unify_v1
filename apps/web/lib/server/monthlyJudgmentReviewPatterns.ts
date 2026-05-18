@@ -167,6 +167,60 @@ export function detectRepeatedJudgmentPatterns(
     });
   }
 
+  const savedDailyNotes = (dailyReviewNotes?.rows ?? []).filter((r) => r.status === 'saved');
+  const notesWithoutFollowup = savedDailyNotes.filter((n) => {
+    const noteKey = n.idempotency_key;
+    const actionKey = noteKey ? `daily-note-action:${noteKey}` : null;
+    const sym = (n.symbol ?? '').toUpperCase();
+    const hasAction = actionItems.rows.some((a) => {
+      if (actionKey && a.idempotency_key === actionKey) return true;
+      return sym.length > 0 && (a.symbol ?? '').toUpperCase() === sym;
+    });
+    return !hasAction;
+  });
+  if (notesWithoutFollowup.length >= 2) {
+    patterns.push({
+      patternKey: 'daily_note_without_action_followup',
+      label: '일일 메모 후 Action Item 미연결',
+      evidenceCount: notesWithoutFollowup.length,
+      examples: notesWithoutFollowup.slice(0, 2).map((r) => ({
+        sourceType: 'daily_review_note',
+        date: r.review_date,
+        title: r.note_summary.slice(0, 80),
+        symbol: r.symbol ?? undefined,
+      })),
+      interpretation:
+        '저장된 Daily Review Note가 Action Inbox 후속 작업으로 이어지지 않은 경우가 있습니다. 점검 메모를 Action Item으로 연결해 보세요.',
+      suggestedRule: '저장한 일일 점검 메모는 같은 날 Action Item 1건으로 연결하거나 보류 사유를 남깁니다.',
+    });
+  }
+
+  const notesWithDoneAction = savedDailyNotes.filter((n) => {
+    const noteKey = n.idempotency_key;
+    const actionKey = noteKey ? `daily-note-action:${noteKey}` : null;
+    const sym = (n.symbol ?? '').toUpperCase();
+    return actionItems.rows.some((a) => {
+      if (a.status !== 'done') return false;
+      if (actionKey && a.idempotency_key === actionKey) return true;
+      return sym.length > 0 && (a.symbol ?? '').toUpperCase() === sym;
+    });
+  });
+  if (notesWithDoneAction.length >= 1) {
+    patterns.push({
+      patternKey: 'improved_daily_note_to_action_done',
+      label: '일일 메모 → Action Item 완료',
+      evidenceCount: notesWithDoneAction.length,
+      examples: notesWithDoneAction.slice(0, 2).map((r) => ({
+        sourceType: 'daily_review_note',
+        date: r.review_date,
+        title: r.note_summary.slice(0, 80),
+        symbol: r.symbol ?? undefined,
+      })),
+      interpretation: 'Daily Review Note에서 Action Item으로 이어져 완료된 흐름이 보입니다.',
+      suggestedRule: '점검 메모 → Action Item → 완료 루프를 유지합니다.',
+    });
+  }
+
   if (markReviewed >= 2 && doneCount >= 2) {
     patterns.push({
       patternKey: 'good_behavior',

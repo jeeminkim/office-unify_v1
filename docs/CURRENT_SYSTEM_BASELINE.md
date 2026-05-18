@@ -13,14 +13,17 @@
 ## 주요 화면
 
 - `/`
-- `/portfolio`
-- `/portfolio-ledger`
+- `/portfolio` (보유 현황)
+- `/portfolio-ledger` (보유/거래 원장)
+- `/watchlist` (관심종목 관리)
+- `/ops/google-finance-setup` (Google Finance read-only 설정 점검)
 - `/sector-radar`
 - `/trend`
 - `/research-center`
 - `/committee-discussion`
 - `/trade-journal`
 - `/judgment-review` (EVO-012 30일 판단 품질 복기)
+- `/daily-review` (EVO-015 일일 점검 메모 · 명시 저장만)
 - `/action-items`
 - `/ops-events`
 

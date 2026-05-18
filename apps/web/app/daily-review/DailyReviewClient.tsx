@@ -83,7 +83,11 @@ export function DailyReviewClient() {
       {data?.qualityMeta?.notesTableMissing ? (
         <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
           Daily Review Notes 테이블이 없습니다.{" "}
-          <code className="text-[10px]">docs/sql/append_daily_review_notes.sql</code>을 APPLY_ORDER §8 #23에 따라 적용하세요.
+          <Link href="/ops/sql-readiness" className="underline">
+            SQL readiness
+          </Link>
+          에서 #23을 적용하거나{" "}
+          <code className="text-[10px]">docs/sql/append_daily_review_notes.sql</code> (APPLY_ORDER §8 #23)을 실행하세요.
           미리보기는 볼 수 있으나 저장은 불가합니다.
         </div>
       ) : null}

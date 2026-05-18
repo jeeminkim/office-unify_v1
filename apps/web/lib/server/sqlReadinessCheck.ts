@@ -332,6 +332,18 @@ export function enrichSqlReadinessItem(
     canAppWorkWithoutThis = true;
     degradedButUsable = item.status === 'partial';
   }
+  if (reg.featureArea === 'daily_review') {
+    canAppWorkWithoutThis = true;
+    degradedButUsable = item.status === 'partial' || item.status === 'missing';
+    if (item.status === 'missing') {
+      partialExplanation =
+        'Daily Review 메모 저장 테이블이 없습니다. 미적용 시 preview는 가능하지만 저장은 불가합니다. 30일 복기 dailyReviewNotes 데이터는 partial입니다.';
+    } else if (item.status === 'partial') {
+      partialExplanation =
+        'Daily Review 메모 저장 테이블은 있으나 idempotency·saved unique·user/date 인덱스 등이 일부 누락되었을 수 있습니다. preview는 가능하지만 저장·중복 방지가 degraded될 수 있습니다.';
+      degradedButUsable = true;
+    }
+  }
 
   return {
     ...item,

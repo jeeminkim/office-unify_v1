@@ -37,4 +37,36 @@ describe('enrichSqlReadinessItem', () => {
     expect(out.degradedButUsable).toBe(true);
     expect(out.missingObjects).toContain('upsert_web_ops_event_by_fingerprint');
   });
+
+  it('explains daily_review missing table', () => {
+    const regDaily = {
+      order: 23,
+      sqlFile: 'append_daily_review_notes.sql',
+      groupName: 'g',
+      label: 'Daily Review',
+      purpose: 'notes',
+      requiredLevel: 'recommended' as const,
+      featureArea: 'daily_review' as const,
+      expectedTables: ['web_daily_review_notes'],
+      expectedColumns: [],
+      expectedIndexes: [],
+      expectedRoutines: [],
+      degradedSymptoms: [],
+      actionHint: 'apply #23',
+      docsPath: 'docs/sql/APPLY_ORDER.md',
+    };
+    const item: SqlReadinessItem = {
+      ...regDaily,
+      status: 'missing',
+      checkedObjects: {
+        tables: [{ name: 'web_daily_review_notes', exists: false }],
+        columns: [],
+        indexes: [],
+        routines: [],
+      },
+    };
+    const out = enrichSqlReadinessItem(item, regDaily);
+    expect(out.partialExplanation).toMatch(/preview/);
+    expect(out.partialExplanation).toMatch(/저장/);
+  });
 });

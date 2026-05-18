@@ -14,6 +14,41 @@
 
 ---
 
+### 2026-05-18 — 메뉴는 투자 운영 흐름 기준 트리 구조로 정리한다
+
+- **결정:** 채택
+- **이유:** 기능이 많아질수록 단순 나열 메뉴는 사용자가 목적을 이해하기 어렵다.
+- **대안:** 기존 flat nav 유지.
+- **링크:** `apps/web/lib/navConfig.ts`, `AppNav`
+
+### 2026-05-18 — Portfolio는 보유 현황, Portfolio Ledger는 원장, Watchlist는 관심종목 관리로 분리한다
+
+- **결정:** 채택
+- **이유:** 보유 평가, 거래/수정, 관심종목 관리는 사용 목적이 다르므로 화면과 메뉴에서 분리해야 한다.
+- **대안:** Portfolio Ledger에 모든 관리 기능 집중.
+- **링크:** `/portfolio`, `/portfolio-ledger`, `/watchlist`
+
+### 2026-05-18 — Google Finance Setup Assistant는 자동 수정이 아니라 read-only 설정 점검 도구다
+
+- **결정:** 채택
+- **이유:** Sheets 탭/수식 자동 변경은 위험하므로 사용자가 확인하고 적용하도록 한다.
+- **대안:** 앱이 Google Sheets에 수식을 자동 작성.
+- **링크:** `/ops/google-finance-setup`, `GET /api/system/google-finance-setup`
+
+### 2026-05-18 — 긴 PB/위원회 응답은 실패가 아니라 요약·복사 가능한 fallback으로 처리한다
+
+- **결정:** 채택
+- **이유:** 2000자 초과 메시지만 띄우면 사용자가 내용을 후속 상담이나 토론에 활용할 수 없다.
+- **대안:** 단순 에러 표시.
+- **링크:** `apps/web/lib/longResponseFallback.ts`, PB weekly-review UI
+
+### 2026-05-18 — Action Item 체크리스트는 Action Step으로 쪼개 순차 실행한다
+
+- **결정:** 채택
+- **이유:** 사용자는 전체 체크리스트가 아니라 가장 궁금한 항목부터 Research/PB/위원회/복기로 이어가고 싶다.
+- **대안:** 전체 Action Item 단위만 상태 관리.
+- **링크:** `actionItemDetailBuilders`, `ActionStepRunner`
+
 ### 2026-05-18 — Daily Review Note는 자동 저장하지 않고 사용자 명시 저장만 허용한다
 
 - **결정:** 채택

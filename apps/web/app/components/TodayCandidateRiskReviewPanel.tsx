@@ -9,7 +9,8 @@ import type {
 import type { TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import { riskReviewChecklistItems } from "@/lib/todayCandidateUiCopy";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
-import { buildActionItemDetailFromTodayCandidate } from "@/lib/actionItemDetailBuilders";
+import { buildActionItemDetailFromTodayCandidate, buildRiskReviewStepActionItemDetail } from "@/lib/actionItemDetailBuilders";
+import { ActionStepRunner } from "@/components/ActionStepRunner";
 
 type Props = {
   candidate: TodayStockCandidate;
@@ -251,10 +252,31 @@ export function TodayCandidateRiskReviewPanel({
               ))}
             </ul>
           ) : null}
-          <p className="mt-1 font-medium">다음 확인 체크리스트</p>
-          <ul className="mt-0.5 list-inside list-disc">
+          <ActionStepRunner
+            compact
+            title="다음 실행 단계"
+            detail={buildActionItemDetailFromTodayCandidate(candidate, { whyCreated: "리스크 점검 패널" })}
+          />
+          <ul className="mt-2 space-y-1">
             {riskReviewChecklistItems(candidate).map((item) => (
-              <li key={item}>{item}</li>
+              <li key={item} className="flex flex-col gap-1 rounded border border-rose-100 bg-white/80 p-1.5 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-[10px]">{item}</span>
+                <SaveToActionInboxButton
+                  compact
+                  label="이 step만 저장"
+                  savedHint="Action Inbox에 저장됨"
+                  dedupedHint="이미 Action Inbox에 있습니다."
+                  request={{
+                    title: `[${candidate.name ?? candidate.stockCode}] ${item.slice(0, 40)}`,
+                    sourceType: "today_candidate",
+                    sourceId: candidate.candidateId,
+                    sourceLabel: candidate.name ?? candidate.stockCode,
+                    symbol: candidate.stockCode,
+                    idempotencyKey: `risk-step:${candidate.candidateId}:${item.slice(0, 32).replace(/\s+/g, "_")}`,
+                    detailJson: buildRiskReviewStepActionItemDetail(candidate, item),
+                  }}
+                />
+              </li>
             ))}
           </ul>
         </div>

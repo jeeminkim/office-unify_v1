@@ -35,6 +35,35 @@ export type UsCandidateDiagnostics = {
     href?: string;
     actionType?: 'navigate' | 'refresh_quotes' | 'save_action_item' | 'disabled_todo';
   }>;
+  /** additive: Google Sheets / GOOGLEFINANCE 설정 점검 가이드 */
+  setupDiagnosis?: UsCandidateSetupDiagnosis;
+};
+
+export type UsCandidateSetupRootCause =
+  | 'google_sheets_tab_missing'
+  | 'googlefinance_formula_failed'
+  | 'range_parse_failed'
+  | 'ticker_format_invalid'
+  | 'provider_permission_or_network'
+  | 'all_anchors_empty'
+  | 'unknown';
+
+export type UsCandidateSetupDiagnosis = {
+  likelyRootCause: UsCandidateSetupRootCause;
+  setupChecklist: Array<{
+    label: string;
+    description: string;
+    howToCheck: string;
+    expectedResult: string;
+    actionKey?: string;
+  }>;
+  googleFinanceGuide: {
+    requiredTabs: string[];
+    sampleTickers: string[];
+    sampleFormulas: string[];
+    fallbackTickers: string[];
+  };
+  actionHint: string;
 };
 
 export type TodayCandidateExposureDiagnostics = {

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import type { LongResponseFallback } from "@office-unify/shared-types";
 import type {
   CommitteeActionRoadmap,
   CommitteeDiscussionLineDto,
@@ -12,6 +14,13 @@ import Link from "next/link";
 import { CommitteeTurnFeedbackRow } from "@/components/CommitteeTurnFeedbackRow";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
 import { committeeRoadmapToCreateRequests, createActionItemsBatch } from "@/lib/actionItemsClient";
+import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
+import { readActionStepSeed } from "@/lib/actionStepLinks";
+import {
+  buildLongResponseFallback,
+  buildLongResponseFallbackFromError,
+  isMessageExceedsLimitError,
+} from "@/lib/longResponseFallback";
 
 const jsonHeaders: HeadersInit = {
   "Content-Type": "application/json",
@@ -131,11 +140,45 @@ function toWarningUi(warnings: string[]): {
 }
 
 export function CommitteeDiscussionClient() {
+  const searchParams = useSearchParams();
   const [topic, setTopic] = useState("");
   const [roundNote, setRoundNote] = useState("");
   const [transcript, setTranscript] = useState<CommitteeDiscussionLineDto[]>([]);
   const [phase, setPhase] = useState<"idle" | "loading_round" | "after_round" | "loading_closing" | "closed">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [longResponseFallback, setLongResponseFallback] = useState<LongResponseFallback | null>(null);
+  const [seedBanner, setSeedBanner] = useState<string | null>(null);
+  useEffect(() => {
+    const q = searchParams.get("q")?.trim();
+    const source = searchParams.get("source") ?? "";
+    const seed = readActionStepSeed();
+    if (source === "action_step" && q) {
+      setTopic((prev) => (prev.trim() ? prev : decodeURIComponent(q)));
+      setSeedBanner("Action Step을 위원회 토론 주제로 가져왔습니다.");
+    } else if (source === "pb_weekly" && seed?.compactText) {
+      setTopic((prev) => (prev.trim() ? prev : seed.compactText.slice(0, TOPIC_MAX)));
+      setSeedBanner("PB/리포트 요약을 위원회 토론 주제로 가져왔습니다.");
+    } else if (q) {
+      setTopic((prev) => (prev.trim() ? prev : decodeURIComponent(q)));
+    }
+    if (seed?.stepLabel && source === "action_step") {
+      setSeedBanner(`Action Step에서 넘어왔습니다. 질문: ${seed.stepLabel}`);
+    }
+  }, [searchParams]);
+
+  const applyResponseError = useCallback((message: string, partialText?: string) => {
+    const fromErr = buildLongResponseFallbackFromError(message, partialText);
+    const fromLong = partialText && partialText.length > 2000 ? buildLongResponseFallback(partialText) : null;
+    const fallback = fromErr ?? fromLong;
+    if (fallback?.exceededLimit || isMessageExceedsLimitError(message)) {
+      setLongResponseFallback(fallback ?? buildLongResponseFallback(message));
+      setError(null);
+      return;
+    }
+    setLongResponseFallback(null);
+    setError(message);
+  }, []);
+
   const [reportMd, setReportMd] = useState<string | null>(null);
   const [reportSanitizeMeta, setReportSanitizeMeta] = useState<{
     warnings: string[];
@@ -280,7 +323,7 @@ export function CommitteeDiscussionClient() {
       setClosingQualityMeta(data.qualityMeta ?? null);
       setPhase("closed");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "정리 발언 실패");
+      applyResponseError(e instanceof Error ? e.message : "정리 발언 실패");
       setPhase("after_round");
     }
   };
@@ -324,12 +367,15 @@ export function CommitteeDiscussionClient() {
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setReportMd(data.markdown ?? "");
+      const md = data.markdown ?? "";
+      setReportMd(md);
+      const mdFallback = md.length > 2000 ? buildLongResponseFallback(md) : null;
+      setLongResponseFallback(mdFallback?.exceededLimit ? mdFallback : null);
       setReportSanitizeMeta(data.sanitizeMeta ?? null);
       setReportOutputQuality(data.outputQuality ?? null);
       setReportModelUsage(data.modelUsage ?? null);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "보고서 생성 실패");
+      applyResponseError(e instanceof Error ? e.message : "보고서 생성 실패", reportMd ?? undefined);
     } finally {
       setLoadingReport(false);
     }
@@ -503,6 +549,14 @@ export function CommitteeDiscussionClient() {
           </button>
         ) : null}
       </div>
+
+      {seedBanner ? (
+        <div className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-950">{seedBanner}</div>
+      ) : null}
+
+      {longResponseFallback ? (
+        <LongResponseFallbackCard fallback={longResponseFallback} source="pb_weekly" />
+      ) : null}
 
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>

@@ -13,6 +13,7 @@ import type { SectorWatchlistCandidateItem } from "@/lib/sectorRadarContract";
 import { LAST_TICKER_RESOLVER_REQUEST_ID_KEY } from "@/lib/lastTickerResolverRequestId";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { PortfolioRoleBanner } from "@/components/PortfolioRoleBanner";
 import { buildSectorMatchReviewDetail } from "@/lib/actionItemDetailBuilders";
 import {
   filterSectorMatchByTab,
@@ -1504,10 +1505,9 @@ export function PortfolioLedgerClient() {
     <div className="mx-auto flex max-w-3xl flex-col gap-4 p-6 text-slate-900">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-800">포트폴리오 원장</h1>
+          <h1 className="text-xl font-bold tracking-tight text-slate-800">보유/거래 원장</h1>
           <p className="text-sm text-slate-500">
-            INSERT / DELETE 만 허용. <strong className="text-slate-700">정합성 검사</strong> 통과 후{" "}
-            <strong className="text-slate-700">원장 반영</strong>을 누르세요. user_key는 서버가 세션으로 채웁니다.
+            매수·매도 기록, 보유 수량/평단, ticker 매핑을 관리합니다. 현재 평가·요약은 보유 현황에서 확인하세요.
           </p>
           <OpsFeedbackButton domain="portfolio" component="PortfolioLedgerClient" className="mt-2" />
         </div>
@@ -1515,6 +1515,9 @@ export function PortfolioLedgerClient() {
           ← 홈
         </Link>
       </div>
+
+      <PortfolioRoleBanner variant="ledger" />
+
       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 text-xs">
         <button
           type="button"
