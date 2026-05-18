@@ -90,6 +90,15 @@ export {
   listCommitteeFollowupItems,
   updateCommitteeFollowupItem,
 } from './committeeFollowupRepository';
+export {
+  findActionItemByDedupe,
+  findActionItemByIdempotency,
+  getActionItemForUser,
+  insertActionItem,
+  listActionItemsForUser,
+  patchActionItemForUser,
+} from './actionItemRepository';
+export type { InsertActionItemInput, WebActionItemRow } from './actionItemRepository';
 export { selectPersonaLongTermSummary, upsertPersonaLongTermSummary } from './personaMemoryWebRepository';
 export {
   fetchPersonaChatRequestRow,

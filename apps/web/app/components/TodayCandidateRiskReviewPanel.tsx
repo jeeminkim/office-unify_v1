@@ -8,6 +8,7 @@ import type {
 } from "@office-unify/shared-types";
 import type { TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import { riskReviewChecklistItems } from "@/lib/todayCandidateUiCopy";
+import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
 
 type Props = {
   candidate: TodayStockCandidate;
@@ -185,6 +186,19 @@ export function TodayCandidateRiskReviewPanel({
         >
           {retroBusy ? "저장 중…" : "복기로 남기기"}
         </button>
+        <SaveToActionInboxButton
+          compact
+          label="액션 인박스"
+          request={{
+            title: `[리스크 점검] ${candidate.name ?? candidate.stockCode}`,
+            description: candidate.reasonSummary,
+            sourceType: "today_candidate",
+            sourceId: candidate.candidateId,
+            sourceLabel: candidate.name ?? candidate.stockCode,
+            symbol: candidate.stockCode,
+            idempotencyKey: `today-candidate-risk:${candidate.candidateId}`,
+          }}
+        />
         {journalHref ? (
           <Link
             href={journalHref}

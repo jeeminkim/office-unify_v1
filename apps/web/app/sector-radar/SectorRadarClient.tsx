@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WatchlistSectorMatchApiResponse } from "@office-unify/shared-types";
 import type {
@@ -482,6 +483,9 @@ export function SectorRadarClient() {
         <Link href="/decision-journal" className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-950">
           비거래 의사결정 일지
         </Link>
+        <Link href="/action-items" className="rounded-md border border-violet-300 bg-violet-50 px-4 py-2 text-sm text-violet-950">
+          Action Items
+        </Link>
         {process.env.NODE_ENV === "development" ? (
           <button
             type="button"
@@ -744,6 +748,7 @@ export function SectorRadarClient() {
                   <th className="px-2 py-1">라벨</th>
                   <th className="px-2 py-1">신뢰도</th>
                   <th className="px-2 py-1">기록</th>
+                  <th className="px-2 py-1">인박스</th>
                 </tr>
               </thead>
               <tbody>
@@ -764,6 +769,21 @@ export function SectorRadarClient() {
                       >
                         관망
                       </Link>
+                    </td>
+                    <td className="px-2 py-1">
+                      <SaveToActionInboxButton
+                        compact
+                        label="저장"
+                        request={{
+                          title: `[Sector] ${c.name} — ${c.sectorName} 점검`,
+                          description: `${readinessShort(c.readinessLabel)} · 점수 ${c.readinessScore}`,
+                          sourceType: "sector_radar",
+                          sourceId: `${c.market}:${c.symbol}`,
+                          sourceLabel: c.sectorName,
+                          symbol: c.symbol,
+                          idempotencyKey: `sector-radar:${c.market}:${c.symbol}`,
+                        }}
+                      />
                     </td>
                   </tr>
                 ))}

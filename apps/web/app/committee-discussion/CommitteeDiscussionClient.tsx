@@ -11,6 +11,7 @@ import type {
 import Link from "next/link";
 import { CommitteeTurnFeedbackRow } from "@/components/CommitteeTurnFeedbackRow";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
+import { committeeRoadmapToCreateRequests, createActionItemsBatch } from "@/lib/actionItemsClient";
 
 const jsonHeaders: HeadersInit = {
   "Content-Type": "application/json",
@@ -172,6 +173,8 @@ export function CommitteeDiscussionClient() {
   } | null>(null);
   const [reportModelUsage, setReportModelUsage] = useState<{ providerUsed: string; fallbackUsed: boolean } | null>(null);
   const [actionRoadmap, setActionRoadmap] = useState<CommitteeActionRoadmap | null>(null);
+  const [roadmapInboxBusy, setRoadmapInboxBusy] = useState(false);
+  const [roadmapInboxHint, setRoadmapInboxHint] = useState<string | null>(null);
   const [closingQualityMeta, setClosingQualityMeta] = useState<{
     actionabilityScore?: number;
     truncatedInputLines?: string[];
@@ -637,7 +640,44 @@ export function CommitteeDiscussionClient() {
                   </div>
                 ) : null,
             )}
+            {roadmapInboxHint ? (
+              <p className="mt-2 text-[11px] text-violet-900">{roadmapInboxHint}</p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded border border-violet-500 bg-violet-100 px-3 py-1.5 text-xs font-medium text-violet-950 disabled:opacity-50"
+                disabled={roadmapInboxBusy}
+                onClick={async () => {
+                  if (!actionRoadmap) return;
+                  setRoadmapInboxBusy(true);
+                  setRoadmapInboxHint(null);
+                  try {
+                    const items = committeeRoadmapToCreateRequests({
+                      topic: topic.trim(),
+                      committeeTurnId: committeeTurnId ?? undefined,
+                      roadmap: actionRoadmap,
+                    });
+                    const r = await createActionItemsBatch(items);
+                    if (!r.ok) {
+                      setRoadmapInboxHint(r.actionHint ?? r.error ?? "액션 인박스 저장 실패");
+                      return;
+                    }
+                    setRoadmapInboxHint(
+                      r.created === 0
+                        ? "로드맵 항목이 이미 인박스에 있습니다."
+                        : `액션 인박스에 ${r.created}건 저장했습니다.`,
+                    );
+                  } finally {
+                    setRoadmapInboxBusy(false);
+                  }
+                }}
+              >
+                {roadmapInboxBusy ? "저장 중…" : "액션 인박스에 저장"}
+              </button>
+              <Link href="/action-items" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800">
+                Action Items
+              </Link>
               <button
                 type="button"
                 className="rounded border border-violet-400 bg-white px-3 py-1.5 text-xs text-violet-900 disabled:opacity-50"

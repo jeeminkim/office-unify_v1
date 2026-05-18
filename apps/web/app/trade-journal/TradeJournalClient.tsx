@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { SaveToActionInboxButton } from '@/components/SaveToActionInboxButton';
 import type {
   InvestmentPrinciple,
   InvestmentPrincipleSet,
@@ -1010,6 +1011,21 @@ export function TradeJournalClient() {
           </div>
           <div className="space-y-2 rounded border border-slate-200 p-2 text-xs">
             <p className="font-semibold text-slate-700">선택 항목: {selectedEntry ? `${selectedEntry.symbol} (${selectedEntry.side})` : '-'}</p>
+            {selectedEntry ? (
+              <SaveToActionInboxButton
+                compact
+                request={{
+                  title: `[Journal] ${selectedEntry.symbol} ${selectedEntry.side} 후속`,
+                  description: selectedEntry.thesisSummary,
+                  sourceType: "trade_journal",
+                  sourceId: selectedEntry.id,
+                  sourceLabel: selectedEntry.symbol,
+                  symbol: selectedEntry.symbol,
+                  links: { tradeJournalEntryId: selectedEntry.id },
+                  idempotencyKey: `trade-journal:${selectedEntry.id}`,
+                }}
+              />
+            ) : null}
             <select value={reflection.reflectionType} onChange={(e) => setReflection((prev) => ({ ...prev, reflectionType: e.target.value as TradeJournalReflectionType }))} className="w-full rounded border border-slate-200 px-2 py-1">
               {REFLECTION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
             </select>

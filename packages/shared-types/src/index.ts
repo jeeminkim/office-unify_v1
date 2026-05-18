@@ -200,6 +200,23 @@ export type {
   CommitteeFollowupStatus,
 } from './committeeFollowup';
 export type {
+  ActionItemCreateRequest,
+  ActionItemCreateResponse,
+  ActionItemLinks,
+  ActionItemListResponse,
+  ActionItemPatchRequest,
+  ActionItemPriority,
+  ActionItemRowDto,
+  ActionItemSourceType,
+  ActionItemStatus,
+  ActionItemSummary,
+} from './actionItems';
+export {
+  ACTION_ITEM_DEDUPE_POLICY_SUMMARY,
+  ACTION_ITEM_SOURCE_LABELS,
+  normalizeActionItemDedupeTitle,
+} from './actionItems';
+export type {
   CommitteeActionItem,
   CommitteeActionRoadmap,
   CommitteeActionRoadmapStatus,

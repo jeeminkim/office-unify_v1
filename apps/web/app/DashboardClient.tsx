@@ -39,6 +39,7 @@ import {
   scrubTodayCandidateUiCopy,
 } from "@/lib/todayCandidateUiCopy";
 import { TodayCandidateRiskReviewPanel } from "@/app/components/TodayCandidateRiskReviewPanel";
+import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
 import { filterCandidatesByConfidence } from "@/lib/todayCandidateDataQuality";
 import { readLastTickerResolverRequestId } from "@/lib/lastTickerResolverRequestId";
 
@@ -1011,6 +1012,9 @@ export function DashboardClient() {
             Decision Journal
           </Link>
           <Link href="/trade-journal" className="rounded border border-slate-300 bg-white px-3 py-1.5">Trade Journal</Link>
+          <Link href="/action-items" className="rounded border border-violet-200 bg-violet-50 px-3 py-1.5 text-violet-950">
+            Action Items
+          </Link>
           <Link href="/ops-events" className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-950">
             운영 로그{opsOpenErrorCount != null && opsOpenErrorCount > 0 ? ` (${opsOpenErrorCount})` : ""}
           </Link>
@@ -1397,7 +1401,7 @@ export function DashboardClient() {
                       </Link>
                     </div>
                   ) : null}
-                  <div className="mt-1 flex gap-2 text-[11px]">
+                  <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
                     <button type="button" className="rounded border border-slate-300 px-2 py-0.5" onClick={() => void onOpenReason(c)}>사유 보기</button>
                     <button
                       type="button"
@@ -1417,6 +1421,18 @@ export function DashboardClient() {
                             ? "추가 중..."
                             : "관심종목에 추가"}
                     </button>
+                    <SaveToActionInboxButton
+                      compact
+                      request={{
+                        title: `[Today] ${c.name ?? c.stockCode} — 후속 점검`,
+                        description: scrubTodayCandidateUiCopy(c.reasonSummary),
+                        sourceType: "today_candidate",
+                        sourceId: c.candidateId,
+                        sourceLabel: c.name ?? c.stockCode,
+                        symbol: c.stockCode,
+                        idempotencyKey: `today-candidate:${c.candidateId}`,
+                      }}
+                    />
                   </div>
                   {watchlistAddState[c.candidateId] ? <p className="mt-1 text-[10px] text-slate-600">{watchlistAddState[c.candidateId]}</p> : null}
                 </li>
@@ -1556,6 +1572,20 @@ export function DashboardClient() {
                     >
                       관련 없음
                     </button>
+                    {rec.recommendationId ? (
+                      <SaveToActionInboxButton
+                        compact
+                        request={{
+                          title: `[관심후보] ${rec.name} 검토`,
+                          description: (rec.displayReasons ?? []).slice(0, 2).join(" · "),
+                          sourceType: "watchlist_recommendation",
+                          sourceId: rec.recommendationId,
+                          sourceLabel: rec.name,
+                          symbol: rec.symbol,
+                          idempotencyKey: `watchlist-rec:${rec.recommendationId}`,
+                        }}
+                      />
+                    ) : null}
                   </div>
                 </li>
               ))}
@@ -2815,6 +2845,19 @@ export function DashboardClient() {
                     >
                       archived
                     </button>
+                    <SaveToActionInboxButton
+                      compact
+                      request={{
+                        title: it.title,
+                        description: it.summary,
+                        sourceType: "decision_retrospective",
+                        sourceId: it.id,
+                        sourceLabel: formatDecisionRetroSource(it.sourceType),
+                        symbol: it.symbol ?? undefined,
+                        links: { retrospectiveId: it.id },
+                        idempotencyKey: `decision-retro:${it.id}`,
+                      }}
+                    />
                   </div>
                   {draft ? (
                     <div className="mt-2 space-y-2 border-t border-slate-100 pt-2">

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
 import { useSearchParams } from "next/navigation";
 import {
   parseResearchCenterTotalTimeoutMs,
@@ -773,6 +774,9 @@ export function ResearchCenterClient() {
           <Link href="/" className="text-xs text-slate-500 underline underline-offset-2">
             ← 홈
           </Link>
+          <Link href="/action-items" className="text-xs text-violet-800 underline underline-offset-2">
+            Action Items
+          </Link>
         </div>
       </section>
 
@@ -861,6 +865,21 @@ export function ResearchCenterClient() {
                 {result.meta?.noData ? <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] text-amber-900">NO_DATA</span> : null}
               </div>
             </div>
+            {result.requestId ? (
+              <SaveToActionInboxButton
+                label="리포트 → 액션 인박스"
+                request={{
+                  title: `[Research] ${name.trim()} (${symbol.trim()}) 후속`,
+                  description: result.reportDiff?.diffSummary ?? result.contextNote,
+                  sourceType: "research_report",
+                  sourceId: result.requestId,
+                  sourceLabel: name.trim(),
+                  symbol: symbol.trim(),
+                  links: { researchReportId: result.requestId },
+                  idempotencyKey: `research-report:${result.requestId}`,
+                }}
+              />
+            ) : null}
             <button
               type="button"
               className="rounded border border-slate-300 bg-white px-2 py-1 text-xs"
@@ -1124,6 +1143,19 @@ export function ResearchCenterClient() {
                     >
                       보관
                     </button>
+                    <SaveToActionInboxButton
+                      compact
+                      request={{
+                        title: row.title,
+                        description: bullets.join(" · "),
+                        sourceType: "research_followup",
+                        sourceId: row.id,
+                        sourceLabel: row.company_name ?? row.symbol ?? undefined,
+                        symbol: row.symbol ?? undefined,
+                        links: { researchFollowupId: row.id },
+                        idempotencyKey: `research-followup:${row.id}`,
+                      }}
+                    />
                     <button
                       type="button"
                       className="rounded border border-slate-600 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-900 disabled:opacity-50"

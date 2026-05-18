@@ -112,6 +112,7 @@ select count(*) from information_schema.tables
 | 19 | `append_research_report_history.sql` | 리포트 이력·diff | 동일 종목 리포트 재사용·7일 diff 불가 |
 | 20 | `append_watchlist_recommendation_candidates.sql` | 관심 등록 후보(pending) | 승인형 관찰 후보 저장 불가 |
 | 21 | `append_today_candidate_feedback.sql` | 사용자 피드백(hide_7d·mark_reviewed·keep_observing) | 피드백 저장 불가 · 리스크 점검 후보 사용자 제어 degraded |
+| 22 | `append_web_action_items.sql` | 통합 Action Item 인박스 | **`GET/POST /api/action-items` → `action_item_table_missing`** · 7개 출처에서 「액션 인박스에 저장」 불가 |
 
 > `append_web_portfolio_ledger.sql`(관심·보유) 이후 적용 권장. Research follow-up(§3)과 병행 가능.
 > 피드백은 **confirm 후 POST**만 저장하며, impressions(노출 이력)와 분리합니다.
@@ -128,9 +129,17 @@ select table_name from information_schema.tables
      'research_report_runs',
      'research_report_diffs',
      'watchlist_recommendation_candidates',
-     'today_candidate_feedback'
+     'today_candidate_feedback',
+     'web_action_items'
    )
  order by 1;
+```
+
+```sql
+-- action item status check · dedupe index
+select indexname from pg_indexes
+ where tablename = 'web_action_items'
+   and indexname in ('web_action_items_user_source_title_uidx', 'web_action_items_idempotency_uidx');
 ```
 
 ```sql
