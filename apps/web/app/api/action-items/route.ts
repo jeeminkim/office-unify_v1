@@ -87,7 +87,7 @@ export async function POST(req: Request) {
     for (const item of batch) {
       const enriched = enrichCreateRequestWithDetail(item);
       const r = await createActionItemWithDedupe(supabase, auth.userKey as string, enriched);
-      results.push(r);
+      results.push({ ...r, detailCompletenessReport: enriched.detailCompletenessReport });
     }
     if (batch.length === 1) {
       const r0 = results[0]!;
@@ -95,7 +95,17 @@ export async function POST(req: Request) {
         ok: true,
         item: r0.item,
         deduped: r0.deduped,
-        qualityMeta: { detailCompleteness: r0.detailCompleteness },
+        qualityMeta: {
+          detailCompleteness: r0.detailCompleteness,
+          detailCompletenessReport: r0.detailCompletenessReport
+            ? {
+                score: r0.detailCompletenessReport.score,
+                missingFields: r0.detailCompletenessReport.missingFields,
+                sourceLabel: r0.detailCompletenessReport.sourceLabel,
+                actionStepCount: r0.detailCompletenessReport.actionStepCount,
+              }
+            : undefined,
+        },
       });
     }
     return NextResponse.json({ ok: true, items: results, created: results.filter((x) => !x.deduped).length });

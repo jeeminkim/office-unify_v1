@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildActionItemDetailFromTodayCandidate,
+  buildCommitteeLineRegenerateActionItemDetail,
   buildCommitteeRoadmapItemDetail,
   buildDailyReviewNoteActionItemDetail,
   buildGenericActionItemDetail,
   buildGoogleFinanceSetupActionItemDetail,
+  buildManualSemanticActionItemDetail,
   buildPbDailyNoteActionItemDetail,
+  buildResearchReportActionItemDetail,
   buildUsDiagnosticsActionItemDetail,
+  enrichCreateRequestWithDetail,
   pbDailyNoteActionIdempotencyKey,
 } from '@/lib/actionItemDetailBuilders';
+import { analyzeActionItemDetailCompleteness } from '@/lib/actionItemDetailCompleteness';
+import { buildLongResponseActionItemRequest } from '@/lib/longResponseFallbackSeeds';
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
 
 const baseCandidate = {
@@ -102,6 +108,68 @@ describe('actionItemDetailBuilders', () => {
     const d = buildUsDiagnosticsActionItemDetail();
     expect(d.checklist?.some((c) => c.label.includes('SPY'))).toBe(true);
     expect(d.doNotDo?.some((x) => x.includes('empty'))).toBe(true);
+  });
+
+  it('enrich minimal request adds checklist sourceSummary notTradeInstruction', () => {
+    const enriched = enrichCreateRequestWithDetail({
+      title: '최소 요청 테스트 항목',
+      sourceType: 'manual',
+    });
+    const d = enriched.detailJson!;
+    expect(d.notTradeInstruction).toBe(true);
+    expect(d.sourceSummary?.length).toBeGreaterThan(0);
+    expect((d.checklist?.length ?? 0)).toBeGreaterThan(0);
+    expect(d.doNotDo?.some((x) => /매수|매도|자동/i.test(x))).toBe(true);
+  });
+
+  it('manual semantic pb_response has sourceLabel and sourceRefs', () => {
+    const d = buildManualSemanticActionItemDetail({
+      sourceLabel: 'pb_response',
+      title: 'PB 요약',
+      sourceSummary: '리스크 요약',
+    });
+    expect(d.sourceLabel).toBe('pb_response');
+    expect(d.sourceRefs?.[0]?.sourceType).toBe('pb_response');
+    expect(d.doNotDo?.some((x) => x.includes('PB'))).toBe(true);
+    const report = analyzeActionItemDetailCompleteness(d);
+    expect(report.hasSourceRefsOrLinks).toBe(true);
+    expect(report.hasActionSteps).toBe(true);
+  });
+
+  it('long response trend uses manual semantic detail', () => {
+    const req = buildLongResponseActionItemRequest({
+      sourceType: 'trend_report',
+      title: 'Trend 요약',
+      fallback: {
+        displayText: '트렌드 핵심 요약',
+        copyableCompactText: '- 근거 확인\n- 과열 점검',
+      },
+    });
+    expect(req.sourceType).toBe('manual');
+    expect(req.sourceLabel).toBe('trend_report');
+    expect(req.detailJson?.sourceLabel).toBe('trend_report');
+  });
+
+  it('committee regenerate has originalQuestion and sourceRefs', () => {
+    const d = buildCommitteeLineRegenerateActionItemDetail({
+      personaKey: 'risk_officer',
+      originalQuestion: 'HLB 리스크는?',
+      recoveredSummary: '복구 요약',
+      committeeTurnId: 'turn-1',
+    });
+    expect(d.decisionContext?.originalQuestion).toContain('HLB');
+    expect(d.sourceRefs?.some((r) => r.sourceType === 'committee_discussion')).toBe(true);
+    expect(d.notTradeInstruction).toBe(true);
+  });
+
+  it('research report detail has research sourceRefs', () => {
+    const d = buildResearchReportActionItemDetail({
+      title: '리포트',
+      requestId: 'req-1',
+      sourceSummary: '요약',
+    });
+    expect(d.sourceRefs?.some((r) => r.sourceType === 'research_report')).toBe(true);
+    expect(d.checklist?.some((c) => c.label.includes('근거'))).toBe(true);
   });
 
   it('daily review note detail maps checklist and source summary', () => {

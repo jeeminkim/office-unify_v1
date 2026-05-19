@@ -38,6 +38,7 @@ npm run pre-live-smoke --workspace=apps/web
 
 - [ ] Research 리포트·PB 메시지·Trend markdown이 길 때 **핵심 요약 카드** 표시(원문은 복사·seed만, URL query 없음).
 - [ ] Action Item 저장은 카드 **명시 버튼**만 — 카드 렌더만으로 POST 없음.
+- [ ] **EVO-028** `/action-items`: `sourceLabel`(manual+`pb_response`/`trend_report`)·`sourceRefs`·`recommendedNextLinks` 표시 · 약한 detail은 「맥락 보강 필요」 배지 · `sourceRefs`는 추적용(자동 실행 아님).
 - [ ] Trend: `finalizer.degraded`(provider) vs `longResponseFallback`(UI) 문구 구분.
 
 ## 2f. Personalization context layer (P1 · 2026-05-19)

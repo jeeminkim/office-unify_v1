@@ -11,6 +11,7 @@
 - 운영 SQL 적용 순서·점검: `docs/sql/APPLY_ORDER.md` · 앱 **`/ops/sql-readiness`**(`GET /api/system/sql-readiness`, read-only) · 배포 전 API 스모크 `npm run pre-live-smoke --workspace=apps/web`(dry-run 기본)
 - **개인화 컨텍스트(P1 1차):** `buildUserPersonalizationContext` read-only 로더 → `compactKo` prompt block. Committee/Persona/PB/Research send-to-pb에 주입; Today Brief는 `qualityMeta.todayCandidates.personalization` 요약만. 추천 강화·자동 주문 아님; raw 민감 메모 미포함.
 - **긴 응답 UX(EVO-026):** `buildLongResponseFallback` — Research/PB/Trend·기존 Persona/Committee. 요약·복사·후속 seed(sessionStorage). 자동 저장 없음.
+- **Action Item hub(EVO-028 1차):** 모든 inbox 저장 경로는 `sourceSummary`·`checklist`·`doNotDo`·`sourceRefs`/`recommendedNextLinks`·`actionSteps` 목표. `source_type=manual`이어도 `detail_json.sourceLabel`로 PB/Trend 등 구분. `POST`만 write; GET·링크는 read-only. 상세: `docs/ops/action_items.md`.
 
 ## 주요 화면
 

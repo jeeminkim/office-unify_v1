@@ -16,7 +16,7 @@
 | ~~P1~~ | EVO-025 | Persona/Committee/PB/Research에 personalization prompt block 주입 | **1차 shipped** (uncommitted) |
 | ~~P1~~ | EVO-026 | Research/PB/Trend LongResponseFallback | **1차 shipped** (uncommitted) |
 | **P1** | EVO-027 | DashboardClient 섹션 분리 (Command Center 포함) | `#dashboard` `#ux` |
-| **P1** | EVO-028 | 모든 inbox create 경로 `sourceRefs` + steps 보강 | `#action-items` |
+| ~~P1~~ | EVO-028 | 모든 inbox create 경로 `sourceRefs` + steps 보강 | **1차 shipped** (uncommitted) — `ensureDetailContract`, 출처별 builders, `/action-items` UI, `manual`+`sourceLabel`; DB enum 후속 SQL |
 | **P2** | EVO-029 | Judgment patterns → Brief/PB/Committee 프롬프트 루프백 | `#judgment-review` |
 | **P2** | EVO-030 | Today feedback → Brief qualityMeta 요약 | `#today-brief` |
 | **P2** | EVO-031 | `nextBestActionPolicy` 서버 모듈 | `#dashboard` |

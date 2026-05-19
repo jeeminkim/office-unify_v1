@@ -4,6 +4,15 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-19 Personal Investment OS P1 — Action Item SourceRefs + Steps (EVO-028, 1차)
+
+- **Contract:** `sourceRefs`, `sourceLabel`, `decisionContext.originalQuestion`, `recommendedNextLinks.actionKey` (additive).
+- **Completeness:** `analyzeActionItemDetailCompleteness` (score, missingFields) · POST `qualityMeta.detailCompletenessReport`.
+- **Enrich:** `ensureDetailContract` — 약한 create payload에 checklist/sourceSummary/doNotDo/links/steps 보강.
+- **Builders:** Today/Committee/Research/PB/Trend(manual)/Google Finance/Daily/Watchlist/Sector 출처별 `sourceRefs`·체크리스트.
+- **UI:** `/action-items` — semantic sourceLabel, sourceRefs, PB/위원회 링크, 「맥락 보강 필요」 배지.
+- **Policy:** `manual` + `sourceLabel` (`pb_response`, `trend_report` 등); DB enum 추가는 후속 SQL.
+
 ### 2026-05-19 Personal Investment OS P1 — LongResponseFallback parity (EVO-026)
 
 - **공통:** `longResponseFallbackSeeds.ts` · `LongResponseFallbackCard` 확장(복사·PB·위원회·Research·Journal·복기·Action Item).

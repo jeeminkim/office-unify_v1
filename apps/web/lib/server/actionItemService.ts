@@ -10,7 +10,7 @@ import type {
   ActionItemSummary,
 } from '@office-unify/shared-types';
 import { normalizeActionItemDedupeTitle } from '@office-unify/shared-types';
-import { scoreActionItemDetailCompleteness } from '@/lib/actionItemDetailCompleteness';
+import { analyzeActionItemDetailCompleteness } from '@/lib/actionItemDetailCompleteness';
 import { buildCommitteeRoadmapItemDetail } from '@/lib/actionItemDetailBuilders';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { WebActionItemRow } from '@office-unify/supabase-access';
@@ -130,7 +130,11 @@ export async function createActionItemWithDedupe(
   supabase: SupabaseClient,
   userKey: string,
   req: ActionItemCreateRequest,
-): Promise<{ item: ActionItemRowDto; deduped: boolean; detailCompleteness: ReturnType<typeof scoreActionItemDetailCompleteness> }> {
+): Promise<{
+  item: ActionItemRowDto;
+  deduped: boolean;
+  detailCompleteness: ReturnType<typeof analyzeActionItemDetailCompleteness>['level'];
+}> {
   const title = req.title.trim();
   if (title.length < 4) throw new Error('title_too_short');
   if (TRADE_BLOCK.test(title) || TRADE_BLOCK.test(req.description ?? '')) {
@@ -144,7 +148,9 @@ export async function createActionItemWithDedupe(
     ...(req.detailJson ?? {}),
     notTradeInstruction: true,
   };
-  const detailCompleteness = scoreActionItemDetailCompleteness(detailJson);
+  const detailCompleteness = analyzeActionItemDetailCompleteness(
+    detailJson as import('@office-unify/shared-types').ActionItemDetailJson,
+  ).level;
 
   if (req.idempotencyKey?.trim()) {
     const existing = await findActionItemByIdempotency(supabase, userKey, req.idempotencyKey.trim());

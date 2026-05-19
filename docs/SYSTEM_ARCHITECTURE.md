@@ -80,6 +80,7 @@
 - **투자자 프로필(`web_investor_profiles`, SQL 선택):** 손실 감내·기간·레버리지·집중도·선호/회피 섹터를 **관찰·판단 보조** 맥락으로만 사용. `primaryCandidateDeck` 후보에 `suitabilityAssessment`(additive), `qualityMeta.todayCandidates.suitability` 요약. PB·후속 고찰 프롬프트에 짧은 맥락 주입. 자동매매·자동주문·무승인 포트 변경 없음.
 - **통합 개인화 컨텍스트(P1):** `buildUserPersonalizationContext`(read-only) → `compactKo` prompt block. Committee/Persona/PB/Research send-to-pb에 additive 주입; Today Brief는 `qualityMeta.todayCandidates.personalization` 요약만(점수·추천 강도 변경 없음). raw 민감 메모·금액 원문 미포함.
 - **긴 응답 UX(EVO-026):** `buildLongResponseFallback` + `LongResponseFallbackCard` — Research generate·PB message/weekly·Trend `qualityMeta.longResponseFallback`. 전문은 sessionStorage seed·복사만(URL query 없음). Action Item은 명시 버튼만.
+- **Action Item hub(EVO-028):** `detail_json`에 `sourceRefs`·`sourceLabel`·`actionSteps`·`recommendedNextLinks` 표준화; `POST /api/action-items` → `enrichCreateRequestWithDetail`/`ensureDetailContract`. PB/Trend는 DB `manual`+semantic label. `docs/ops/action_items.md`.
 
 ## 서버 API 계층
 

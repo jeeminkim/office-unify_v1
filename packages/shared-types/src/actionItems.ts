@@ -65,11 +65,24 @@ export type ActionItemCreateRequest = {
   idempotencyKey?: string;
 };
 
+export type ActionItemDetailCompletenessLevel = 'full' | 'partial' | 'minimal';
+
+export type ActionItemCreateQualityMeta = {
+  detailCompleteness?: ActionItemDetailCompletenessLevel;
+  /** additive: 0–100 점수·누락 필드 */
+  detailCompletenessReport?: {
+    score: number;
+    missingFields: string[];
+    sourceLabel?: string;
+    actionStepCount: number;
+  };
+};
+
 export type ActionItemCreateResponse = {
   ok: true;
   item: ActionItemRowDto;
   deduped: boolean;
-  qualityMeta?: { detailCompleteness?: 'full' | 'partial' | 'minimal' };
+  qualityMeta?: ActionItemCreateQualityMeta;
 };
 
 export type ActionItemListResponse = {

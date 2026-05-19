@@ -4,7 +4,10 @@ import {
   buildResearchHrefFromActionItem,
   buildRetrospectiveHrefFromActionItem,
 } from '@/lib/actionItemLinks';
-import { buildGenericActionItemDetail } from '@/lib/actionItemDetailBuilders';
+import {
+  buildManualSemanticActionItemDetail,
+  buildResearchReportActionItemDetail,
+} from '@/lib/actionItemDetailBuilders';
 import {
   ACTION_STEP_SEED_STORAGE_KEY,
   storeActionStepSeed,
@@ -137,27 +140,34 @@ export function buildLongResponseActionItemRequest(input: {
   const dbSourceType =
     input.sourceType === 'research_report' ? 'research_report' : ('manual' as const);
   const summary = input.fallback.displayText.slice(0, 400);
-  const checklist = (input.fallback.copyableCompactText ?? input.fallback.displayText)
+  const compactLines = (input.fallback.copyableCompactText ?? input.fallback.displayText)
     .split('\n')
     .map((l) => l.replace(/^[-•*]\s*/, '').trim())
     .filter((l) => l.length > 4 && l.length < 200)
     .slice(0, 6);
 
-  const detailJson = buildGenericActionItemDetail({
-    sourceType: dbSourceType,
-    title: input.title,
-    symbol: input.symbol,
-    name: input.name,
-    market: input.market,
-    description: input.description ?? summary,
-    whyCreated: `${input.sourceType} 긴 응답 요약 — 확인·복기용`,
-    checklist: checklist.length ? checklist : ['핵심 요약 확인', '후속 PB/위원회/Research 연결'],
-    doNotDo: ['매수·매도·자동 주문·자동 리밸런싱 지시 없음'],
-  });
-
-  detailJson.evidenceNeeded = ['원문 복사 또는 후속 상담에서 맥락 유지'];
-  detailJson.sourceSummary = summary;
-  detailJson.notTradeInstruction = true;
+  const detailJson =
+    input.sourceType === 'research_report'
+      ? buildResearchReportActionItemDetail({
+          title: input.title,
+          symbol: input.symbol,
+          name: input.name,
+          market: input.market,
+          requestId: input.sourceId,
+          sourceSummary: summary,
+        })
+      : buildManualSemanticActionItemDetail({
+          sourceLabel: input.sourceType,
+          title: input.title,
+          sourceSummary: summary,
+          symbol: input.symbol,
+          name: input.name,
+          market: input.market,
+          sourceId: input.sourceId,
+          checklist: compactLines.length
+            ? compactLines
+            : undefined,
+        });
 
   return {
     title: input.title.slice(0, 200),
@@ -167,7 +177,7 @@ export function buildLongResponseActionItemRequest(input: {
     sourceLabel:
       input.sourceType === 'research_report'
         ? (input.name ?? input.symbol)
-        : `${input.sourceType}:${input.name ?? input.symbol ?? 'summary'}`,
+        : input.sourceType,
     symbol: input.symbol,
     idempotencyKey: `long-response:${input.sourceType}:${input.sourceId ?? input.title}:${summary.slice(0, 40)}`,
     detailJson,
