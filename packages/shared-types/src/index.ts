@@ -434,6 +434,14 @@ export type {
 } from './dailyReviewNotes';
 export { DAILY_REVIEW_NOTE_SUBJECT_LABELS } from './dailyReviewNotes';
 export type {
+  PbDailyNotePreviewItem,
+  PbDailyNotePreviewRequest,
+  PbDailyNotePreviewResponse,
+  PbDailyNotePreviewStatus,
+  PbDailyNotePreviewStep,
+  PbDailyNoteScope,
+} from './pbDailyNote';
+export type {
   JudgmentReviewDataCoverage,
   JudgmentReviewWindow,
   MonthlyJudgmentReview,

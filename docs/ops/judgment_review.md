@@ -18,6 +18,7 @@
 | Research | `research_report_runs`, `research_report_diffs` |
 | Sector Radar | `sector_radar_runs` (선택) |
 | Watchlist | `watchlist_recommendation_candidates` |
+| Daily Review Notes | `web_daily_review_notes` (`generated_by`: deterministic / **pb** / user) |
 
 신규 SQL 없음 — `web_decision_retrospectives`에 `source_type = monthly_judgment_review`로 저장.
 
@@ -28,6 +29,12 @@
 | GET | `/api/judgment-review/monthly` | 읽기 전용 미리보기 (DB write 없음) |
 | POST | `/api/judgment-review/monthly/save` | 사용자 명시 저장 → 복기 row |
 | POST | `/api/judgment-review/monthly/action-items` | `confirm:true` 후 규칙 → Action Items |
+
+## Metrics (additive)
+
+- `dailyReviewNoteCount` / `savedDailyNoteCount` / `dismissedDailyNoteCount`
+- `pbDailyNoteCount` — `generated_by = pb` 저장 건수
+- `deterministicDailyNoteCount` — deterministic 저장 건수
 
 ## UI
 

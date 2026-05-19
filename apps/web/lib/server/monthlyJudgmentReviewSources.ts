@@ -81,6 +81,7 @@ export type MonthlyJudgmentReviewSources = {
       name: string | null;
       note_summary: string;
       status: string;
+      generated_by?: string | null;
       created_at: string;
       idempotency_key?: string | null;
     }>;
@@ -288,7 +289,7 @@ export async function loadMonthlyJudgmentReviewSources(
 
   const notesRes = await supabase
     .from('web_daily_review_notes')
-    .select('id,review_date,subject_type,symbol,name,note_summary,status,created_at,idempotency_key')
+    .select('id,review_date,subject_type,symbol,name,note_summary,status,generated_by,created_at,idempotency_key')
     .eq('user_key', userKey)
     .gte('review_date', window.startDate)
     .lte('review_date', window.endDate)

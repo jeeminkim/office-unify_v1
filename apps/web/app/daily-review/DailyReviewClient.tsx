@@ -4,12 +4,19 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DailyReviewNote, DailyReviewResponse } from "@office-unify/shared-types";
 import { DailyReviewNoteCard } from "@/app/components/DailyReviewNoteCard";
+import { PbDailyNotePreviewPanel } from "@/app/components/PbDailyNotePreviewPanel";
+import type { PbDailyNotePreviewResponse, PbDailyNoteScope } from "@office-unify/shared-types";
+import { fetchPbDailyNotePreview } from "@/lib/pbDailyNoteClient";
 
 export function DailyReviewClient() {
   const [data, setData] = useState<DailyReviewResponse | null>(null);
   const [savedNotes, setSavedNotes] = useState<DailyReviewNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pbScope, setPbScope] = useState<PbDailyNoteScope>("mixed");
+  const [pbLoading, setPbLoading] = useState(false);
+  const [pbPreview, setPbPreview] = useState<PbDailyNotePreviewResponse | null>(null);
+  const [pbError, setPbError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,15 +101,57 @@ export function DailyReviewClient() {
 
       {error ? <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
 
-      <details className="mb-4 rounded border border-dashed border-slate-300 bg-slate-50/80 p-3">
-        <summary className="cursor-pointer text-xs font-medium text-slate-700">PB 일일 메모 (후속 · EVO-015-2)</summary>
-        <p className="mt-2 text-[11px] text-slate-600">
-          PB 스타일 일일 감상 초안은 다음 라운드입니다. 이번 버전은 deterministic 점검 메모만 제공합니다.
+      <section className="mb-4 rounded-lg border border-violet-200 bg-violet-50/40 p-3">
+        <h2 className="text-sm font-semibold text-violet-950">PB 일일 점검 초안 (EVO-015-2)</h2>
+        <p className="mt-1 text-[11px] leading-relaxed text-violet-900">
+          보유·관심종목을 PB 관점의 <strong>점검 메모 초안</strong>으로 정리합니다. 자동 저장되지 않으며, LLM 호출 시 비용·지연이
+          있을 수 있습니다. 확인 후 「오늘 메모로 저장」 또는 Action Item으로만 기록하세요.
         </p>
-        <button type="button" disabled className="mt-2 rounded border bg-slate-100 px-2 py-1 text-[10px] text-slate-400">
-          PB 초안 받기 (준비 중)
-        </button>
-      </details>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <label className="flex flex-col gap-0.5 text-[10px] text-violet-900 sm:flex-row sm:items-center">
+            <span className="shrink-0 font-medium">범위</span>
+            <select
+              className="rounded border border-violet-200 bg-white px-2 py-1 text-xs"
+              value={pbScope}
+              onChange={(e) => setPbScope(e.target.value as PbDailyNoteScope)}
+              disabled={pbLoading}
+            >
+              <option value="mixed">전체 (mixed)</option>
+              <option value="portfolio">보유+관심 (portfolio)</option>
+              <option value="holdings">보유 종목</option>
+              <option value="watchlist">관심종목</option>
+              <option value="us_data">미국 데이터</option>
+              <option value="ops">운영 상태</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="rounded border border-violet-400 bg-violet-100 px-3 py-1.5 text-xs font-medium text-violet-950 disabled:opacity-50"
+            disabled={pbLoading || loading}
+            onClick={() => {
+              setPbLoading(true);
+              setPbError(null);
+              void fetchPbDailyNotePreview({
+                reviewDate: data?.reviewDate,
+                scope: pbScope,
+                maxItems: 6,
+                includeActionSteps: true,
+                source: "daily_review",
+              })
+                .then((r) => setPbPreview(r))
+                .catch((e: unknown) => {
+                  setPbError(e instanceof Error ? e.message : "PB 초안 생성 실패");
+                  setPbPreview(null);
+                })
+                .finally(() => setPbLoading(false));
+            }}
+          >
+            {pbLoading ? "PB 초안 생성 중…" : "PB 초안 받기"}
+          </button>
+        </div>
+        {pbError ? <p className="mt-2 text-xs text-red-700">{pbError}</p> : null}
+        {pbPreview ? <PbDailyNotePreviewPanel response={pbPreview} onSaved={() => void load()} /> : null}
+      </section>
 
       {data ? (
         <div className="space-y-6">

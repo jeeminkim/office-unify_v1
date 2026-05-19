@@ -29,6 +29,8 @@ npm run pre-live-smoke --workspace=apps/web
 ## 2d. Daily Review Notes (EVO-015 · SQL #23)
 
 - [ ] `append_daily_review_notes.sql` 미적용 시 `/daily-review` preview는 보이나 저장 시 `table_missing` + `/ops/sql-readiness` #23 안내.
+- [ ] `/daily-review` PB 초안 받기 → `POST /api/daily-review/notes/generate-pb` (DB write 0) → preview 표시 → confirm 후 `POST /notes` `generatedBy=pb`.
+- [ ] PB 초안 실패 시 deterministic notes 유지 · 긴 응답 fallback · `/judgment-review` `pbDailyNoteCount`.
 - [ ] SQL #23 적용 후: 「오늘 메모 저장」·중복 저장(`already_applied`)·Action Inbox dedupe·dismiss PATCH 동작.
 - [ ] `/judgment-review`에 Daily Review Notes 데이터 소스·저장 건수 표시 · 테이블 없어도 preview 실패하지 않음.
 

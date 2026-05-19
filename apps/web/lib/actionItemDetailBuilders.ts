@@ -462,6 +462,59 @@ export function buildDailyReviewActionItemDetail(input: {
   }
 }
 
+export function buildPbDailyNoteActionItemDetail(
+  item: {
+    subjectType: string;
+    symbol?: string;
+    name?: string;
+    market?: string;
+    noteSummary: string;
+    pbPerspective: string;
+    nextChecks: string[];
+    doNotDo: string[];
+    evidenceNeeded: string[];
+    riskFlags?: string[];
+    actionSteps?: Array<{ stepId: string; label: string; category?: string }>;
+  },
+  reviewDate: string,
+): ActionItemDetailJson {
+  const checklist = item.nextChecks.map((label) => ({ label, source: 'pb_daily_note' }));
+  return attachActionStepsToDetail({
+    notTradeInstruction: true,
+    actionCategory: 'check_now',
+    whyCreated: 'PB Daily Note preview에서 생성',
+    confirmNow: item.nextChecks.slice(0, 4),
+    doNotDo: item.doNotDo,
+    evidenceNeeded: item.evidenceNeeded,
+    checklist,
+    decisionContext: {
+      sourceSummary: `${item.noteSummary} · ${item.pbPerspective}`.slice(0, 400),
+      sourceQuestion: 'PB 일일 점검 관점에서 오늘 무엇을 확인할까요?',
+      nextChecks: item.nextChecks,
+      riskFlags: item.riskFlags,
+    },
+    sourceSummary: item.pbPerspective,
+    symbol: item.symbol,
+    name: item.name,
+    market: item.market,
+    recommendedNextLinks: linksFor('pending', {
+      symbol: item.symbol,
+      name: item.name,
+      market: item.market,
+      whyCreated: item.pbPerspective,
+      checklist,
+    }),
+  });
+}
+
+export function pbDailyNoteActionIdempotencyKey(
+  reviewDate: string,
+  item: { subjectType: string; symbol?: string },
+): string {
+  const sym = (item.symbol ?? 'none').trim().toLowerCase() || 'none';
+  return `pb-daily-note-action:${reviewDate}:${item.subjectType}:${sym}`;
+}
+
 export function buildDailyReviewNoteActionItemDetail(
   preview: Pick<
     DailyReviewNotePreview,

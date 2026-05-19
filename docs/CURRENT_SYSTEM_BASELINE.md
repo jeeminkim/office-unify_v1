@@ -23,7 +23,7 @@
 - `/committee-discussion`
 - `/trade-journal`
 - `/judgment-review` (EVO-012 30일 판단 품질 복기)
-- `/daily-review` (EVO-015 일일 점검 메모 · 명시 저장만)
+- `/daily-review` (EVO-015 일일 점검 메모 · EVO-015-2 PB 초안 preview · 명시 저장만)
 - `/action-items`
 - `/ops-events`
 

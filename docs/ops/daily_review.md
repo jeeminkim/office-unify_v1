@@ -10,7 +10,8 @@
 - API:
   - `GET /api/daily-review` — read-only 요약 + deterministic preview notes (write 0)
   - `GET /api/daily-review/notes` — 저장된 메모 조회 (read-only)
-  - `POST /api/daily-review/notes` — **명시 저장만**
+  - `POST /api/daily-review/notes` — **명시 저장만** (`generatedBy`: deterministic | pb | user)
+  - `POST /api/daily-review/notes/generate-pb` — PB 점검 초안 preview (**DB write 0**, 자동 저장 없음)
   - `PATCH /api/daily-review/notes/[id]` — dismissed/archived
 
 ## 저장 정책 (EVO-015 · 1차 shipped)
@@ -18,9 +19,18 @@
 - **자동 저장 없음** — GET `/api/daily-review`·`/notes` 시 DB write 0
 - deterministic 점검 메모는 `previewNotes`로만 표시 (**shipped**)
 - 사용자가 「오늘 메모 저장」 클릭 시에만 `POST /notes` (저장 중 UI·중복 클릭 방지)
-- idempotency: 서버 키 + DB unique index → `already_applied`
+- idempotency: 서버 키 + DB unique index → `already_applied` (동일 날짜·subject·symbol·`generatedBy`)
 - dismissed: confirm + 선택 사유 · 매매/관심종목에 영향 없음
-- **PB 일일 메모(LLM):** EVO-015-2 후속 · UI `disabled_todo`
+
+## PB Daily Note Preview (EVO-015-2)
+
+- UI: `/daily-review` → 「PB 초안 받기」(scope: mixed/portfolio/holdings/watchlist/us_data/ops)
+- `POST /api/daily-review/notes/generate-pb` — LLM optional · `qualityMeta.previewOnly: true` · `autoSaved: false`
+- 실패 시 deterministic `previewNotes` 유지 · provider timeout/error는 status로 반환
+- 2000자 초과 → `longResponseFallback` (자동 저장 없음)
+- 저장: preview 카드 「오늘 메모로 저장」→ 기존 `POST /notes` + `generatedBy: pb` + confirm
+- Action Item: `buildPbDailyNoteActionItemDetail` · seed: PB/위원회/Research (`sessionStorage`, URL compact)
+- 30일 복기: `metrics.pbDailyNoteCount` · `deterministicDailyNoteCount`
 
 ## SQL
 

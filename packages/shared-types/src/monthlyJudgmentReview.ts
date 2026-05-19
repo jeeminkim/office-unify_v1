@@ -52,6 +52,9 @@ export type MonthlyJudgmentReview = {
     dailyReviewNoteCount?: number;
     savedDailyNoteCount?: number;
     dismissedDailyNoteCount?: number;
+    /** additive: EVO-015-2 PB-generated daily notes */
+    pbDailyNoteCount?: number;
+    deterministicDailyNoteCount?: number;
   };
 
   repeatedPatterns: Array<{

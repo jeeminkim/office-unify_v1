@@ -183,13 +183,16 @@ export function JudgmentReviewClient() {
                   : (review.metrics.savedDailyNoteCount ?? 0) > 0
                     ? `저장 ${review.metrics.savedDailyNoteCount}건 · 보류 ${review.metrics.dismissedDailyNoteCount ?? 0}건`
                     : "아직 저장된 일일 점검 메모가 없습니다."}
+                {(review.metrics.pbDailyNoteCount ?? 0) > 0
+                  ? ` · PB 저장 ${review.metrics.pbDailyNoteCount}건`
+                  : ""}
               </li>
               <li>Today Candidates: {review.qualityMeta.dataCoverage.todayCandidates}</li>
               <li>Action Items: {review.qualityMeta.dataCoverage.actionItems}</li>
             </ul>
           </section>
 
-          <section className="mb-5 grid gap-2 sm:grid-cols-4">
+          <section className="mb-5 grid gap-2 sm:grid-cols-2 md:grid-cols-5">
             <div className="rounded-lg border bg-slate-50 p-3 text-center">
               <p className="text-[10px] text-slate-500">Action 완료율</p>
               <p className="text-lg font-semibold">{Math.round(review.metrics.actionItemCompletionRatio * 100)}%</p>
@@ -205,6 +208,15 @@ export function JudgmentReviewClient() {
             <div className="rounded-lg border bg-slate-50 p-3 text-center">
               <p className="text-[10px] text-slate-500">저장된 일일 메모</p>
               <p className="text-lg font-semibold">{review.metrics.savedDailyNoteCount ?? 0}</p>
+            </div>
+            <div className="rounded-lg border bg-violet-50 p-3 text-center">
+              <p className="text-[10px] text-violet-800">PB 일일 메모</p>
+              <p className="text-lg font-semibold text-violet-950">
+                {(review.metrics.pbDailyNoteCount ?? 0) > 0 ? review.metrics.pbDailyNoteCount : "—"}
+              </p>
+              {(review.metrics.pbDailyNoteCount ?? 0) === 0 ? (
+                <p className="mt-0.5 text-[9px] text-violet-700">아직 저장된 PB 일일 메모가 없습니다.</p>
+              ) : null}
             </div>
           </section>
 

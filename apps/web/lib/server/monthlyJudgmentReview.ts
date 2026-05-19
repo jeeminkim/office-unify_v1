@@ -196,6 +196,10 @@ export function assembleMonthlyJudgmentReview(
       dailyReviewNoteCount: sources.dailyReviewNotes?.rows.length ?? 0,
       savedDailyNoteCount: sources.dailyReviewNotes?.rows.filter((r) => r.status === 'saved').length ?? 0,
       dismissedDailyNoteCount: sources.dailyReviewNotes?.rows.filter((r) => r.status === 'dismissed').length ?? 0,
+      pbDailyNoteCount:
+        sources.dailyReviewNotes?.rows.filter((r) => r.generated_by === 'pb').length ?? 0,
+      deterministicDailyNoteCount:
+        sources.dailyReviewNotes?.rows.filter((r) => r.generated_by === 'deterministic').length ?? 0,
     },
     repeatedPatterns,
     missedChecks,

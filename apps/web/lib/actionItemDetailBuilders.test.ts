@@ -5,7 +5,9 @@ import {
   buildDailyReviewNoteActionItemDetail,
   buildGenericActionItemDetail,
   buildGoogleFinanceSetupActionItemDetail,
+  buildPbDailyNoteActionItemDetail,
   buildUsDiagnosticsActionItemDetail,
+  pbDailyNoteActionIdempotencyKey,
 } from '@/lib/actionItemDetailBuilders';
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
 
@@ -71,6 +73,27 @@ describe('actionItemDetailBuilders', () => {
     expect(d.doNotDo?.some((x) => x.includes('read-back'))).toBe(true);
     expect(d.whyCreated).not.toMatch(/지금\s*매수|매수\s*추천/);
     expect(d.doNotDo?.some((x) => x.includes('자동 주문 금지'))).toBe(true);
+  });
+
+  it('pb daily note action detail has checklist and idempotency key', () => {
+    const d = buildPbDailyNoteActionItemDetail(
+      {
+        subjectType: 'holding',
+        symbol: '028300',
+        name: 'HLB',
+        noteSummary: '오늘 점검 메모',
+        pbPerspective: '확인 관점',
+        nextChecks: ['공시 확인'],
+        doNotDo: ['확대 금지'],
+        evidenceNeeded: ['disclosure'],
+      },
+      '2026-05-19',
+    );
+    expect(d.whyCreated).toContain('PB Daily Note');
+    expect(d.checklist?.[0]?.source).toBe('pb_daily_note');
+    expect(pbDailyNoteActionIdempotencyKey('2026-05-19', { subjectType: 'holding', symbol: '028300' })).toContain(
+      'pb-daily-note-action',
+    );
   });
 
   it('us diagnostics has anchor checklist', () => {

@@ -21,6 +21,20 @@
 - **대안:** 기존 flat nav 유지.
 - **링크:** `apps/web/lib/navConfig.ts`, `AppNav`
 
+### 2026-05-18 — PB Daily Note는 preview only로 생성하고 명시 저장만 허용한다
+
+- **결정:** 채택
+- **이유:** PB 초안이 자동 저장되면 사용자의 확인 기록이 아니라 LLM 노이즈가 될 수 있다.
+- **대안:** 매일 자동 생성·저장.
+- **링크:** `POST /api/daily-review/notes/generate-pb`, `POST /api/daily-review/notes`
+
+### 2026-05-18 — PB Daily Note는 deterministic note를 대체하지 않고 보조한다
+
+- **결정:** 채택
+- **이유:** deterministic note는 비용 없이 안정적인 기준선이고, PB 초안은 사용자가 필요할 때 심화 관점을 제공한다.
+- **대안:** PB LLM만 사용.
+- **링크:** `dailyReviewNotePreviewBuilder`, `pbDailyNotePreview`
+
 ### 2026-05-18 — Google Finance Setup은 Sheets read-back과 fallback을 구분한다
 
 - **결정:** 채택

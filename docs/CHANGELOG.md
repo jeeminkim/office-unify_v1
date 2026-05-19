@@ -4,6 +4,13 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-18 EVO-015-2 PB Daily Note Preview
+
+- **PB 초안:** `POST /api/daily-review/notes/generate-pb` (preview only, DB write 0) · deterministic note 기반 · LLM optional.
+- **UI:** `/daily-review` PB 초안 받기 · scope 선택 · preview 카드(저장/Action Item/Research/PB/위원회/복사).
+- **저장:** `generatedBy: pb` · 당일 idempotency · Long Response Fallback 재사용.
+- **Judgment Review:** `pbDailyNoteCount` · `deterministicDailyNoteCount`.
+
 ### 2026-05-18 Google Finance Setup E2E · Watchlist Manager Completion
 
 - **Google Finance Setup:** Sheets read-back vs Yahoo fallback 구분(`source`·`readbackStatus`) · fallback only는 ok로 표시하지 않음 · 상단 요약(Sheets OK/fallback/missing) · Action Item에 `googleFinanceReadback` 스냅샷.
