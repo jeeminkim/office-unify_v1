@@ -3,17 +3,38 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
-import { buildUsDiagnosticsActionItemDetail } from "@/lib/actionItemDetailBuilders";
+import {
+  buildGoogleFinanceSetupActionItemDetail,
+  type GoogleFinanceSetupActionItemInput,
+} from "@/lib/actionItemDetailBuilders";
+
+type AnchorResult = {
+  key: string;
+  label: string;
+  symbol: string;
+  googleTicker: string;
+  expectedFormula: string;
+  readbackPrice?: number;
+  readbackName?: string;
+  readbackStatus: string;
+  source: string;
+  lastCheckedAt: string;
+  actionHint?: string;
+  ok: boolean;
+};
 
 type SetupPayload = {
   readOnly: boolean;
   status: string;
   generatedAt: string;
+  overallQuoteSource: string;
   expectedTabs: string[];
+  usMarketGatingNote: string;
   portfolioQuotesTab: {
     configuredName: string;
     tabFound: boolean;
     readSucceeded: boolean;
+    readbackUnavailable: boolean;
     rowCount: number;
     okRows: number;
     parseFailedRows: number;
@@ -25,7 +46,13 @@ type SetupPayload = {
     coverageLabel: string;
     fetchFailed: boolean;
     emptyReason?: string;
-    results: Array<{ key: string; label: string; googleTicker: string; ok: boolean }>;
+    summary: {
+      sheetsAnchorOk: number;
+      fallbackOnly: number;
+      missing: number;
+      rangeOrPermissionError: number;
+    };
+    results: AnchorResult[];
   };
   sampleFormulas: string[];
   sampleTable: { columns: string[]; exampleRow: Record<string, string> };
@@ -36,6 +63,37 @@ type SetupPayload = {
 
 function ymdSeoul(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
+}
+
+function sourceBadge(r: AnchorResult): string {
+  if (r.source === "google_sheets_readback" && r.readbackStatus === "ok") return "Sheets read-back OK";
+  if (r.source === "yahoo_fallback") return "Fallback only";
+  if (r.readbackStatus === "missing") return "Sheets missing";
+  if (r.readbackStatus === "parse_failed") return "Range parse failed";
+  if (r.readbackStatus === "unsupported") return "Unsupported attribute";
+  if (r.readbackStatus === "stale") return "Formula pending";
+  return "Unknown";
+}
+
+function toActionItemInput(data: SetupPayload): GoogleFinanceSetupActionItemInput {
+  return {
+    status: data.status,
+    actionHint: data.actionHint,
+    warnings: data.warnings,
+    expectedTabs: data.expectedTabs,
+    sampleFormulas: data.sampleFormulas,
+    overallQuoteSource: data.overallQuoteSource,
+    portfolioQuotesTab: data.portfolioQuotesTab,
+    usAnchor: {
+      requested: data.usAnchor.requested,
+      summary: data.usAnchor.summary,
+      results: data.usAnchor.results.map((r) => ({
+        symbol: r.symbol,
+        source: r.source,
+        readbackStatus: r.readbackStatus,
+      })),
+    },
+  };
 }
 
 export function GoogleFinanceSetupClient() {
@@ -79,13 +137,15 @@ export function GoogleFinanceSetupClient() {
         ? "border-amber-300 bg-amber-50"
         : "border-red-300 bg-red-50";
 
+  const summary = data?.usAnchor.summary;
+
   return (
     <div className="mx-auto max-w-3xl p-4 pb-20 md:p-6">
       <h1 className="text-xl font-bold text-slate-900">Google Finance 설정 점검</h1>
       <p className="mt-2 text-xs leading-relaxed text-slate-600">
-        Google Finance는 시세/quote <strong>read-back 검증용</strong>입니다. 섹터/테마는 Google Finance 함수만으로
-        안정적으로 제공되지 않아 내부 registry와 수동 검토를 함께 사용합니다. 미국 anchor가 0개면 미국 종목은 일반
-        관찰 후보로 사용하지 않습니다. 이 화면은 설정 점검 도우미이며, <strong>Google Sheets를 자동 수정하지 않습니다.</strong>
+        Google Finance는 시세/quote <strong>Sheets read-back 검증용</strong>입니다. Yahoo fallback만 확인된 경우는
+        Google Finance 설정 완료로 보지 않습니다. 섹터/테마는 registry·수동 검토와 병행합니다.{" "}
+        <strong>Sheets를 자동 수정하지 않습니다.</strong>
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">
@@ -117,17 +177,32 @@ export function GoogleFinanceSetupClient() {
       {data ? (
         <section className={`mt-4 rounded-lg border p-3 text-xs ${statusColor}`}>
           <p className="font-semibold">현재 상태: {data.status}</p>
+          <p className="mt-1">quote source: {data.overallQuoteSource}</p>
           <p className="mt-1">생성: {data.generatedAt}</p>
           <p className="mt-1">{data.actionHint}</p>
+          {summary ? (
+            <div className="mt-2 grid gap-1 sm:grid-cols-2">
+              <p>
+                <span className="font-medium">Sheets anchor OK:</span> {summary.sheetsAnchorOk}/{data.usAnchor.requested}
+              </p>
+              <p>
+                <span className="font-medium">Fallback only:</span> {summary.fallbackOnly}
+              </p>
+              <p>
+                <span className="font-medium">Missing:</span> {summary.missing}
+              </p>
+              <p>
+                <span className="font-medium">Range/permission error:</span> {summary.rangeOrPermissionError}
+              </p>
+            </div>
+          ) : null}
+          <p className="mt-2 rounded bg-white/60 p-2 text-[10px] leading-relaxed">{data.usMarketGatingNote}</p>
           <p className="mt-2">
             <span className="font-medium">portfolio_quotes ({data.portfolioQuotesTab.configuredName}):</span> tab{" "}
-            {data.portfolioQuotesTab.tabFound ? "found" : "missing"} · rows {data.portfolioQuotesTab.rowCount} · ok{" "}
-            {data.portfolioQuotesTab.okRows} · parse fail {data.portfolioQuotesTab.parseFailedRows}
-          </p>
-          <p className="mt-1">
-            <span className="font-medium">US anchor:</span> {data.usAnchor.coverageLabel}
-            {data.usAnchor.fetchFailed ? " · fetch failed" : ""}
-            {data.usAnchor.emptyReason ? ` · ${data.usAnchor.emptyReason}` : ""}
+            {data.portfolioQuotesTab.tabFound ? "found" : "missing"}
+            {data.portfolioQuotesTab.readbackUnavailable ? " · readback unavailable" : ""} · rows{" "}
+            {data.portfolioQuotesTab.rowCount} · ok {data.portfolioQuotesTab.okRows} · parse fail{" "}
+            {data.portfolioQuotesTab.parseFailedRows}
           </p>
           {data.warnings.length ? (
             <p className="mt-1 text-[10px]">warnings: {data.warnings.join(", ")}</p>
@@ -149,7 +224,7 @@ export function GoogleFinanceSetupClient() {
           <section className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-xs">
             <h2 className="font-semibold">샘플 GOOGLEFINANCE 수식</h2>
             <p className="mt-1 text-[10px] text-slate-500">
-              attribute 지원·지연은 Google 측 제한이 있을 수 있습니다. 빈 셀은 수식을 복사해 직접 붙여 넣으세요.
+              SPY·QQQ·TSLA·NVDA·AAPL·MSFT — attribute 지원·지연은 Google 측 제한이 있을 수 있습니다.
             </p>
             <ul className="mt-2 space-y-1 font-mono text-[10px]">
               {data.sampleFormulas.map((f) => (
@@ -213,24 +288,44 @@ export function GoogleFinanceSetupClient() {
             </button>
             <SaveToActionInboxButton
               className="ml-2 mt-2"
-              label="Action Item 저장"
+              label="설정 점검을 Action Item으로 저장"
               request={{
                 title: "Google Finance / Sheets 설정 점검",
                 sourceType: "manual",
                 sourceLabel: "google_finance_setup",
                 idempotencyKey: `google-finance-setup:${ymdSeoul()}`,
-                detailJson: buildUsDiagnosticsActionItemDetail(),
+                detailJson: buildGoogleFinanceSetupActionItemDetail(toActionItemInput(data)),
               }}
             />
           </section>
 
           {data.usAnchor.results.length ? (
             <section className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-xs">
-              <h2 className="font-semibold">Anchor 샘플</h2>
-              <ul className="mt-1 space-y-0.5">
+              <h2 className="font-semibold">US anchor read-back ({data.usAnchor.coverageLabel} Sheets OK)</h2>
+              <ul className="mt-2 space-y-2">
                 {data.usAnchor.results.map((r) => (
-                  <li key={r.key} className={r.ok ? "text-emerald-800" : "text-amber-900"}>
-                    {r.label} ({r.googleTicker}) — {r.ok ? "ok" : "missing"}
+                  <li
+                    key={r.key}
+                    className={`rounded border p-2 ${r.ok ? "border-emerald-200 bg-emerald-50/50" : r.source === "yahoo_fallback" ? "border-amber-200 bg-amber-50/50" : "border-slate-200"}`}
+                  >
+                    <p className="font-medium">
+                      {r.label} ({r.googleTicker}) — <span className="font-normal">{sourceBadge(r)}</span>
+                    </p>
+                    <p className="mt-0.5 font-mono text-[10px] text-slate-600">{r.expectedFormula}</p>
+                    {r.readbackPrice != null ? (
+                      <p className="mt-0.5 text-slate-700">
+                        read-back price: {r.readbackPrice}
+                        {r.readbackName ? ` · ${r.readbackName}` : ""}
+                      </p>
+                    ) : null}
+                    {r.actionHint ? <p className="mt-0.5 text-[10px] text-slate-600">{r.actionHint}</p> : null}
+                    <button
+                      type="button"
+                      className="mt-1 rounded border px-1 py-0.5 text-[10px]"
+                      onClick={() => void copyText(r.expectedFormula, r.symbol)}
+                    >
+                      수식 복사
+                    </button>
                   </li>
                 ))}
               </ul>

@@ -2,10 +2,22 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { WatchlistRecommendationCandidate } from "@office-unify/shared-types";
+import type {
+  WatchlistRecommendationCandidate,
+  WatchlistSectorMatchResult,
+} from "@office-unify/shared-types";
 import { PortfolioRoleBanner } from "@/components/PortfolioRoleBanner";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
-import { buildWatchlistCheckActionItemDetail } from "@/lib/actionItemDetailBuilders";
+import {
+  buildSectorMatchReviewDetail,
+  buildWatchlistCheckActionItemDetail,
+} from "@/lib/actionItemDetailBuilders";
+import {
+  filterSectorMatchByTab,
+  sectorMatchRowHint,
+  sectorMatchSummary,
+  type SectorMatchViewTab,
+} from "@/lib/watchlistSectorMatchUi";
 
 type WatchlistItem = {
   market: "KR" | "US";
@@ -29,7 +41,8 @@ type SectorCandidate = {
 type FilterKey =
   | "all"
   | "sector_unmatched"
-  | "ticker_unverified"
+  | "google_ticker_missing"
+  | "quote_symbol_missing"
   | "quote_missing"
   | "us"
   | "held"
@@ -38,15 +51,37 @@ type FilterKey =
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "전체" },
   { key: "sector_unmatched", label: "섹터 미매칭" },
-  { key: "ticker_unverified", label: "ticker 미확인" },
-  { key: "quote_missing", label: "quote missing" },
+  { key: "google_ticker_missing", label: "google_ticker 없음" },
+  { key: "quote_symbol_missing", label: "quote_symbol 없음" },
+  { key: "quote_missing", label: "quote 경로 없음" },
   { key: "us", label: "US 관심" },
   { key: "held", label: "보유 중" },
   { key: "pending_rec", label: "등록 후보" },
 ];
 
+type WatchlistSectorMatchApiResponse = {
+  items?: WatchlistSectorMatchResult[];
+  applied?: number;
+  needsReview?: number;
+  noMatch?: number;
+  qualityMeta?: {
+    sectorMatch?: { matched?: number; needsReview?: number };
+    keywordMatch?: {
+      appliedCount?: number;
+      skippedCount?: number;
+      unmatchedCount?: number;
+      mappingVersion?: string;
+    };
+  };
+  error?: string;
+};
+
 function watchId(market: string, symbol: string) {
   return `${market}:${symbol}`;
+}
+
+function ymdSeoul(): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
 }
 
 export function WatchlistManagerClient() {
@@ -60,6 +95,10 @@ export function WatchlistManagerClient() {
   const [error, setError] = useState<string | null>(null);
   const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [sectorMatchBusy, setSectorMatchBusy] = useState<null | "preview" | "apply">(null);
+  const [sectorMatchPreview, setSectorMatchPreview] = useState<WatchlistSectorMatchResult[]>([]);
+  const [sectorMatchTab, setSectorMatchTab] = useState<SectorMatchViewTab>("actionable");
+  const [sectorBanner, setSectorBanner] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -109,11 +148,68 @@ export function WatchlistManagerClient() {
       if (filter === "us" && i.market !== "US") return false;
       if (filter === "held" && !holdings.has(key)) return false;
       if (filter === "sector_unmatched" && i.sector?.trim()) return false;
-      if (filter === "ticker_unverified" && i.googleTicker?.trim() && i.quoteSymbol?.trim()) return false;
-      if (filter === "quote_missing" && i.googleTicker?.trim()) return false;
+      if (filter === "google_ticker_missing" && i.googleTicker?.trim()) return false;
+      if (filter === "quote_symbol_missing" && i.quoteSymbol?.trim()) return false;
+      if (filter === "quote_missing" && (i.googleTicker?.trim() || i.quoteSymbol?.trim())) return false;
       return true;
     });
   }, [items, filter, holdings]);
+
+  const sectorFiltered = useMemo(
+    () => filterSectorMatchByTab(sectorMatchPreview, sectorMatchTab),
+    [sectorMatchPreview, sectorMatchTab],
+  );
+  const sectorCounts = useMemo(() => sectorMatchSummary(sectorMatchPreview), [sectorMatchPreview]);
+
+  const runSectorMatch = useCallback(
+    async (mode: "preview" | "apply") => {
+      if (mode === "apply") {
+        const ready = sectorMatchPreview.filter((x) => x.applyBucket === "ready_to_apply").length;
+        if (
+          !window.confirm(
+            `ready_to_apply ${ready}건만 DB에 반영합니다. already_matched·manual_locked·low_confidence·no_match는 제외됩니다. 계속할까요?`,
+          )
+        ) {
+          return;
+        }
+      }
+      setSectorMatchBusy(mode);
+      setSectorBanner(null);
+      setError(null);
+      try {
+        const res = await fetch("/api/portfolio/watchlist/sector-match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            mode,
+            onlyUnmatched: mode === "preview",
+            minConfidenceToApply: 75,
+          }),
+        });
+        const json = (await res.json()) as WatchlistSectorMatchApiResponse;
+        if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+        setSectorMatchPreview(json.items ?? []);
+        if (mode === "apply") {
+          const km = json.qualityMeta?.keywordMatch;
+          const extra = km
+            ? ` · 적용 ${km.appliedCount} · 건너뜀 ${km.skippedCount} · 미매칭 ${km.unmatchedCount}`
+            : "";
+          setSectorBanner(
+            `섹터 적용 완료: ${json.applied ?? 0}건 (검토 ${json.needsReview ?? 0}, 미매칭 ${json.noMatch ?? 0})${extra}`,
+          );
+          await load();
+        } else {
+          setSectorBanner("미리보기 완료 (DB write 없음). 적용·검토 탭에서 확인하세요.");
+        }
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "섹터 매칭 실패");
+      } finally {
+        setSectorMatchBusy(null);
+      }
+    },
+    [load, sectorMatchPreview],
+  );
 
   const saveMemo = async (item: WatchlistItem) => {
     const id = watchId(item.market, item.symbol);
@@ -252,7 +348,96 @@ export function WatchlistManagerClient() {
       </div>
 
       {error ? <p className="mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">{error}</p> : null}
+      {sectorBanner ? (
+        <p className="mb-2 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-900">{sectorBanner}</p>
+      ) : null}
       {loading ? <p className="text-sm text-slate-500">불러오는 중…</p> : null}
+
+      <section className="mb-4 rounded-lg border border-violet-200 bg-violet-50/60 p-3 text-xs">
+        <h2 className="font-semibold text-violet-950">섹터 자동 매칭</h2>
+        <p className="mt-1 text-[10px] text-violet-900">
+          미리보기는 read-only(DB write 0). 적용은 ready_to_apply만 반영합니다. 이미 섹터가 있는 종목은 자동 매칭
+          대상이 아닙니다 — 「이미 매칭됨」 탭에서 확인만 하세요.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-blue-900 disabled:opacity-50"
+            disabled={sectorMatchBusy != null}
+            onClick={() => void runSectorMatch("preview")}
+          >
+            {sectorMatchBusy === "preview" ? "미리보기…" : "섹터 미리보기"}
+          </button>
+          <button
+            type="button"
+            className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-900 disabled:opacity-50"
+            disabled={sectorMatchBusy != null || sectorMatchPreview.length === 0}
+            onClick={() => void runSectorMatch("apply")}
+          >
+            {sectorMatchBusy === "apply" ? "적용 중…" : "적용 가능만 적용"}
+          </button>
+          {sectorMatchPreview.length > 0 ? (
+            <span className="rounded bg-white px-2 py-1 text-slate-700">
+              전체 {sectorCounts.total} · 적용 가능 {sectorCounts.ready} · 검토 {sectorCounts.needsReview} · 이미 매칭{" "}
+              {sectorCounts.alreadyMatched}
+            </span>
+          ) : null}
+        </div>
+        {sectorMatchPreview.length > 0 ? (
+          <div className="mt-2 rounded border border-violet-100 bg-white p-2">
+            <div className="flex flex-wrap gap-1">
+              {(
+                [
+                  ["actionable", "적용·검토"],
+                  ["needs_check", "확인 필요"],
+                  ["matched", "이미 매칭됨"],
+                ] as const
+              ).map(([tab, label]) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`rounded px-2 py-0.5 ${sectorMatchTab === tab ? "bg-slate-800 text-white" : "border bg-white"}`}
+                  onClick={() => setSectorMatchTab(tab)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <ul className="mt-2 space-y-2">
+              {sectorFiltered.slice(0, 16).map((x) => (
+                <li key={`${x.name}-${x.rawTicker ?? ""}-${x.applyBucket}`} className="rounded border p-2">
+                  <p className="font-medium">
+                    {x.name} ({x.rawTicker ?? "-"}) → {x.matchedSector ?? "미매칭"} · {x.confidence}점
+                  </p>
+                  <p className="text-slate-600">{sectorMatchRowHint(x)}</p>
+                  {x.applyBucket === "already_matched" ? (
+                    <p className="mt-0.5 text-[10px] text-slate-500">이미 섹터가 있어 자동 매칭 대상이 아닙니다.</p>
+                  ) : null}
+                  {(x.applyBucket === "no_match" || x.applyBucket === "low_confidence") && (
+                    <SaveToActionInboxButton
+                      compact
+                      label="Action Item 저장"
+                      request={{
+                        title: `[관심종목] ${x.name} 섹터 매칭 검토`,
+                        sourceType: "manual",
+                        sourceLabel: "watchlist_manager",
+                        symbol: x.rawTicker ?? undefined,
+                        idempotencyKey: `watchlist-sector:${x.name}:${x.rawTicker ?? ""}:${ymdSeoul()}`,
+                        detailJson: buildSectorMatchReviewDetail({
+                          name: x.name,
+                          symbol: x.rawTicker,
+                          applyBucket: x.applyBucket ?? "no_match",
+                          bucketReason: sectorMatchRowHint(x),
+                        }),
+                      }}
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
 
       {(filter === "pending_rec" || pending.length > 0) && (
         <section className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-3">
@@ -340,6 +525,18 @@ export function WatchlistManagerClient() {
                   >
                     Research
                   </Link>
+                  <Link href="/sector-radar" className="rounded border px-2 py-1 text-center">
+                    Sector Radar
+                  </Link>
+                  <button
+                    type="button"
+                    className="rounded border px-2 py-1 disabled:opacity-50"
+                    disabled={sectorMatchBusy != null || !!item.sector?.trim()}
+                    title={item.sector?.trim() ? "이미 섹터가 있어 자동 매칭 대상이 아닙니다" : undefined}
+                    onClick={() => void runSectorMatch("preview")}
+                  >
+                    sector preview
+                  </button>
                   <SaveToActionInboxButton
                     compact
                     label="Action Item"

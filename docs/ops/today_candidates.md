@@ -48,13 +48,15 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 - **`ensureUsMarketCheckInDeck` 슬롯 치환 제거:** 이전에는 `usDirectCandidates[0]`가 국내 `interest_stock` 슬롯을 밀어냈음 — 현재는 국내 3슬롯 우선.
 - US 보유·명시 관심은 「미국 데이터 점검」카드로만 표시 가능(매수 권유 문구 없음). `usCandidateDiagnostics.selectedUsCandidateCount`는 점검 카드 제외.
 - Google Finance read-back: US market anchor·개별 quote **검증**용. sector/theme 직접 제공은 불안정 → registry·수동 검토 병행.
+- **`/ops/google-finance-setup`**: Sheets read-back(`google_sheets_readback`)과 Yahoo **fallback only**를 구분 표시. fallback만 확인된 anchor는 **ok로 취급하지 않음** · 전체 `status: degraded` 가능.
 
 ### 미국 anchor 0/18 · Google Sheets 설정 점검 (additive)
 
 - **증상:** `미국 데이터 없음` · `anchor 0/18` · `미국 신호 후보 없음` 반복 — SQL #23이 아니라 **quote provider / Google Sheets / GOOGLEFINANCE** 문제일 수 있음.
 - **`usCandidateDiagnostics.setupDiagnosis`**: `likelyRootCause` · `setupChecklist`(3+항목) · `googleFinanceGuide`(tab·수식·샘플 ticker) · `actionHint`.
 - **UI `UsDiagnosticsCard`:** 「미국 anchor 시세를 가져오지 못해 일반 관찰 후보에서 US 종목 제외」안내 · 접이식 「설정 점검」·복사 · **설정 점검 Action Item 저장**(사용자 클릭 시만 write).
-- **점검 순서:** (1) Sheets tab 존재 (2) SPY/QQQ/SMH `GOOGLEFINANCE` 결과 (3) range parse (4) ticker format (5) `GET /api/portfolio/quotes/status` (6) `POST /api/portfolio/quotes/refresh` (7) Today Brief 재조회.
+- **점검 순서:** (1) Sheets tab 존재 (2) SPY/QQQ/TSLA `GOOGLEFINANCE` 결과 (3) range parse (4) ticker format (5) `GET /api/system/google-finance-setup` (read-only) (6) `GET /api/portfolio/quotes/status` (7) `POST /api/portfolio/quotes/refresh` (8) Today Brief 재조회.
+- **Action Item:** 설정 화면 「설정 점검을 Action Item으로 저장」→ `detail_json.googleFinanceReadback`(sheets OK/fallback/missing·failed tickers) · 당일 `idempotencyKey` 중복 방지.
 - **GET 경로:** quotes status/refresh preview는 read-only; refresh POST는 사용자 명시 시만.
 
 ### 메인 3카드 덱 (additive)

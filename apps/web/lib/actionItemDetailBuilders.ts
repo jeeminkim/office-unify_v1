@@ -160,6 +160,84 @@ export function buildWatchlistCheckActionItemDetail(item: {
   });
 }
 
+export type GoogleFinanceSetupActionItemInput = {
+  status: string;
+  actionHint: string;
+  warnings: string[];
+  expectedTabs: string[];
+  sampleFormulas: string[];
+  overallQuoteSource: string;
+  portfolioQuotesTab: { configuredName: string; readbackUnavailable: boolean };
+  usAnchor: {
+    requested: number;
+    summary: {
+      sheetsAnchorOk: number;
+      fallbackOnly: number;
+      missing: number;
+      rangeOrPermissionError: number;
+    };
+    results: Array<{ symbol: string; source: string; readbackStatus: string }>;
+  };
+};
+
+export function buildGoogleFinanceSetupActionItemDetail(
+  check: GoogleFinanceSetupActionItemInput,
+): ActionItemDetailJson {
+  const s = check.usAnchor.summary;
+  const failedTickers = check.usAnchor.results
+    .filter((r) => r.source !== 'google_sheets_readback' || r.readbackStatus !== 'ok')
+    .map((r) => `${r.symbol}(${r.source})`)
+    .slice(0, 12);
+
+  return attachActionStepsToDetail({
+    notTradeInstruction: true,
+    actionCategory: 'check_now',
+    whyCreated: `Google Finance Sheets read-back ${s.sheetsAnchorOk}/${check.usAnchor.requested} · fallback only ${s.fallbackOnly}`,
+    confirmNow: ['portfolio_quotes tab', 'SPY/QQQ/TSLA 수식', 'Today Brief 재확인'],
+    checklist: [
+      { label: 'us_market_quotes / portfolio_quotes tab 존재 확인', source: 'google_finance_setup' },
+      { label: 'SPY/QQQ/TSLA 샘플 수식 직접 입력', source: 'google_finance_setup' },
+      { label: 'price 비면 ticker prefix 확인', source: 'google_finance_setup' },
+      { label: 'status 컬럼 ok 확인', source: 'google_finance_setup' },
+      { label: '시세 refresh 후 Today Brief 재확인', source: 'google_finance_setup' },
+    ],
+    doNotDo: [
+      'Sheets read-back이 0개인 상태에서 미국 종목을 일반 후보로 판단하지 않기',
+      'Yahoo fallback만으로 Google Finance 설정 완료로 보지 않기',
+      '즉시 매수·매도·자동 주문 금지',
+    ],
+    evidenceNeeded: [
+      `sheets_ok:${s.sheetsAnchorOk}`,
+      `fallback_only:${s.fallbackOnly}`,
+      `missing:${s.missing}`,
+      ...failedTickers,
+    ],
+    decisionContext: {
+      sourceQuestion: 'Google Sheets GOOGLEFINANCE read-back이 충분한가?',
+      sourceSummary: `tabs=${check.expectedTabs.join(', ')} · overall=${check.overallQuoteSource}`,
+      riskFlags: check.warnings,
+      nextChecks: [
+        `${check.portfolioQuotesTab.configuredName} tab`,
+        'SPY/QQQ/TSLA GOOGLEFINANCE',
+        'Today Brief',
+      ],
+    },
+    recommendedNextLinks: linksFor('pending', {
+      whyCreated: check.actionHint,
+      decisionContext: { sourceQuestion: 'Google Finance setup' },
+    }),
+    googleFinanceReadback: {
+      sheetsAnchorOk: s.sheetsAnchorOk,
+      fallbackOnly: s.fallbackOnly,
+      missing: s.missing,
+      rangeOrPermissionError: s.rangeOrPermissionError,
+      expectedTabs: check.expectedTabs,
+      sampleFormulas: check.sampleFormulas.slice(0, 6),
+      failedTickers,
+    },
+  });
+}
+
 export function buildUsDiagnosticsActionItemDetail(): ActionItemDetailJson {
   return attachActionStepsToDetail({
     notTradeInstruction: true,

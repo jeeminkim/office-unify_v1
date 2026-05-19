@@ -535,7 +535,7 @@ export function PortfolioDashboardClient() {
         </div>
         <div className="flex gap-2 text-xs">
           <Link href="/" className="rounded border border-slate-300 bg-white px-3 py-1.5">홈</Link>
-          <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">보유 종목 관리</Link>
+          <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">보유/거래 원장</Link>
           <button
             type="button"
             className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-blue-900 disabled:opacity-50"
@@ -1145,7 +1145,7 @@ export function PortfolioDashboardClient() {
         <h2 className="text-sm font-semibold text-slate-800">관리 진입</h2>
         <p className="mt-1 text-xs text-slate-600">아래 기능은 주문 실행이 아니라 외부 거래 이후 기록 반영입니다.</p>
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">보유 종목 관리</Link>
+          <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">보유/거래 원장</Link>
           <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">원장 반영</Link>
           <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5">매수/매도 후 보유 수량 수정</Link>
           <Link href="/trade-journal" className="rounded border border-slate-300 bg-white px-3 py-1.5">Trade Journal 기록</Link>

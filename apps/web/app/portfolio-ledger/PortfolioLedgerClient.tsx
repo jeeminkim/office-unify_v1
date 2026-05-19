@@ -1672,7 +1672,7 @@ export function PortfolioLedgerClient() {
 
       <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700">
         <div className="flex items-center justify-between">
-          <p className="font-semibold text-slate-800">보유 종목 관리 (빠른 수정/매수·매도 반영)</p>
+          <p className="font-semibold text-slate-800">보유/거래 원장 (평단·수량·거래 반영)</p>
           <button
             type="button"
             className="rounded border border-slate-300 bg-white px-3 py-1.5"
@@ -2113,11 +2113,15 @@ export function PortfolioLedgerClient() {
           <div className="mt-4">
             <p className="font-semibold text-slate-800">관심 종목</p>
             <p className="mt-1 text-[11px] text-slate-600">
-              Sector Radar와 연동된 <strong>관찰 우선순위</strong> 배지입니다. 매수 추천이 아니며,{" "}
+              섹터 미리보기·적용은{" "}
+              <Link href="/watchlist" className="text-violet-700 underline underline-offset-2">
+                관심종목 관리
+              </Link>
+              에서도 할 수 있습니다. Sector Radar는{" "}
               <Link href="/sector-radar" className="text-violet-700 underline underline-offset-2">
                 섹터 온도계
               </Link>
-              에서 전체 큐를 볼 수 있습니다.
+              입니다. 매수 추천이 아닙니다.
             </p>
             <p className="mt-1 text-[11px] text-slate-600">
               Google Finance는 주로 시세·ticker 검증에 사용합니다. 섹터/테마는 Google Finance 함수만으로 안정 제공되지 않아

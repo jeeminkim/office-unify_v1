@@ -23,6 +23,16 @@ export type ActionItemRecommendedLink = {
   href: string;
 };
 
+export type GoogleFinanceReadbackSummary = {
+  sheetsAnchorOk: number;
+  fallbackOnly: number;
+  missing: number;
+  rangeOrPermissionError: number;
+  expectedTabs: string[];
+  sampleFormulas: string[];
+  failedTickers: string[];
+};
+
 export type ActionItemDetailJson = {
   notTradeInstruction?: boolean;
   actionCategory?: 'check_now' | 'monitor' | 'research_needed' | 'retrospective_needed' | 'risk_review';
@@ -39,6 +49,8 @@ export type ActionItemDetailJson = {
   symbol?: string;
   name?: string;
   market?: string;
+  /** additive: Google Finance Setup 점검 스냅샷 */
+  googleFinanceReadback?: GoogleFinanceReadbackSummary;
 };
 
 export function parseActionItemDetailJson(raw: Record<string, unknown> | undefined): ActionItemDetailJson {

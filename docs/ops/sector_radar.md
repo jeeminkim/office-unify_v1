@@ -15,7 +15,8 @@
 
 ## 관심종목 섹터 매칭 · Google Finance 역할
 
-- **Google Finance:** `google_ticker` / `quote_symbol` read-back으로 **시세·ticker 유효성** 검증. GOOGLEFINANCE만으로 sector/theme를 안정 제공한다고 가정하지 않음.
+- **Google Finance:** `google_ticker` / `quote_symbol` read-back으로 **시세·ticker 유효성** 검증. GOOGLEFINANCE만으로 sector/theme를 안정 제공한다고 가정하지 않음. Yahoo fallback만으로 Sheets 설정 완료로 보지 않음(`googleFinanceSetupCheck`).
+- **Watchlist Manager:** `/watchlist`에서 섹터 미리보기(preview, write 0)·`ready_to_apply`만 apply(confirm). `already_matched`·`manual_locked`는 기본 적용 제외.
 - **섹터/테마:** `watchlistSectorMatcher` known map · keyword · Sector Radar anchor · 수동 `sector_is_manual`(apply 시 절대 덮어쓰지 않음).
 - **점수 분해(additive):** `matchScores` — `quoteValidationScore`, `registryAliasScore`, `finalSectorMatchScore` 등. quote ok만으로 sector 확정하지 않음.
 - **API:** `POST /api/portfolio/watchlist/sector-match` — `preview` write 0회 · `apply`만 DB update · confidence ≥ 75만 자동 apply.

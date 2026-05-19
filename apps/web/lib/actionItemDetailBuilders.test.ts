@@ -4,6 +4,7 @@ import {
   buildCommitteeRoadmapItemDetail,
   buildDailyReviewNoteActionItemDetail,
   buildGenericActionItemDetail,
+  buildGoogleFinanceSetupActionItemDetail,
   buildUsDiagnosticsActionItemDetail,
 } from '@/lib/actionItemDetailBuilders';
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
@@ -48,6 +49,28 @@ describe('actionItemDetailBuilders', () => {
       bucket: 'doThisWeek',
     });
     expect(d.checklist?.[0]?.label).toContain('주간');
+  });
+
+  it('google finance setup detail includes readback summary', () => {
+    const d = buildGoogleFinanceSetupActionItemDetail({
+      status: 'degraded',
+      actionHint: 'fallback only',
+      warnings: [],
+      expectedTabs: ['portfolio_quotes'],
+      sampleFormulas: ['=GOOGLEFINANCE("NASDAQ:TSLA","price")'],
+      overallQuoteSource: 'yahoo_fallback',
+      portfolioQuotesTab: { configuredName: 'portfolio_quotes', readbackUnavailable: false },
+      usAnchor: {
+        requested: 18,
+        summary: { sheetsAnchorOk: 0, fallbackOnly: 3, missing: 15, rangeOrPermissionError: 0 },
+        results: [{ symbol: 'TSLA', source: 'yahoo_fallback', readbackStatus: 'missing' }],
+      },
+    });
+    expect(d.googleFinanceReadback?.sheetsAnchorOk).toBe(0);
+    expect(d.googleFinanceReadback?.fallbackOnly).toBe(3);
+    expect(d.doNotDo?.some((x) => x.includes('read-back'))).toBe(true);
+    expect(d.whyCreated).not.toMatch(/지금\s*매수|매수\s*추천/);
+    expect(d.doNotDo?.some((x) => x.includes('자동 주문 금지'))).toBe(true);
   });
 
   it('us diagnostics has anchor checklist', () => {

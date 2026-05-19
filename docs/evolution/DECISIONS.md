@@ -21,6 +21,20 @@
 - **대안:** 기존 flat nav 유지.
 - **링크:** `apps/web/lib/navConfig.ts`, `AppNav`
 
+### 2026-05-18 — Google Finance Setup은 Sheets read-back과 fallback을 구분한다
+
+- **결정:** 채택
+- **이유:** Yahoo/fallback이 동작해도 사용자는 실제 GOOGLEFINANCE 설정이 정상인지 알아야 한다.
+- **대안:** fallback 데이터만으로 ok 표시.
+- **링크:** `googleFinanceSetupCheck.ts`, `/ops/google-finance-setup`
+
+### 2026-05-18 — Watchlist Manager에서 sector/ticker 점검을 직접 수행한다
+
+- **결정:** 채택
+- **이유:** 관심종목 관리는 원장과 분리되어야 하며, 섹터/ticker 문제를 별도 화면에서 처리해야 한다.
+- **대안:** Portfolio Ledger에 계속 섞어 둔다.
+- **링크:** `/watchlist`, `WatchlistManagerClient.tsx`
+
 ### 2026-05-18 — Portfolio는 보유 현황, Portfolio Ledger는 원장, Watchlist는 관심종목 관리로 분리한다
 
 - **결정:** 채택

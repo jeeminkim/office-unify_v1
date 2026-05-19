@@ -16,7 +16,7 @@
 - `/portfolio` (보유 현황)
 - `/portfolio-ledger` (보유/거래 원장)
 - `/watchlist` (관심종목 관리)
-- `/ops/google-finance-setup` (Google Finance read-only 설정 점검)
+- `/ops/google-finance-setup` (Google Finance read-only 설정 점검 · Sheets read-back vs fallback 구분)
 - `/sector-radar`
 - `/trend`
 - `/research-center`

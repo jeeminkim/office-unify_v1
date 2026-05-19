@@ -4,6 +4,12 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-18 Google Finance Setup E2E · Watchlist Manager Completion
+
+- **Google Finance Setup:** Sheets read-back vs Yahoo fallback 구분(`source`·`readbackStatus`) · fallback only는 ok로 표시하지 않음 · 상단 요약(Sheets OK/fallback/missing) · Action Item에 `googleFinanceReadback` 스냅샷.
+- **Watchlist Manager:** `/watchlist`에서 섹터 미리보기(read-only)·ready_to_apply 적용(confirm) · ticker 필터(google_ticker/quote_symbol) · no_match Action Item.
+- **Portfolio 문구:** 「보유 종목 관리」→ 보유 현황/보유·거래 원장/관심종목 관리.
+
 ### 2026-05-18 Navigation IA · Watchlist Manager · Google Finance Setup Assistant
 
 - **메뉴 IA:** `AppNav` 트리 구조(데스크톱 드롭다운·모바일 More)·`navConfig` — Portfolio/ Ledger/ Watchlist 역할 라벨 정리.

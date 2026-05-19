@@ -60,8 +60,10 @@ npm run pre-live-smoke --workspace=apps/web
 
 - [ ] 데스크톱 상단 nav 트리(투자 운영·포트폴리오·리서치·판단/복기·운영/설정) · 모바일 5탭+More 트리.
 - [ ] `/portfolio` 「보유 현황」·`/portfolio-ledger` 「보유/거래 원장」 역할 설명 배너.
-- [ ] `/watchlist` 관심종목 필터·메모 저장·등록 후보 승인(승인 전 write 없음).
-- [ ] `/ops/google-finance-setup` sample formula 복사 · `GET /api/system/google-finance-setup` read-only.
+- [ ] `/watchlist` 섹터 미리보기(DB write 0)·ready_to_apply 적용(confirm)·already_matched 기본 적용 제외.
+- [ ] `/watchlist` google_ticker/quote_symbol 필터·no_match Action Item.
+- [ ] `/ops/google-finance-setup` Sheets read-back OK vs Fallback only 구분 · anchor 0 시 gating 문구.
+- [ ] `/ops/google-finance-setup` sample formula 복사(SPY/QQQ/TSLA 등) · Action Item에 readback summary · `GET /api/system/google-finance-setup` read-only.
 - [ ] 외부 보유 import·금융 로그인 UI **추가되지 않음**.
 
 ## 3b. US data setup · Action Step Runner · Long response fallback

@@ -123,6 +123,16 @@ function buildSignals(map: Map<string, YahooQuoteResult>): UsMarketMorningSummar
   return signals;
 }
 
+/** Yahoo quote map for setup checks / fallback detection (read-only). */
+export async function fetchUsMarketYahooQuoteMap(
+  symbols: string[],
+): Promise<{ map: Map<string, YahooQuoteResult>; fetchFailed: boolean }> {
+  const timeoutMs =
+    Number(process.env.US_MARKET_QUOTE_TIMEOUT_MS ?? process.env.NEXT_PUBLIC_US_MARKET_QUOTE_TIMEOUT_MS ?? '') ||
+    12000;
+  return fetchQuotes(uniqSymbols(symbols), timeoutMs);
+}
+
 export async function buildUsMarketMorningSummary(opts?: {
   /** 추가 US 심볼(관심종목 등), Yahoo ticker */
   extraQuoteSymbols?: string[];

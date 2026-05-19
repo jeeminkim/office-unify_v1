@@ -19,7 +19,8 @@
   - **실사용 점검 / 데이터 상태**(Today Brief 메타·미국 신호 히스토그램 상위·ticker resolver 세션 requestId·SQL 적용 신호; 매수 추천 아님)
 - `/dev-assistant` : 기존 개발 보조 기능 분리 진입점
 - `/portfolio` : 포트폴리오 현황 대시보드(점검 전용)
-- `/portfolio-ledger` : 보유 종목 관리/원장 반영(사후 기록 반영 전용)
+- `/portfolio-ledger` : 보유/거래 원장(사후 기록 반영 전용)
+- `/watchlist` : 관심종목·섹터/ticker 점검(원장과 분리)
   - 기본 모드(default): 보유/관심 추가, 보유 목록, 매수·매도 반영, 거래 이력, ticker 추천
   - 고급(SQL) 모드: SQL validate/apply, raw JSON preview, ledger queue append
   - 고급 모드 표시 상태는 `localStorage.portfolioLedgerAdvancedMode`로 유지
