@@ -2,6 +2,31 @@
 
 날짜순 또는 우선순위순으로 유지한다. 상세는 `IDEA_TEMPLATE.md` 블록을 여기에 붙이거나 별도 파일로 두고 링크만 남긴다.
 
+## Personal Investment OS Cohesion (2026-05-19 audit)
+
+상세: [`docs/ops/personal_investment_os_audit.md`](../ops/personal_investment_os_audit.md)
+
+| Priority | ID | 요약 | 영역 |
+|----------|-----|------|------|
+| ~~P0~~ | EVO-020 | Today Risk Review: `check_disclosure` / `external_hint` 버튼 렌더 | **1차 shipped** (uncommitted) |
+| ~~P0~~ | EVO-021 | Committee regenerate preview에 `actionHints` CTA | **1차 shipped** (uncommitted) |
+| ~~P0~~ | EVO-022 | Dashboard **Command Center strip** (오늘 top 3 + 데이터 blocker) | **1차 shipped** (uncommitted) |
+| ~~P0~~ | EVO-023 | Committee roadmap 로컬 완료 vs Action Inbox 혼동 제거 | **1차 shipped** (uncommitted) |
+| ~~P1~~ | EVO-024 | `buildUserPersonalizationContext` 통합 컨텍스트 로더 | **1차 shipped** (uncommitted) |
+| ~~P1~~ | EVO-025 | Persona/Committee/PB/Research에 personalization prompt block 주입 | **1차 shipped** (uncommitted) |
+| ~~P1~~ | EVO-026 | Research/PB/Trend LongResponseFallback | **1차 shipped** (uncommitted) |
+| **P1** | EVO-027 | DashboardClient 섹션 분리 (Command Center 포함) | `#dashboard` `#ux` |
+| **P1** | EVO-028 | 모든 inbox create 경로 `sourceRefs` + steps 보강 | `#action-items` |
+| **P2** | EVO-029 | Judgment patterns → Brief/PB/Committee 프롬프트 루프백 | `#judgment-review` |
+| **P2** | EVO-030 | Today feedback → Brief qualityMeta 요약 | `#today-brief` |
+| **P2** | EVO-031 | `nextBestActionPolicy` 서버 모듈 | `#dashboard` |
+| **P3** | EVO-032 | read-only route manifest 테스트 확장 | `#ops` |
+| **P3** | EVO-033 | PortfolioLedgerClient 분리 | `#portfolio` |
+
+**이번 라운드 소규모 보강 (uncommitted):** `POST /api/action-items` → `enrichCreateRequestWithDetail`; Committee `doThisWeek` 라벨·로컬 완료 문구.
+
+---
+
 ## 진행 중 · 다음에 할 일
 
 | ID | 요약 | 영역 | 상태 | 메모 |

@@ -7,6 +7,10 @@ import type {
   CommitteeLineOutputQuality,
   CommitteePrimaryConcern,
 } from '@office-unify/shared-types';
+import {
+  buildPartialRecoveryFallbackItems,
+  enrichRoadmapMaterializationBuckets,
+} from '@/lib/server/committeeRoadmapMaterialization';
 
 const TRADE_INSTRUCTION = /(즉시\s*매수|즉시\s*매도|지금\s*매수|지금\s*매도|전량\s*매도|전량\s*매수|주문\s*실행|자동\s*주문)/i;
 
@@ -197,6 +201,9 @@ export function buildCommitteeActionRoadmap(input: {
     .filter((l) => l.outputQuality?.truncated || l.outputQuality?.status === 'partial')
     .map((l) => l.slug);
 
+  const partialRecovery =
+    truncatedPersonaIds.length > 0 ? buildPartialRecoveryFallbackItems(truncatedPersonaIds) : [];
+
   const sanitizedTotal = all.reduce((n, l) => n + (l.outputQuality?.sanitizedPromptLeaks ?? 0), 0);
 
   const stance =
@@ -233,7 +240,7 @@ export function buildCommitteeActionRoadmap(input: {
 
   const cioVerdict = extractSection(cio, '최종 판정').slice(0, 300);
 
-  return {
+  const base: CommitteeActionRoadmap = {
     status,
     decisionFrame: {
       question: input.topic.slice(0, 500),
@@ -248,6 +255,16 @@ export function buildCommitteeActionRoadmap(input: {
       monitor: dedupeItems(monitor).slice(0, 10),
       researchNeeded: dedupeItems(researchNeeded).slice(0, 8),
       retrospectiveNeeded: dedupeItems(retrospectiveNeeded).slice(0, 8),
+      checkNow: dedupeItems(doThisWeek).slice(0, 6),
+      riskReview: dedupeItems(doNotDo).slice(0, 6),
+      portfolioReview: dedupeItems(
+        primaryConcern === 'sector_concentration' || primaryConcern === 'leverage_exposure'
+          ? [
+              item('포트폴리오 노출·비중을 원장 기준으로 확인', '집중·레버리지 리스크', ['cio'], 'high'),
+            ]
+          : [],
+      ).slice(0, 4),
+      partialRecovery: dedupeItems(partialRecovery).slice(0, 6),
     },
     portfolioImplications: {
       concentrationWarnings:
@@ -282,6 +299,8 @@ export function buildCommitteeActionRoadmap(input: {
       actionabilityScore,
     },
   };
+
+  return enrichRoadmapMaterializationBuckets(base, { topic: input.topic });
 }
 
 function dedupeItems(items: CommitteeActionItem[]): CommitteeActionItem[] {

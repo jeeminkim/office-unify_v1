@@ -12,6 +12,7 @@ import {
 } from '@/lib/server/runCommitteeDiscussion';
 import { guardCommitteeDiscussionLine, guardCommitteeDiscussionLines } from '@/lib/server/committeeOutputGuard';
 import { buildCommitteeActionRoadmap } from '@/lib/server/committeeActionRoadmapBuilder';
+import { loadUserPersonalizationBundle } from '@/lib/server/userPersonalizationContext';
 
 type Body = {
   topic?: string;
@@ -57,6 +58,8 @@ export async function POST(req: Request) {
   const committeeTurnId = typeof body.committeeTurnId === 'string' ? body.committeeTurnId.trim() : '';
 
   try {
+    const personalization = await loadUserPersonalizationBundle(supabase, userKey).catch(() => null);
+
     const { cio: cioRaw, drucker: druckerRaw } = await executeCommitteeDiscussionClosing({
       supabase,
       userKey,
@@ -64,6 +67,7 @@ export async function POST(req: Request) {
       openAiApiKey: llm.openAiApiKey,
       topic,
       transcript,
+      personalizationContextAppend: personalization?.promptAppend,
     });
 
     const cio = guardCommitteeDiscussionLine(cioRaw);
@@ -103,6 +107,7 @@ export async function POST(req: Request) {
         missingActionBuckets: missingBuckets.length > 0 ? missingBuckets : undefined,
         truncatedInputLines: truncatedInputLines.length > 0 ? truncatedInputLines : undefined,
         promptLeakSanitizedCount: actionRoadmap.qualityMeta?.sanitizedPromptLeaks,
+        personalizationContextSummary: personalization?.summary,
       },
     };
 

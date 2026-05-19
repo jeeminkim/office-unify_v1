@@ -12,6 +12,8 @@ export function buildResearchFollowupPrivateBankerPrompt(input: {
   investorProfileSection?: string;
   /** 보유 집중도 점검(금액·티커 원문 없음, 자동 리밸런싱 지시 금지). */
   concentrationRiskSection?: string;
+  /** read-only 사용자 운영 맥락(추천·주문 지시 아님). */
+  personalizationContextSection?: string;
 }): string {
   const name = input.companyName ?? input.symbol ?? '해당 기업';
   const lines = input.conclusionSummaryLines.filter(Boolean).slice(0, 8);
@@ -43,6 +45,8 @@ ${fu || '- 없음'}
 ${input.investorProfileSection ?? '(투자자 프로필 미연결 · 설정에서 보완 가능. 자동 주문·매수 강요 없음)'}
 
 ${input.concentrationRiskSection ?? ''}
+
+${input.personalizationContextSection ?? ''}
 
 확인된 사실·합리적 추론·미확인 가설을 구분하고, 설명은 판단 보조 목적만으로 작성해줘.`;
 }

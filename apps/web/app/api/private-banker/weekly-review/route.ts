@@ -18,6 +18,7 @@ import { auditPrivateBankerStructuredResponse, mergePbWeeklyReviewQualityMetaWit
 import { buildLongResponseFallback } from '@/lib/longResponseFallback';
 import { INVESTOR_PROFILE_TABLE_ACTION_HINT } from '@/lib/server/investorProfileSupabaseErrors';
 import { RESEARCH_FOLLOWUP_TABLE_ACTION_HINT } from '@/lib/server/researchFollowupSupabaseErrors';
+import { loadUserPersonalizationBundle } from '@/lib/server/userPersonalizationContext';
 
 /**
  * GET /api/private-banker/weekly-review
@@ -119,6 +120,10 @@ export async function POST(req: Request) {
     const preview = buildPbWeeklyReviewFromContext(ctx);
     const sanitized = sanitizeWeeklyReviewContext(ctx);
     let messageContent = buildPrivateBankerWeeklyReviewPrompt(ctx, sanitized);
+    const personalization = await loadUserPersonalizationBundle(supabase, userKeyStr).catch(() => null);
+    if (personalization?.promptAppend?.trim()) {
+      messageContent = `${personalization.promptAppend.trim()}\n\n---\n\n${messageContent}`;
+    }
 
     try {
       const ip = await getInvestorProfileForUser(supabase, userKeyStr);
@@ -147,6 +152,7 @@ export async function POST(req: Request) {
       userKey,
       userContent: messageContent,
       contentPolicy: 'server_synthesized',
+      personalizationContextAppend: personalization?.promptAppend,
     });
     const pbSessionId = prepared.sessionId;
 
@@ -194,6 +200,7 @@ export async function POST(req: Request) {
         qualityMeta,
         assistantPreview: displayText.slice(0, 4000),
       },
+      personalizationContextSummary: personalization?.summary,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';

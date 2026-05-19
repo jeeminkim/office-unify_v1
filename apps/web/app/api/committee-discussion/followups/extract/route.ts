@@ -12,6 +12,7 @@ import {
   validateExtractedFollowups,
 } from '@/lib/server/committeeFollowupValidation';
 import { followupDraftsFromActionRoadmap } from '@/lib/server/committeeActionRoadmapFollowups';
+import { followupDraftsFromRoadmapFallback } from '@/lib/server/committeeRoadmapMaterialization';
 
 export async function POST(req: Request) {
   const auth = await requirePersonaChatAuth();
@@ -71,13 +72,20 @@ export async function POST(req: Request) {
       const k = d.title.trim().toLowerCase();
       if (!mergedByTitle.has(k)) mergedByTitle.set(k, d);
     }
+    let items = [...mergedByTitle.values()];
+    const warnings: string[] = [
+      ...checked.warnings,
+      ...checked.blockingErrors,
+      ...(roadmapDrafts.length > 0 ? ['action_roadmap_drafts_merged'] : []),
+    ];
+    if (items.length === 0) {
+      const fallback = followupDraftsFromRoadmapFallback(parsedReq.value.topic, parsedReq.value.actionRoadmap);
+      items = fallback;
+      if (fallback.length > 0) warnings.push('roadmap_fallback_drafts_used');
+    }
     const result: CommitteeFollowupExtractResponse = {
-      items: [...mergedByTitle.values()],
-      warnings: [
-        ...checked.warnings,
-        ...checked.blockingErrors,
-        ...(roadmapDrafts.length > 0 ? ['action_roadmap_drafts_merged'] : []),
-      ],
+      items,
+      warnings,
     };
     return NextResponse.json(result);
   } catch (error: unknown) {

@@ -8,7 +8,16 @@ import {
 export const ACTION_STEP_SEED_STORAGE_KEY = 'office-unify:action-step-seed:v1';
 
 export type ActionStepSeedPayload = {
-  source: 'action_step' | 'pb_weekly' | 'pb_daily_note' | 'us_setup';
+  source:
+    | 'action_step'
+    | 'pb_weekly'
+    | 'pb_weekly_review'
+    | 'pb_daily_note'
+    | 'pb_response'
+    | 'research_report'
+    | 'trend_report'
+    | 'us_setup'
+    | 'committee_discussion';
   actionItemId?: string;
   stepId?: string;
   stepLabel: string;

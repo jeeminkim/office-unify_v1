@@ -6,7 +6,8 @@
 import { PERSONA_CHAT_ASSISTANT_TARGET_MAX_CHARS } from '@office-unify/shared-types';
 import { isCommitteePersonaSlug } from './committeePrompt';
 
-const MAX_TOTAL_CHARS = PERSONA_CHAT_ASSISTANT_TARGET_MAX_CHARS + 400;
+/** persona 발언 hard cap — prompt 900~1200자와 맞춤. 초과 시 mid-body truncation → partial badge */
+const MAX_TOTAL_CHARS = PERSONA_CHAT_ASSISTANT_TARGET_MAX_CHARS;
 
 /** 앞쪽 대량 prepend 대신 끝에 한 줄 안내만 붙인다(공통 골격 위주 출력과 충돌 완화). */
 const COMMITTEE_SOFT_REMEDIATION_SLUGS = new Set<string>([

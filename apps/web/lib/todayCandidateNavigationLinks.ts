@@ -82,3 +82,19 @@ export function buildWatchlistFocusHrefFromCandidate(c: TodayCandidateNavInput):
 export function buildDecisionRetrospectivesHref(): string {
   return '/?retro=1';
 }
+
+/** 공시·기업 이벤트 확인용 Research Center seed (매수/매도 지시 없음). */
+export function buildDisclosureResearchHrefFromCandidate(c: TodayCandidateNavInput): string {
+  const p = new URLSearchParams();
+  const code = candidateSymbol(c);
+  const name = (c.name ?? code).trim();
+  const q = `${name}${code ? ` ${code}` : ''}의 공시·권리락·신주배정·유상증자 일정을 확인해줘. 매수/매도 지시가 아니라 리스크 확인 관점으로 정리해줘.`;
+  p.set('q', q.slice(0, 500));
+  if (code) p.set('symbol', code);
+  if (c.name) p.set('name', c.name.slice(0, 80));
+  p.set('market', candidateMarketParam(c));
+  p.set('source', 'today_candidate_risk');
+  p.set('riskReview', '1');
+  if (c.corporateActionRisk?.riskType) p.set('riskType', c.corporateActionRisk.riskType);
+  return `/research-center?${p.toString()}`;
+}

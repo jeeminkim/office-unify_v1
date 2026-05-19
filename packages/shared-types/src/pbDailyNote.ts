@@ -90,5 +90,7 @@ export type PbDailyNotePreviewResponse = {
     provider?: string;
     warnings: string[];
     generatedAt: string;
+    /** additive: read-only 개인화 요약(원문 메모 없음) */
+    personalizationContextSummary?: import('./userPersonalizationContext').PersonalizationContextSummary;
   };
 };

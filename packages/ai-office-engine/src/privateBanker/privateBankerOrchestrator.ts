@@ -161,6 +161,8 @@ export async function preparePrivateBankerTurnContext(params: {
   userContent: string;
   /** 주간 점검 등 서버 합성 프롬프트 — 28k 한도 */
   contentPolicy?: 'user' | 'server_synthesized';
+  /** @additive read-only 사용자 운영 맥락 */
+  personalizationContextAppend?: string;
 }): Promise<PersonaChatTurnPrepared> {
   const personaKey = toPersonaWebKey(PRIVATE_BANKER_PERSONA_SLUG);
   const kst = getKstDateString();
@@ -194,12 +196,15 @@ export async function preparePrivateBankerTurnContext(params: {
   const longTermForPrompt = formatPrivateBankerLongTermForPrompt(longTermRaw);
   const ledgerSnapshot = formatWebPortfolioLedgerForPrivateBankerPrompt({ holdings, watchlist });
 
-  const systemInstruction = buildPrivateBankerFullInstruction({
+  let systemInstruction = buildPrivateBankerFullInstruction({
     longTermForPrompt,
     previousDayAssistantHint,
     sessionDateKst: sessionDateKst as string,
     ledgerSnapshot,
   });
+  if (params.personalizationContextAppend?.trim()) {
+    systemInstruction += `\n\n${params.personalizationContextAppend.trim()}`;
+  }
 
   const contents = toGeminiContents([
     ...messagesBefore.map((m) => ({ role: m.role, content: m.content })),

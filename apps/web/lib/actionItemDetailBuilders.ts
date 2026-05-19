@@ -303,36 +303,118 @@ export function buildRiskReviewStepActionItemDetail(
   });
 }
 
+export function buildCommitteeLineRegenerateActionItemDetail(input: {
+  personaKey: string;
+  originalQuestion: string;
+  recoveredSummary: string;
+  committeeTurnId?: string;
+  missingEvidence?: string[];
+  doNotDo?: string[];
+  nextChecks?: string[];
+}): ActionItemDetailJson {
+  const structured = input.recoveredSummary.slice(0, 1200);
+  return attachActionStepsToDetail({
+    notTradeInstruction: true,
+    actionCategory: 'check_now',
+    whyCreated: `위원회 발언 복구 (${input.personaKey})`,
+    confirmNow: input.nextChecks?.slice(0, 5) ?? ['복구 발언 확인'],
+    doNotDo: input.doNotDo?.length
+      ? input.doNotDo
+      : ['매수·매도·자동 주문 지시가 아님', '즉시 실행·자동 리밸런싱 없음'],
+    evidenceNeeded: input.missingEvidence?.length
+      ? input.missingEvidence
+      : ['토론 맥락', '원장·시세 확인'],
+    checklist: [
+      {
+        label: '복구 발언 검토',
+        reason: structured.slice(0, 200),
+        source: 'committee_partial_recovery',
+      },
+    ],
+    decisionContext: {
+      sourceQuestion: input.originalQuestion.slice(0, 400),
+      sourceSummary: structured.slice(0, 400),
+      missingEvidence: input.missingEvidence,
+      nextChecks: input.nextChecks,
+    },
+    sourceSummary: structured.slice(0, 500),
+    recommendedNextLinks: linksFor('pending', {
+      whyCreated: input.originalQuestion,
+      decisionContext: { sourceQuestion: input.originalQuestion },
+    }),
+  });
+}
+
 export function buildCommitteeRoadmapItemDetail(input: {
   title: string;
   reason: string;
   bucket: string;
+  topic?: string;
+  committeeTurnId?: string;
+  personaRefs?: string[];
+  partialLineRefs?: string[];
 }): ActionItemDetailJson {
   const checklist: ActionItemDetailJson['checklist'] = [];
   const doNotDo: string[] = [];
-  if (input.bucket === 'doThisWeek') {
-    checklist.push({ label: input.title, reason: input.reason });
-  } else if (input.bucket === 'doNotDo') {
+  const b = input.bucket;
+  if (b === 'doThisWeek' || b === 'checkNow') {
+    checklist.push({ label: input.title, reason: input.reason, source: 'committee_discussion' });
+  } else if (b === 'doNotDo' || b === 'riskReview') {
     doNotDo.push(input.title);
-  } else if (input.bucket === 'monitor') {
-    checklist.push({ label: `모니터: ${input.title}` });
-  } else if (input.bucket === 'retrospectiveNeeded') {
-    checklist.push({ label: `복기: ${input.title}` });
+  } else if (b === 'monitor') {
+    checklist.push({ label: `모니터: ${input.title}`, source: 'committee_discussion' });
+  } else if (b === 'retrospectiveNeeded') {
+    checklist.push({ label: `복기: ${input.title}`, source: 'committee_discussion' });
+  } else if (b === 'researchNeeded') {
+    checklist.push({ label: `리서치: ${input.title}`, source: 'committee_discussion' });
+  } else if (b === 'partialRecovery') {
+    checklist.push({ label: input.title, reason: input.reason, source: 'committee_partial_recovery' });
   } else {
-    checklist.push({ label: input.title });
+    checklist.push({ label: input.title, source: 'committee_discussion' });
   }
+
+  const category: ActionItemDetailJson['actionCategory'] =
+    b === 'retrospectiveNeeded'
+      ? 'retrospective_needed'
+      : b === 'researchNeeded'
+        ? 'research_needed'
+        : b === 'monitor'
+          ? 'monitor'
+          : b === 'riskReview'
+            ? 'risk_review'
+            : 'check_now';
+
+  const sourceQuestion =
+    input.topic?.trim() ||
+    (input.partialLineRefs?.length
+      ? `끊긴 발언(${input.partialLineRefs.join(', ')}) 보완`
+      : undefined);
+
   return attachActionStepsToDetail({
     notTradeInstruction: true,
-    actionCategory: input.bucket === 'retrospectiveNeeded' ? 'retrospective_needed' : 'check_now',
-    whyCreated: `위원회 roadmap (${input.bucket})`,
-    confirmNow: checklist.map((c) => c.label).slice(0, 3),
-    doNotDo: doNotDo.length ? doNotDo : ['매수·매도 지시가 아님'],
-    evidenceNeeded: input.bucket === 'monitor' ? ['추적 지표·후속 확인'] : [],
+    actionCategory: category,
+    whyCreated: `위원회 토론 로드맵 (${b})`,
+    confirmNow: checklist.map((c) => c.label).slice(0, 5),
+    doNotDo: doNotDo.length ? doNotDo : ['매수·매도·자동 주문 지시가 아님', '즉시 실행·자동 리밸런싱 없음'],
+    evidenceNeeded:
+      b === 'researchNeeded' || b === 'partialRecovery'
+        ? ['토론 기록', '원장·시세 확인']
+        : input.bucket === 'monitor'
+          ? ['추적 지표·후속 확인']
+          : [],
     checklist,
-    decisionContext: { sourceSummary: input.reason.slice(0, 300) },
+    decisionContext: {
+      sourceQuestion,
+      sourceSummary: input.reason.slice(0, 400),
+      riskFlags: b === 'riskReview' ? [input.title.slice(0, 120)] : undefined,
+      missingEvidence: input.partialLineRefs,
+      nextChecks: checklist.map((c) => c.label).slice(0, 4),
+    },
+    sourceSummary: `${input.title} — ${input.reason}`.slice(0, 500),
     recommendedNextLinks: linksFor('pending', {
       whyCreated: input.reason,
       sourceSummary: input.reason,
+      decisionContext: { sourceQuestion },
     }),
   });
 }

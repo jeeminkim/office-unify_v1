@@ -3,6 +3,7 @@ import type { ActionItemCreateRequest, ActionItemListResponse } from '@office-un
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { listActionItemsForUser } from '@office-unify/supabase-access';
+import { enrichCreateRequestWithDetail } from '@/lib/actionItemDetailBuilders';
 import {
   actionItemTableMissingJson,
   computeActionItemSummary,
@@ -84,7 +85,8 @@ export async function POST(req: Request) {
   try {
     const results = [];
     for (const item of batch) {
-      const r = await createActionItemWithDedupe(supabase, auth.userKey as string, item);
+      const enriched = enrichCreateRequestWithDetail(item);
+      const r = await createActionItemWithDedupe(supabase, auth.userKey as string, enriched);
       results.push(r);
     }
     if (batch.length === 1) {

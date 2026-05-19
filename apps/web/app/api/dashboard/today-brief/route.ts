@@ -56,6 +56,7 @@ import { isGoogleFinanceQuoteConfigured } from '@/lib/server/googleFinanceSheetQ
 import { runGoogleFinanceSetupCheck } from '@/lib/server/googleFinanceSetupCheck';
 import { buildUsMarketAnchorCoverageLabel } from '@/lib/server/todayCandidateUsGating';
 import { emitUsCandidateDiagnosticsOps } from '@/lib/server/todayCandidateUsDiagnosticsOps';
+import { loadUserPersonalizationBundle } from '@/lib/server/userPersonalizationContext';
 import {
   buildExposureDiagnosticsFromRows,
   fetchTodayCandidateExposureStats,
@@ -898,6 +899,10 @@ export async function GET() {
       corporateRiskGatedCount: primaryCandidateDeck.filter((c) => c.corporateActionRisk?.active).length,
     };
 
+    const personalizationBundle = await loadUserPersonalizationBundle(supabase, auth.userKey as string).catch(
+      () => null,
+    );
+
     const response: TodayBriefWithCandidatesResponse = {
       ok: true,
       generatedAt: new Date().toISOString(),
@@ -959,6 +964,7 @@ export async function GET() {
           sectorRadarSnapshot,
           recommendationCandidates,
           feedbackSummary: feedbackSummaryEarly,
+          personalization: personalizationBundle?.summary,
         },
       },
     };

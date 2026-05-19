@@ -158,4 +158,8 @@ export type PersonaChatMessageResponseBody = {
   personaStructuredFallbackApplied?: boolean;
   /** additive: 금지 문구 sanitize 히트 수(요약과 동일 값일 수 있음) */
   personaStructuredBannedPhraseCount?: number;
+  /** additive: read-only 개인화 맥락 요약(원문 메모 없음) */
+  personalizationContextSummary?: import('./userPersonalizationContext').PersonalizationContextSummary;
+  /** additive: PB/긴 응답 UI 요약·복사·후속 작업용 */
+  longResponseFallback?: import('./longResponseFallback').LongResponseFallback;
 };

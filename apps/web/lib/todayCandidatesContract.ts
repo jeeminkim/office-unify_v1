@@ -326,6 +326,8 @@ export interface TodayBriefWithCandidatesResponse {
       recommendationCandidates?: import('@office-unify/shared-types').RecommendationCandidatesQualityMeta;
       /** additive: 사용자 피드백 요약 */
       feedbackSummary?: TodayCandidateFeedbackSummary;
+      /** additive: read-only 개인화 맥락 요약(점수·추천 강도 변경 없음) */
+      personalization?: import('@office-unify/shared-types').PersonalizationContextSummary;
     };
   };
 }

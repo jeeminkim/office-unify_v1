@@ -239,6 +239,13 @@ export type {
   CommitteeLineOutputQuality,
   CommitteePrimaryConcern,
 } from './committeeActionRoadmap';
+export type {
+  CommitteeLineRegenerateRequest,
+  CommitteeLineRegenerateResponse,
+  CommitteeLineRegenerateMode,
+  CommitteeLineRegenerateStatus,
+  CommitteeLineRegenerateActionKey,
+} from './committeeLineRegenerate';
 export { toPersonaWebKey } from './personaChat';
 export {
   COMMITTEE_DISCUSSION_USER_CONTENT_MAX_CHARS,
@@ -580,3 +587,10 @@ export type {
   SqlReadinessResponse,
   SqlReadinessSummary,
 } from './sqlReadiness';
+export type {
+  PersonalizationContextSummary,
+  UserPersonalizationContext,
+  UserPersonalizationJudgmentStatus,
+  UserPersonalizationProfileStatus,
+  UserPersonalizationRiskTone,
+} from './userPersonalizationContext';

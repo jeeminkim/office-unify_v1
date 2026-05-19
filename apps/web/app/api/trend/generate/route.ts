@@ -11,6 +11,7 @@ import { runTrendAnalysisGeneration } from '@office-unify/ai-office-engine';
 import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { appendTrendCenterSheets, isTrendSheetsAppendConfigured } from '@/lib/server/trend-sheets';
+import { buildLongResponseFallback } from '@/lib/longResponseFallback';
 
 const HORIZONS: readonly TrendHorizon[] = ['7d', '30d', '90d'];
 const GEOS: readonly TrendGeo[] = ['KR', 'US', 'GLOBAL'];
@@ -127,12 +128,23 @@ export async function POST(req: Request) {
     });
 
     const reportRef = `trend-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const longResponseFallback = buildLongResponseFallback(result.reportMarkdown, {
+      actionHint:
+        '응답이 길어 핵심만 표시합니다. 전문은 복사하거나 Research·PB·Action Item으로 넘길 수 있습니다.',
+    });
+    const withLongFallback = {
+      ...result,
+      qualityMeta: {
+        ...result.qualityMeta,
+        longResponseFallback,
+      },
+    };
 
     if (body.appendToSheets) {
       if (!isTrendSheetsAppendConfigured()) {
         return NextResponse.json(
           {
-            ...result,
+            ...withLongFallback,
             meta: {
               ...result.meta,
               appendToSheetsAttempted: true,
@@ -158,14 +170,14 @@ export async function POST(req: Request) {
         });
         const appendOk = sheets.requestLogAppendOk && (sheets.trendReportsLogOk !== false);
         return NextResponse.json({
-          ...result,
+          ...withLongFallback,
           meta: {
             ...result.meta,
             appendToSheetsAttempted: true,
             appendToSheetsSucceeded: appendOk,
           },
           qualityMeta: {
-            ...result.qualityMeta,
+            ...withLongFallback.qualityMeta,
             sheets: {
               requestLogAppendOk: sheets.requestLogAppendOk,
               requestLogAppendSkipped: !sheets.requestLogAppendOk,
@@ -178,14 +190,14 @@ export async function POST(req: Request) {
         console.log('[TREND] TREND_SHEETS_APPEND_FAIL', { message });
         return NextResponse.json(
           {
-            ...result,
+            ...withLongFallback,
             meta: {
               ...result.meta,
               appendToSheetsAttempted: true,
               appendToSheetsSucceeded: false,
             },
             qualityMeta: {
-              ...result.qualityMeta,
+              ...withLongFallback.qualityMeta,
               sheets: {
                 requestLogAppendOk: false,
                 requestLogAppendSkipped: true,
@@ -199,7 +211,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json(withLongFallback);
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

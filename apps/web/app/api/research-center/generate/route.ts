@@ -43,6 +43,8 @@ import {
   saveResearchReportRun,
   shouldReuseResearchReport,
 } from "@/lib/server/researchReportHistoryStore";
+import { buildLongResponseFallback } from "@/lib/longResponseFallback";
+import { combineResearchReportMarkdown } from "@/lib/longResponseFallbackSeeds";
 
 const DESK_IDS: readonly ResearchDeskId[] = [
   "goldman_buy",
@@ -705,6 +707,15 @@ export async function POST(req: Request) {
         });
       }
       finalizeQualityTiming();
+      const combinedMarkdown = combineResearchReportMarkdown({
+        reports: result.reports,
+        editor: result.editor,
+        deskIds: DESK_IDS,
+      });
+      const longResponseFallback = buildLongResponseFallback(combinedMarkdown, {
+        actionHint:
+          "응답이 길어 핵심만 표시합니다. 전문은 복사하거나 PB·위원회·Action Item 후속 작업으로 넘길 수 있습니다.",
+      });
       return NextResponse.json({
         ...result,
         ok: true,
@@ -717,6 +728,7 @@ export async function POST(req: Request) {
         reportHistory: reportHistoryOut,
         reportDiff: reportDiffOut,
         qualityMeta: { researchCenter: qualityMeta },
+        longResponseFallback,
         meta: buildGenerateMeta({
           body,
           fallbackUsed: editorFallback,
@@ -736,6 +748,15 @@ export async function POST(req: Request) {
     });
 
     finalizeQualityTiming();
+    const combinedMarkdown = combineResearchReportMarkdown({
+      reports: result.reports,
+      editor: result.editor,
+      deskIds: DESK_IDS,
+    });
+    const longResponseFallback = buildLongResponseFallback(combinedMarkdown, {
+      actionHint:
+        "응답이 길어 핵심만 표시합니다. 전문은 복사하거나 PB·위원회·Action Item 후속 작업으로 넘길 수 있습니다.",
+    });
     return NextResponse.json({
       ...result,
       ok: true,
@@ -743,6 +764,7 @@ export async function POST(req: Request) {
       reportHistory: reportHistoryOut,
       reportDiff: reportDiffOut,
       qualityMeta: { researchCenter: qualityMeta },
+      longResponseFallback,
       meta: buildGenerateMeta({
         body,
         fallbackUsed: editorFallback,

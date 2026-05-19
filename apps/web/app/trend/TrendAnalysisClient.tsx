@@ -13,6 +13,8 @@ import type {
 } from "@office-unify/shared-types";
 import { trendSanitizeReportMarkdownForUi } from "@office-unify/ai-office-engine";
 import { TrendOpsSummaryPanel } from "./TrendOpsSummaryPanel";
+import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
+import { buildLongResponseActionItemRequest } from "@/lib/longResponseFallbackSeeds";
 
 const jsonHeaders: HeadersInit = {
   "Content-Type": "application/json",
@@ -180,6 +182,8 @@ export function TrendAnalysisClient() {
     if (!result) return { markdown: "", blocked: false };
     return trendSanitizeReportMarkdownForUi(result.reportMarkdown);
   }, [result]);
+
+  const trendLongFallback = result?.qualityMeta?.longResponseFallback ?? null;
 
   const sectorPayload = useMemo((): TrendSectorFocus[] => {
     if (sectorSet.has("all")) return ["all"];
@@ -500,11 +504,25 @@ export function TrendAnalysisClient() {
 
           {result.qualityMeta?.finalizer?.degraded ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-              <p className="font-medium">최종 정리: Gemini 실패 → 임시 요약 fallback</p>
+              <p className="font-medium">최종 정리: Gemini provider degraded (finalizer)</p>
               <p className="mt-1">
-                Gemini 최종 정리 단계에서 일시 오류가 발생했습니다. 원문 오류는 운영 로그에 기록했습니다.
+                Gemini 최종 정리 단계에서 일시 오류가 발생했습니다. 아래는 provider finalizer 상태이며, 긴 본문 UI 요약(long response)과는 별도입니다.
               </p>
             </div>
+          ) : null}
+
+          {trendLongFallback?.exceededLimit ? (
+            <LongResponseFallbackCard
+              fallback={trendLongFallback}
+              seedSource="trend_report"
+              navigation={{ title: result.title }}
+              actionItemRequest={buildLongResponseActionItemRequest({
+                sourceType: "trend_report",
+                fallback: trendLongFallback,
+                title: `[Trend] ${result.title} 요약`,
+                description: result.summary,
+              })}
+            />
           ) : null}
 
           <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs text-slate-700">

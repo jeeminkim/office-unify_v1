@@ -174,6 +174,8 @@ export async function preparePersonaChatTurnContext(params: {
   userKey: OfficeUserKey;
   personaKeyRaw?: string;
   userContent: string;
+  /** @additive read-only 사용자 운영 맥락 */
+  personalizationContextAppend?: string;
 }): Promise<PersonaChatTurnPrepared> {
   const def = resolvePersonaStrict(params.personaKeyRaw);
 
@@ -223,7 +225,7 @@ export async function preparePersonaChatTurnContext(params: {
     }
   }
 
-  const systemInstruction = buildWebPersonaSystemInstruction({
+  let systemInstruction = buildWebPersonaSystemInstruction({
     personaSystem: def.systemPrompt,
     longTermForPrompt,
     previousDayAssistantHint,
@@ -231,6 +233,9 @@ export async function preparePersonaChatTurnContext(params: {
     committeeAppend,
     ledgerSnapshot,
   });
+  if (params.personalizationContextAppend?.trim()) {
+    systemInstruction += `\n\n${params.personalizationContextAppend.trim()}`;
+  }
 
   const contents = toGeminiContents([
     ...messagesBefore.map((m) => ({ role: m.role, content: m.content })),

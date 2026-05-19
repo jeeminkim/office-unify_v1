@@ -13,7 +13,8 @@ import type {
 import Link from "next/link";
 import { CommitteeTurnFeedbackRow } from "@/components/CommitteeTurnFeedbackRow";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
-import { committeeRoadmapToCreateRequests, createActionItemsBatch } from "@/lib/actionItemsClient";
+import { CommitteeLineCard } from "@/components/committee/CommitteeLineCard";
+import { CommitteePostDiscussionActionsPanel } from "@/components/committee/CommitteePostDiscussionActionsPanel";
 import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
 import { readActionStepSeed } from "@/lib/actionStepLinks";
 import {
@@ -216,8 +217,8 @@ export function CommitteeDiscussionClient() {
   } | null>(null);
   const [reportModelUsage, setReportModelUsage] = useState<{ providerUsed: string; fallbackUsed: boolean } | null>(null);
   const [actionRoadmap, setActionRoadmap] = useState<CommitteeActionRoadmap | null>(null);
-  const [roadmapInboxBusy, setRoadmapInboxBusy] = useState(false);
-  const [roadmapInboxHint, setRoadmapInboxHint] = useState<string | null>(null);
+  const [roadmapPanelHint, setRoadmapPanelHint] = useState<string | null>(null);
+  const [followupExtractSource, setFollowupExtractSource] = useState<string | null>(null);
   const [closingQualityMeta, setClosingQualityMeta] = useState<{
     actionabilityScore?: number;
     truncatedInputLines?: string[];
@@ -412,6 +413,11 @@ export function CommitteeDiscussionClient() {
       const data = (await res.json()) as CommitteeFollowupExtractResponse & { error?: string };
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setFollowupWarnings(data.warnings ?? []);
+      setFollowupExtractSource(
+        (data.warnings ?? []).includes("roadmap_fallback_drafts_used")
+          ? "LLM 추출 결과가 없어 로드맵 기반 기본 작업을 만들었습니다."
+          : null,
+      );
       setFollowupDrafts(
         (data.items ?? []).map((item, idx) => ({
           ...item,
@@ -501,6 +507,10 @@ export function CommitteeDiscussionClient() {
   const showClosed = phase === "closed";
   const warningUi = toWarningUi(followupWarnings);
 
+  const applyLineAtIndex = useCallback((index: number, patch: Partial<CommitteeDiscussionLineDto>) => {
+    setTranscript((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+  }, []);
+
   return (
     <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-4 bg-slate-50 p-6 text-slate-900">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -555,7 +565,7 @@ export function CommitteeDiscussionClient() {
       ) : null}
 
       {longResponseFallback ? (
-        <LongResponseFallbackCard fallback={longResponseFallback} source="pb_weekly" />
+        <LongResponseFallbackCard fallback={longResponseFallback} source="committee_discussion" />
       ) : null}
 
       {error ? (
@@ -582,31 +592,15 @@ export function CommitteeDiscussionClient() {
             <p className="text-sm text-slate-400">아직 발언이 없습니다.</p>
           ) : (
             transcript.map((line, i) => (
-              <div key={`${line.slug}-${i}`} className="border-b border-slate-100 pb-3 last:border-0">
-                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-                  <span>
-                    {line.displayName}{" "}
-                    <span className="font-mono text-slate-400">({line.slug})</span>
-                  </span>
-                  {line.outputQuality?.status === "partial" ? (
-                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-950">
-                      중간에 끊김
-                    </span>
-                  ) : line.outputQuality?.status === "format_warning" ? (
-                    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
-                      일부 누락
-                    </span>
-                  ) : line.outputQuality?.sanitizedPromptLeaks ? (
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
-                      형식 잔여물 제거됨
-                    </span>
-                  ) : null}
-                </div>
-                {line.outputQuality?.actionHint ? (
-                  <p className="mt-1 text-[10px] text-amber-900">{line.outputQuality.actionHint}</p>
-                ) : null}
-                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{line.content}</p>
-              </div>
+              <CommitteeLineCard
+                key={`${line.slug}-${i}-${line.content.slice(0, 24)}`}
+                lineIndex={i}
+                line={line}
+                topic={topic}
+                committeeTurnId={committeeTurnId}
+                actionRoadmapContext={actionRoadmap ?? undefined}
+                onApplyLine={applyLineAtIndex}
+              />
             ))
           )}
         </div>
@@ -661,77 +655,25 @@ export function CommitteeDiscussionClient() {
         ) : null}
 
         {actionRoadmap ? (
-          <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 text-sm shadow-sm">
-            <h3 className="font-semibold text-violet-950">토론 후 내가 확인할 것</h3>
-            <p className="mt-1 text-[11px] text-violet-900/90">
-              매수 추천·자동 주문이 아닙니다. 토론에서 발견한 점검·복기·리서치 항목을 작업 큐로 정리합니다.
-            </p>
+          <div className="space-y-2">
             {closingQualityMeta?.truncatedInputLines?.length ? (
-              <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-950">
-                일부 발언이 완성되지 않았습니다({closingQualityMeta.truncatedInputLines.join(", ")}). 아래 로드맵과 정리 발언을 함께 확인하세요.
+              <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-950">
+                일부 발언이 완성되지 않았습니다({closingQualityMeta.truncatedInputLines.join(", ")}). 아래 작업 패널과
+                「이 발언 다시 생성」을 함께 사용하세요.
               </p>
             ) : null}
-            <p className="mt-2 text-xs text-violet-900">
+            <p className="text-xs text-violet-900">
               관점: {actionRoadmap.decisionFrame.primaryConcern} · stance {actionRoadmap.decisionFrame.stance} · 신뢰도{" "}
               {actionRoadmap.decisionFrame.confidence}
             </p>
-            {[
-              { title: "이번 주 할 일", items: actionRoadmap.actionBuckets.doThisWeek },
-              { title: "지금 보류할 행동", items: actionRoadmap.actionBuckets.doNotDo },
-              { title: "모니터링", items: actionRoadmap.actionBuckets.monitor },
-              { title: "복기로 남길 판단", items: actionRoadmap.actionBuckets.retrospectiveNeeded },
-              { title: "리서치 필요", items: actionRoadmap.actionBuckets.researchNeeded },
-            ].map(
-              (sec) =>
-                sec.items.length > 0 ? (
-                  <div key={sec.title} className="mt-3">
-                    <p className="text-xs font-semibold text-violet-950">{sec.title}</p>
-                    <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-violet-900">
-                      {sec.items.map((it, idx) => (
-                        <li key={`${sec.title}-${idx}`}>{it.title}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null,
-            )}
-            {roadmapInboxHint ? (
-              <p className="mt-2 text-[11px] text-violet-900">{roadmapInboxHint}</p>
-            ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="rounded border border-violet-500 bg-violet-100 px-3 py-1.5 text-xs font-medium text-violet-950 disabled:opacity-50"
-                disabled={roadmapInboxBusy}
-                onClick={async () => {
-                  if (!actionRoadmap) return;
-                  setRoadmapInboxBusy(true);
-                  setRoadmapInboxHint(null);
-                  try {
-                    const items = committeeRoadmapToCreateRequests({
-                      topic: topic.trim(),
-                      committeeTurnId: committeeTurnId ?? undefined,
-                      roadmap: actionRoadmap,
-                    });
-                    const r = await createActionItemsBatch(items);
-                    if (!r.ok) {
-                      setRoadmapInboxHint(r.actionHint ?? r.error ?? "액션 인박스 저장 실패");
-                      return;
-                    }
-                    setRoadmapInboxHint(
-                      r.created === 0
-                        ? "로드맵 항목이 이미 인박스에 있습니다."
-                        : `액션 인박스에 ${r.created}건 저장했습니다.`,
-                    );
-                  } finally {
-                    setRoadmapInboxBusy(false);
-                  }
-                }}
-              >
-                {roadmapInboxBusy ? "저장 중…" : "액션 인박스에 저장"}
-              </button>
-              <Link href="/action-items" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800">
-                Action Items
-              </Link>
+            <CommitteePostDiscussionActionsPanel
+              topic={topic.trim()}
+              committeeTurnId={committeeTurnId}
+              roadmap={actionRoadmap}
+              onHint={setRoadmapPanelHint}
+            />
+            {roadmapPanelHint ? <p className="text-[11px] text-violet-900">{roadmapPanelHint}</p> : null}
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 className="rounded border border-violet-400 bg-white px-3 py-1.5 text-xs text-violet-900 disabled:opacity-50"
@@ -740,36 +682,9 @@ export function CommitteeDiscussionClient() {
               >
                 후속작업으로 추출
               </button>
-              <Link
-                href={`/research-center?source=committee_discussion&riskReview=1`}
-                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800"
-              >
-                Research Center
-              </Link>
-              <Link href="/trade-journal" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800">
-                Trade Journal
-              </Link>
-              <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800">
+              <Link href="/portfolio-ledger" className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs">
                 포트폴리오 노출
               </Link>
-              <button
-                type="button"
-                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800"
-                onClick={async () => {
-                  const lines = [
-                    ...actionRoadmap.actionBuckets.doThisWeek.map((x) => `[할 일] ${x.title}`),
-                    ...actionRoadmap.actionBuckets.doNotDo.map((x) => `[보류] ${x.title}`),
-                    ...actionRoadmap.actionBuckets.monitor.map((x) => `[모니터] ${x.title}`),
-                  ];
-                  try {
-                    await navigator.clipboard.writeText(lines.join("\n"));
-                  } catch {
-                    setError("체크리스트 복사에 실패했습니다.");
-                  }
-                }}
-              >
-                체크리스트 복사
-              </button>
             </div>
           </div>
         ) : null}
@@ -875,6 +790,7 @@ export function CommitteeDiscussionClient() {
             품질 요약: {warningUi.qualityLabel}
           </p>
           <p className="font-semibold">후속작업 추출 안내</p>
+          {followupExtractSource ? <p className="mt-1 text-[11px]">{followupExtractSource}</p> : null}
           {warningUi.warnMessages.length > 0 ? (
             <ul className="mt-1 list-disc pl-4">
               {warningUi.warnMessages.map((w) => (

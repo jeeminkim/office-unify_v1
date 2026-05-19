@@ -34,6 +34,26 @@ npm run pre-live-smoke --workspace=apps/web
 - [ ] SQL #23 적용 후: 「오늘 메모 저장」·중복 저장(`already_applied`)·Action Inbox dedupe·dismiss PATCH 동작.
 - [ ] `/judgment-review`에 Daily Review Notes 데이터 소스·저장 건수 표시 · 테이블 없어도 preview 실패하지 않음.
 
+## 2g. Long response fallback (EVO-026 · 2026-05-19)
+
+- [ ] Research 리포트·PB 메시지·Trend markdown이 길 때 **핵심 요약 카드** 표시(원문은 복사·seed만, URL query 없음).
+- [ ] Action Item 저장은 카드 **명시 버튼**만 — 카드 렌더만으로 POST 없음.
+- [ ] Trend: `finalizer.degraded`(provider) vs `longResponseFallback`(UI) 문구 구분.
+
+## 2f. Personalization context layer (P1 · 2026-05-19)
+
+- [ ] Committee round/closing · Persona chat · PB 메시지가 **매수/매도·자동 주문** 없이 동작(개인화 block은 확인·복기 관점).
+- [ ] `GET /api/dashboard/today-brief` — `qualityMeta.todayCandidates.personalization` additive(점수 변화 없음).
+- [ ] Research send-to-pb · PB weekly POST 응답에 `personalizationContextSummary`만(원문 daily note·계좌 정보 없음).
+- [ ] `buildUserPersonalizationContext`는 read-only — GET today-brief·committee round에서 DB write 증가 없음.
+
+## 2e. Command Center + Risk Review actions (P0 · 2026-05-19)
+
+- [ ] 홈 최상단 **오늘의 운영 관제** strip: 데이터 blocker(SQL/Google Finance) 또는 오늘 우선 3건 표시.
+- [ ] 리스크 점검 카드: **공시 확인** 링크(Research seed) · **외부 확인** Action Item 저장(명시 버튼만).
+- [ ] 위원회 partial regenerate 미리보기: `actionHints` CTA(교체·복사·저장·Research 등).
+- [ ] 위원회 로드맵: **Action Item으로 저장** 우선 · 「화면에서만 완료 표시」는 새로고침 시 사라짐.
+
 ## 2c. Today Candidate feedback (EVO-011)
 
 - [ ] `append_today_candidate_feedback.sql` 적용 · `/ops/sql-readiness`에서 `today_candidate_feedback` ready.
@@ -77,6 +97,8 @@ npm run pre-live-smoke --workspace=apps/web
 - [ ] Dashboard 「미국 시장 데이터 점검」: anchor `0/18` 시 setupDiagnosis·설정 점검 접이식·복사·Action Item 저장(클릭 시만).
 - [ ] PB 주간 점검 2000자 초과: 「응답이 길어 핵심만 표시」카드 · 요약/전문 복사 · 위원회/PB 이어가기(URL에 긴 원문 없음, sessionStorage).
 - [ ] `/persona-chat` · `/committee-discussion`: `Message exceeds 2000 characters.`만 단독 노출되지 않음.
+- [ ] `/committee-discussion`: partial 발언에 「이 발언 다시 생성」·미리보기·「이 발언으로 교체」(DB 자동 저장 없음).
+- [ ] `/committee-discussion`: closing 후 「토론 후 내가 할 수 있는 일」·fallback 작업·Action Item 저장(detail_json).
 - [ ] HLB 리스크 카드: 개별 step Action Inbox 저장 · `/action-items`에서 step별 Research/PB/위원회 · **완료** 시 PATCH만 write.
 - [ ] 매수 추천·자동 주문 문구 없음.
 

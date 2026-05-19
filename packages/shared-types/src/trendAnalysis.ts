@@ -412,6 +412,8 @@ export type TrendAnalysisGenerateResponseBody = {
       fallbackUsed: boolean;
       userMessage?: string;
     };
+    /** additive: provider finalizer와 별도 — 긴 markdown UI 요약·후속 작업용 */
+    longResponseFallback?: import('./longResponseFallback').LongResponseFallback;
     sheets?: {
       requestLogAppendOk?: boolean;
       requestLogAppendSkipped?: boolean;

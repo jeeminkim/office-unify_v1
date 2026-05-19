@@ -252,6 +252,8 @@ async function buildCommitteeSpeakerPrepared(params: {
   ledgerSnapshot: string;
   /** 투자위원회 전용 피드백 장기 기억(committee-lt), 일반 persona 장기 기억과 별도 */
   committeeLongTermForPrompt?: string;
+  /** @additive read-only 사용자 운영 맥락(추천·주문 지시 아님) */
+  personalizationContextAppend?: string;
 }): Promise<PersonaChatTurnPrepared> {
   const def = resolveWebPersona(params.personaSlug);
   if (!def) throw new Error(`Unknown persona: ${params.personaSlug}`);
@@ -281,6 +283,9 @@ async function buildCommitteeSpeakerPrepared(params: {
 
   if (params.committeeLongTermForPrompt?.trim()) {
     systemInstruction += `\n\n[투자위원회 누적 피드백 기억 — 과거 토론에서 남긴 유용한 맥락]\n${params.committeeLongTermForPrompt.trim()}`;
+  }
+  if (params.personalizationContextAppend?.trim()) {
+    systemInstruction += `\n\n${params.personalizationContextAppend.trim()}`;
   }
 
   return {
@@ -339,6 +344,7 @@ export async function runCommitteeDiscussionRound(params: {
   topic: string;
   roundNote?: string;
   priorTranscript: CommitteeDiscussionLineDto[];
+  personalizationContextAppend?: string;
 }): Promise<{ lines: CommitteeDiscussionLineDto[] }> {
   const ledgerSnapshot = await loadLedgerSnapshot(params.supabase, params.userKey);
   const committeeRaw = await selectPersonaLongTermSummary(params.supabase, params.userKey, COMMITTEE_LT_MEMORY_KEY);
@@ -363,6 +369,7 @@ export async function runCommitteeDiscussionRound(params: {
       userContent,
       ledgerSnapshot,
       committeeLongTermForPrompt: committeeLt || undefined,
+      personalizationContextAppend: params.personalizationContextAppend,
     });
 
     const { text: raw } = await generatePersonaAssistantReply({
@@ -391,6 +398,7 @@ export async function runCommitteeDiscussionClosing(params: {
   openAiApiKey?: string;
   topic: string;
   transcript: CommitteeDiscussionLineDto[];
+  personalizationContextAppend?: string;
 }): Promise<{ cio: CommitteeDiscussionLineDto; drucker: CommitteeDiscussionLineDto }> {
   const ledgerSnapshot = await loadLedgerSnapshot(params.supabase, params.userKey);
   const committeeRaw = await selectPersonaLongTermSummary(params.supabase, params.userKey, COMMITTEE_LT_MEMORY_KEY);
@@ -412,6 +420,7 @@ export async function runCommitteeDiscussionClosing(params: {
     userContent: baseUser,
     ledgerSnapshot,
     committeeLongTermForPrompt: committeeLt || undefined,
+    personalizationContextAppend: params.personalizationContextAppend,
   });
   const cioSystem = `${cioPrepared.systemInstruction}\n${CLOSING_CIO_APPEND}`;
   const cioGen = await generatePersonaAssistantReply({
@@ -443,6 +452,7 @@ export async function runCommitteeDiscussionClosing(params: {
     userContent: druckerUser,
     ledgerSnapshot,
     committeeLongTermForPrompt: committeeLt || undefined,
+    personalizationContextAppend: params.personalizationContextAppend,
   });
   const druckerSystem = `${druckerPrepared.systemInstruction}\n${CLOSING_DRUCKER_APPEND}`;
   const druckerGen = await generatePersonaAssistantReply({

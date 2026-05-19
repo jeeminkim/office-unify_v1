@@ -18,6 +18,7 @@ import {
   insertPendingPersonaChatRequest,
   updatePersonaChatRequestRow,
 } from '@office-unify/supabase-access';
+import { loadUserPersonalizationBundle } from '@/lib/server/userPersonalizationContext';
 
 const STALE_PENDING_MS = 10 * 60 * 1000;
 
@@ -137,10 +138,13 @@ export async function runPrivateBankerMessageWithDbIdempotency(params: {
     }
   }
 
+  const personalization = await loadUserPersonalizationBundle(supabase, userKey).catch(() => null);
+
   const prepared = await preparePrivateBankerTurnContext({
     supabase,
     userKey,
     userContent: content,
+    personalizationContextAppend: personalization?.promptAppend,
   });
 
   let userMessage: PersonaChatMessageDto;
@@ -228,6 +232,9 @@ export async function runPrivateBankerMessageWithDbIdempotency(params: {
     let out: PersonaChatMessageResponseBody = pbFormatNote ? { ...outBase, pbFormatNote } : outBase;
     if (llmProviderNote) {
       out = { ...out, llmProviderNote };
+    }
+    if (personalization?.summary) {
+      out = { ...out, personalizationContextSummary: personalization.summary };
     }
 
     await updatePersonaChatRequestRow(supabase, row.id, {

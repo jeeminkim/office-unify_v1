@@ -4,6 +4,41 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-19 Personal Investment OS P1 — LongResponseFallback parity (EVO-026)
+
+- **공통:** `longResponseFallbackSeeds.ts` · `LongResponseFallbackCard` 확장(복사·PB·위원회·Research·Journal·복기·Action Item).
+- **Research:** generate 응답 `longResponseFallback` · 클라이언트 보조 카드(원문 URL 미포함, sessionStorage seed).
+- **PB:** message/weekly `buildLongResponseFallback` · 2000자 초과 시 친화 메시지.
+- **Trend:** `qualityMeta.longResponseFallback`(provider finalizer와 분리).
+- 저장은 명시 버튼만 · 자동 write 없음.
+
+### 2026-05-19 Personal Investment OS P1 — Personalization Context Layer (1차)
+
+- **`buildUserPersonalizationContext`:** read-only aggregator (`userPersonalizationContext.ts`) — profile, open action items, Today feedback counts, Daily Review note counts, 30일 judgment patterns, portfolio exposure warnings, LT memory flags. 실패 시 fallback; raw 민감 메모·금액 원문 미포함.
+- **Prompt block:** `userPersonalizationPromptBlock.ts` — `compactKo` ≤1200자, notTradeInstruction·확인·복기 관점.
+- **주입:** Committee round/closing, Persona chat (stream/non-stream), PB message, PB weekly POST, PB daily note LLM context, Research send-to-pb. 응답에는 `personalizationContextSummary`만.
+- **Today Brief:** `qualityMeta.todayCandidates.personalization` additive (점수·추천 강도 변경 없음). Command Center 반복 패턴 힌트.
+- **P2 잔여:** judgment patterns → Brief deck scoring loopback (EVO-029).
+
+### 2026-05-19 Personal Investment OS P0 — Command Center + Broken Actions
+
+- **Today Risk Review:** `check_disclosure` / navigate 액션 버튼·Research seed·외부 확인 Action Item.
+- **Committee:** regenerate `actionHints` CTA + fallback; roadmap 「화면에서만 완료 표시」.
+- **Home:** `CommandCenterStrip` — 데이터 blocker + 오늘 우선 3건 (`commandCenterPolicy.ts`).
+
+### 2026-05-19 Personal Investment OS Cohesion Audit
+
+- **Audit doc:** `docs/ops/personal_investment_os_audit.md` — 기능 연결 지도, 끊긴 액션, 개인화·중앙 정책 후보, 홈 관제탑·read-only 경계, P0–P3 로드맵.
+- **Backlog:** `ROADMAP_BACKLOG.md` EVO-020–033.
+- **Small fix:** `POST /api/action-items` 서버 `enrichCreateRequestWithDetail`; Committee roadmap `doThisWeek` 라벨·로컬 완료 문구.
+
+### 2026-05-19 Committee Partial Line Recovery · Action Roadmap Materialization
+
+- **Line regenerate:** `POST /api/committee-discussion/line/regenerate` — preview only, DB write 0, apply는 클라이언트 state.
+- **UI:** partial 배지 · 「이 발언 다시 생성」/핵심 복구 · structuredOutput 섹션 · raw JSON 접기.
+- **Roadmap:** 「토론 후 내가 할 수 있는 일」 · partial fallback 작업 · ActionStepRunner · detail_json on inbox save.
+- **Followups:** extract 빈 결과 시 로드맵 fallback drafts.
+
 ### 2026-05-19 Google Finance Anchor Recovery Flow · Button Feedback
 
 - **anchorRecovery:** GET setup에 복구 상태·단계·recoveryHeadline additive.

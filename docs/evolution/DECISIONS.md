@@ -14,6 +14,54 @@
 
 ---
 
+## 결정 후보 (2026-05-19 Personal Investment OS Audit)
+
+아래는 **아직 채택 전** 후보이다. 상세 진단: `docs/ops/personal_investment_os_audit.md`.
+
+### 2026-05-19 — 중앙 개인화는 `buildUserPersonalizationContext` 한 진입점으로 모은다
+
+- **결정:** 채택 (P1 1차, uncommitted)
+- **이유:** PB/Committee/Persona/Today가 서로 다른 사용자 맥락을 보면 같은 사용자에게 다른 리스크 프레이밍이 나온다.
+- **대안:** 기능별 profile 블록을 각각 복제 주입.
+- **링크:** `apps/web/lib/server/userPersonalizationContext.ts` · EVO-024/025
+
+### 2026-05-19 — 홈은 링크 허브가 아니라 Command Center strip을 최상단에 둔다
+
+- **결정:** 채택 (P0 1차, uncommitted)
+- **이유:** DashboardClient가 Brief·ops·recs·preview를 한 화면에 두어 “오늘 무엇을 할지” 우선순위가 흐려진다.
+- **대안:** 현재 레이아웃 유지 + Action Items 페이지만 강화.
+- **링크:** audit §7 · EVO-022 · EVO-027
+
+### 2026-05-19 — 데이터 품질(quote/SQL) 경고는 후보 점수와 UI 섹션을 분리한다
+
+- **결정:** 후보 (미결)
+- **이유:** quote missing과 observation score가 같은 카드에 있으면 사용자가 판단 전 데이터 점검을 건너뛸 수 있다.
+- **대안:** 점수만 숨기고 카드는 유지.
+- **링크:** audit §1 · `nextBestActionPolicy` 후보
+
+### 2026-05-19 — 30일 Judgment patterns는 read-only 복기 전용이 아니라 Brief/PB에 요약 주입한다
+
+- **결정:** 후보 (미결)
+- **이유:** 반복 실수 패턴이 라이브 프롬프트에 없으면 “운영체제” 루프가 닫히지 않는다. 추천/확신이 아닌 **경고 강화** 수준으로 제한.
+- **대안:** Judgment Review 페이지에서만 표시 (현状).
+- **링크:** audit §5 · EVO-029
+
+### 2026-05-19 — Action Item 생성은 서버에서 `enrichCreateRequestWithDetail`을 항상 적용한다
+
+- **결정:** 채택 (2026-05-19, audit 라운드 코드 반영·미커밋)
+- **이유:** 클라이언트가 `detailJson`/`actionSteps`를 빠뜨려도 inbox에서 ActionStepRunner가 동작해야 한다.
+- **대안:** 클라이언트만 강제.
+- **링크:** `apps/web/app/api/action-items/route.ts` · `actionItemDetailBuilders.ts`
+
+### 2026-05-19 — Committee roadmap “완료”는 Action Inbox 저장 없이 상태를 바꾸지 않는다
+
+- **결정:** 채택 — 「화면에서만 완료 표시」로 명확화, DB write 없음
+- **이유:** 로컬 state만 바꾸면 사용자가 작업 완료로 오인한다.
+- **대안:** PATCH `/api/action-items`와 연동하거나 버튼 제거.
+- **링크:** `CommitteePostDiscussionActionsPanel.tsx` · EVO-023
+
+---
+
 ### 2026-05-18 — 메뉴는 투자 운영 흐름 기준 트리 구조로 정리한다
 
 - **결정:** 채택
@@ -302,6 +350,20 @@
 - **이유:** 관찰 후보만 보지 않고 보유·테마 겹침을 알려야 과도한 동일 테마 추적을 줄일 수 있다. `concentrationLimit`과 단일/테마 임계 %를 맞추되, **자동 리밸런싱·매매 지시는 금지**하고 `qualityMeta`에는 집계·레벨만 남긴다.
 - **대안:** 외부 포트폴리오 분석 도구만 사용
 - **링크:** `docs/ops/today_candidates.md`
+
+### 2026-05-19 — 위원회 partial 발언은 자동 폐기하지 않고 line regenerate로 복구한다
+
+- **결정:** 채택
+- **이유:** persona 하나가 끊겨도 토론 전체를 버리지 않고 해당 발언만 보정해야 한다.
+- **대안:** 전체 토론 재생성.
+- **링크:** `POST /api/committee-discussion/line/regenerate`
+
+### 2026-05-19 — 위원회 후속작업은 빈 상태 대신 fallback action roadmap을 제공한다
+
+- **결정:** 채택
+- **이유:** 사용자는 “후속작업 처리” 안내만으로는 무엇을 해야 하는지 알 수 없다.
+- **대안:** LLM 추출 결과가 없으면 빈 목록 표시.
+- **링크:** `committeeRoadmapMaterialization.ts`, `followups/extract`
 
 ### 2026-05-11 — 집중도 메타·문구는 additive이며 실행 지시와 분리 (EVO-005 안정화)
 

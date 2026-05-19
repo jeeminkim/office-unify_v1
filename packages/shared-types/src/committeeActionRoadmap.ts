@@ -49,6 +49,11 @@ export type CommitteeActionRoadmap = {
     monitor: CommitteeActionItem[];
     researchNeeded: CommitteeActionItem[];
     retrospectiveNeeded: CommitteeActionItem[];
+    /** additive: UI materialization buckets */
+    checkNow?: CommitteeActionItem[];
+    riskReview?: CommitteeActionItem[];
+    portfolioReview?: CommitteeActionItem[];
+    partialRecovery?: CommitteeActionItem[];
   };
   portfolioImplications: {
     concentrationWarnings: string[];
@@ -108,5 +113,7 @@ export type CommitteeDiscussionClosingResponseBody = {
     missingActionBuckets?: string[];
     truncatedInputLines?: string[];
     promptLeakSanitizedCount?: number;
+    /** additive: read-only 개인화 요약 */
+    personalizationContextSummary?: import('./userPersonalizationContext').PersonalizationContextSummary;
   };
 };

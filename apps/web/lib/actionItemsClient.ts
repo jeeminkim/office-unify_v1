@@ -5,6 +5,7 @@ import type {
   CommitteeActionRoadmap,
 } from "@office-unify/shared-types";
 import { normalizeActionItemDedupeTitle } from "@office-unify/shared-types";
+import { buildCommitteeRoadmapItemDetail } from "@/lib/actionItemDetailBuilders";
 
 export type ActionItemSaveResult = {
   ok: boolean;
@@ -74,15 +75,32 @@ export function committeeRoadmapToCreateRequests(input: {
     bucket: string;
     items: CommitteeActionRoadmap["actionBuckets"]["doThisWeek"];
   }> = [
+    { bucket: "checkNow", items: input.roadmap.actionBuckets.checkNow ?? [] },
     { bucket: "doThisWeek", items: input.roadmap.actionBuckets.doThisWeek },
     { bucket: "doNotDo", items: input.roadmap.actionBuckets.doNotDo },
+    { bucket: "riskReview", items: input.roadmap.actionBuckets.riskReview ?? [] },
+    { bucket: "portfolioReview", items: input.roadmap.actionBuckets.portfolioReview ?? [] },
     { bucket: "monitor", items: input.roadmap.actionBuckets.monitor },
     { bucket: "researchNeeded", items: input.roadmap.actionBuckets.researchNeeded },
     { bucket: "retrospectiveNeeded", items: input.roadmap.actionBuckets.retrospectiveNeeded },
+    { bucket: "partialRecovery", items: input.roadmap.actionBuckets.partialRecovery ?? [] },
   ];
   const out: ActionItemCreateRequest[] = [];
+  const seen = new Set<string>();
   for (const { bucket, items } of buckets) {
     for (const it of items) {
+      const k = it.title.trim().toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const detail = buildCommitteeRoadmapItemDetail({
+        title: it.title,
+        reason: it.reason,
+        bucket,
+        topic: input.topic,
+        committeeTurnId: input.committeeTurnId,
+        personaRefs: it.linkedPersonaIds,
+        partialLineRefs: input.roadmap.qualityMeta?.truncatedPersonaIds,
+      });
       out.push({
         title: it.title,
         description: `${it.reason} (${bucket})`,
@@ -91,6 +109,7 @@ export function committeeRoadmapToCreateRequests(input: {
         sourceId: input.committeeTurnId,
         sourceLabel: `위원회: ${input.topic.slice(0, 80)}`,
         links: input.committeeTurnId ? { committeeTurnId: input.committeeTurnId } : undefined,
+        detailJson: detail as unknown as Record<string, unknown>,
         idempotencyKey: input.committeeTurnId
           ? `committee-roadmap:${input.committeeTurnId}:${normalizeActionItemDedupeTitle(it.title)}`
           : undefined,

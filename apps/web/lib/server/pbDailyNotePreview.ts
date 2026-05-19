@@ -12,6 +12,7 @@ import type {
 import { buildDailyReview } from '@/lib/server/dailyReviewService';
 import { buildDailyReviewNoteIdempotencyKey } from '@/lib/server/dailyReviewNotesStore';
 import { tryEnhancePbDailyNotesWithLlm } from '@/lib/server/pbDailyNoteLlm';
+import { loadUserPersonalizationBundle } from '@/lib/server/userPersonalizationContext';
 
 const DEFAULT_MAX_ITEMS = 6;
 const MAX_ITEMS_CAP = 8;
@@ -194,11 +195,20 @@ export async function runPbDailyNotePreview(
   let longResponseFallback: PbDailyNotePreviewResponse['longResponseFallback'];
   let provider: string | undefined;
 
+  const personalization = await loadUserPersonalizationBundle(supabase, userKey).catch(() => null);
+  const contextSummary = [
+    review.usData?.summary ?? '',
+    personalization?.promptAppend?.trim() ?? '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 800);
+
   const llm = await tryEnhancePbDailyNotesWithLlm({
     reviewDate,
     scope,
     items,
-    contextSummary: review.usData?.summary ?? '',
+    contextSummary,
     opsWarnings: review.opsSummary?.warningCount ?? 0,
   });
 
@@ -236,6 +246,7 @@ export async function runPbDailyNotePreview(
       provider,
       warnings,
       generatedAt: new Date().toISOString(),
+      personalizationContextSummary: personalization?.summary,
     },
   };
 }

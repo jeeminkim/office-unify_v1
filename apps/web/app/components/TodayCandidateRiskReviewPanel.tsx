@@ -9,8 +9,20 @@ import type {
 import type { TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import { riskReviewChecklistItems } from "@/lib/todayCandidateUiCopy";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
-import { buildActionItemDetailFromTodayCandidate, buildRiskReviewStepActionItemDetail } from "@/lib/actionItemDetailBuilders";
+import {
+  buildActionItemDetailFromTodayCandidate,
+  buildGenericActionItemDetail,
+  buildRiskReviewStepActionItemDetail,
+} from "@/lib/actionItemDetailBuilders";
 import { ActionStepRunner } from "@/components/ActionStepRunner";
+import {
+  isRiskReviewFeedbackAction,
+  isRiskReviewNavigateAction,
+  orderedRiskReviewActionsForUi,
+  resolveRiskReviewActionHref,
+  riskReviewActionButtonLabel,
+} from "@/lib/todayCandidateRiskReviewPanelUi";
+import { buildDecisionRetrospectivesHref } from "@/lib/todayCandidateNavigationLinks";
 
 type Props = {
   candidate: TodayStockCandidate;
@@ -51,10 +63,47 @@ export function TodayCandidateRiskReviewPanel({
   const [feedbackBusy, setFeedbackBusy] = useState<string | null>(null);
   const [localMsg, setLocalMsg] = useState<string | null>(null);
 
+  const riskActions = orderedRiskReviewActionsForUi(candidate.riskReviewActions);
   const reportHref =
     findAction(candidate, "view_report_history")?.href ??
-    findAction(candidate, "generate_research_report")?.href;
-  const journalHref = findAction(candidate, "create_trade_journal_seed")?.href;
+    findAction(candidate, "generate_research_report")?.href ??
+    resolveRiskReviewActionHref(
+      findAction(candidate, "generate_research_report") ?? {
+        actionKey: "generate_research_report",
+        label: "",
+        description: "",
+        actionType: "navigate",
+        priority: "secondary",
+        dangerLevel: "none",
+      },
+      candidate,
+    ) ??
+    undefined;
+  const journalHref =
+    findAction(candidate, "create_trade_journal_seed")?.href ??
+    resolveRiskReviewActionHref(
+      findAction(candidate, "create_trade_journal_seed") ?? {
+        actionKey: "create_trade_journal_seed",
+        label: "",
+        description: "",
+        actionType: "navigate",
+        priority: "secondary",
+        dangerLevel: "none",
+      },
+      candidate,
+    ) ??
+    undefined;
+  const disclosureHref = resolveRiskReviewActionHref(
+    findAction(candidate, "check_disclosure") ?? {
+      actionKey: "check_disclosure",
+      label: "",
+      description: "",
+      actionType: "external_hint",
+      priority: "primary",
+      dangerLevel: "caution",
+    },
+    candidate,
+  );
 
   const fb = candidate.userFeedbackState;
 
@@ -204,6 +253,14 @@ export function TodayCandidateRiskReviewPanel({
             }),
           }}
         />
+        {disclosureHref ? (
+          <Link
+            href={disclosureHref}
+            className="rounded border border-amber-400 bg-amber-50 px-2 py-1 text-center text-[11px] font-medium text-amber-950"
+          >
+            공시 확인
+          </Link>
+        ) : null}
         {journalHref ? (
           <Link
             href={journalHref}
@@ -224,7 +281,7 @@ export function TodayCandidateRiskReviewPanel({
         </p>
       ) : null}
       <p className="text-[9px] text-slate-500">
-        매수 추천이 아닙니다. 자동 주문은 실행되지 않습니다. 관심종목 삭제가 아닙니다.
+        확인 링크입니다. 매수·매도·주문은 실행되지 않습니다. 관심종목 삭제가 아닙니다.
       </p>
       {localMsg ? <p className="text-[10px] text-emerald-800">{localMsg}</p> : null}
       {panelOpen ? (
@@ -251,6 +308,106 @@ export function TodayCandidateRiskReviewPanel({
                 <li key={`dnd-${i}`}>{x}</li>
               ))}
             </ul>
+          ) : null}
+          {riskActions.length > 0 ? (
+            <div className="mt-2 rounded border border-rose-100 bg-white/90 p-2">
+              <p className="text-[10px] font-semibold">리스크 점검 액션</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {riskActions.map((act) => {
+                  if (act.actionKey === "open_risk_detail") return null;
+                  if (isRiskReviewFeedbackAction(act)) return null;
+                  if (act.actionKey === "create_decision_retrospective") {
+                    return (
+                      <button
+                        key={act.actionKey}
+                        type="button"
+                        disabled={retroBusy}
+                        className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] disabled:opacity-50"
+                        onClick={() => void saveRetro()}
+                      >
+                        {retroBusy ? "저장 중…" : "복기로 남기기"}
+                      </button>
+                    );
+                  }
+                  if (isRiskReviewNavigateAction(act)) {
+                    const href = resolveRiskReviewActionHref(act, candidate);
+                    if (!href) return null;
+                    const external = act.actionType === "external_hint";
+                    return (
+                      <Link
+                        key={act.actionKey}
+                        href={href}
+                        target={external ? "_blank" : undefined}
+                        rel={external ? "noopener noreferrer" : undefined}
+                        className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-950"
+                      >
+                        {riskReviewActionButtonLabel(act)}
+                      </Link>
+                    );
+                  }
+                  return null;
+                })}
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px]"
+                  onClick={async () => {
+                    const text = [
+                      candidate.name,
+                      candidate.stockCode,
+                      candidate.corporateActionRisk?.headline,
+                      ...(candidate.decisionTrace?.nextChecks ?? []),
+                    ]
+                      .filter(Boolean)
+                      .join("\n");
+                    try {
+                      await navigator.clipboard.writeText(text);
+                      setLocalMsg("복사되었습니다.");
+                    } catch {
+                      setLocalMsg("복사에 실패했습니다.");
+                    }
+                  }}
+                >
+                  복사
+                </button>
+                <SaveToActionInboxButton
+                  compact
+                  label="Action Item으로 저장"
+                  request={{
+                    title: `[외부 확인] ${candidate.name ?? candidate.stockCode}`,
+                    description:
+                      findAction(candidate, "check_disclosure")?.description ??
+                      "공시·권리락·기업 이벤트를 확인해야 합니다.",
+                    sourceType: "today_candidate",
+                    sourceId: candidate.candidateId,
+                    sourceLabel: candidate.name ?? candidate.stockCode,
+                    symbol: candidate.stockCode,
+                    idempotencyKey: `today-risk-external:${candidate.candidateId}`,
+                    detailJson: buildGenericActionItemDetail({
+                      sourceType: "today_candidate",
+                      title: `[외부 확인] ${candidate.name ?? candidate.stockCode}`,
+                      description:
+                        findAction(candidate, "check_disclosure")?.description ??
+                        "공시·권리락·기업 이벤트를 확인해야 합니다.",
+                      whyCreated: "검색/공시 확인이 필요한 항목",
+                      checklist: candidate.decisionTrace?.nextChecks?.slice(0, 4),
+                      doNotDo: candidate.decisionTrace?.doNotDo,
+                      symbol: candidate.stockCode,
+                      name: candidate.name,
+                      market: candidate.market,
+                    }),
+                  }}
+                />
+                <Link
+                  href={buildDecisionRetrospectivesHref()}
+                  className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px]"
+                >
+                  복기 목록
+                </Link>
+              </div>
+              <p className="mt-1 text-[9px] text-slate-500">
+                확인 링크입니다. 매수·매도·주문은 실행되지 않습니다. Action Item 저장은 명시 버튼만.
+              </p>
+            </div>
           ) : null}
           <ActionStepRunner
             compact

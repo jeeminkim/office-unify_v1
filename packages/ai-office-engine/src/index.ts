@@ -22,6 +22,7 @@ export * from './committeeFeedback';
 export * from './committee/committeePrompt';
 export * from './committee/committeeResponseFormat';
 export * from './committee/committeeDiscussionOrchestrator';
+export { formatWebPortfolioLedgerForCommitteePrompt } from './committee/committeePortfolioLedgerPrompt';
 export * from './committee/committeeFollowupExtractor';
 export * from './committee/committeeFollowupReanalysis';
 export * from './infographic/infographicPrompt';

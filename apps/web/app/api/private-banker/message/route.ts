@@ -7,6 +7,7 @@ import { normalizeInvestmentAssistantOutput } from '@/lib/server/investmentAssis
 import { getInvestorProfileForUser } from '@/lib/server/investorProfile';
 import { buildConcentrationRiskPromptSection, getPortfolioExposureSnapshotForUser } from '@/lib/server/concentrationRisk';
 import { buildInvestorProfilePromptContext } from '@/lib/server/suitabilityAssessment';
+import { buildLongResponseFallback, buildLongResponseFallbackFromError } from '@/lib/longResponseFallback';
 
 /**
  * POST /api/private-banker/message
@@ -102,13 +103,21 @@ export async function POST(req: Request) {
     }
 
     const normalized = normalizeInvestmentAssistantOutput(result.body.assistantMessage.content);
+    const longResponseFallback = buildLongResponseFallback(normalized.text, {
+      actionHint:
+        '응답이 길어 핵심만 표시합니다. 전문은 복사하거나 위원회·Research·Action Item으로 넘길 수 있습니다. 개인화 맥락은 확인·복기 관점입니다.',
+    });
+    const displayText = longResponseFallback.exceededLimit
+      ? longResponseFallback.displayText
+      : normalized.text;
     const fallbackUsed = Boolean(result.body.llmProviderNote && result.body.llmProviderNote.toLowerCase().includes('gemini'));
     return NextResponse.json({
       ...result.body,
       assistantMessage: {
         ...result.body.assistantMessage,
-        content: normalized.text,
+        content: displayText,
       },
+      longResponseFallback,
       outputQuality: normalized.quality,
       modelUsage: {
         providerUsed: fallbackUsed ? 'gemini_fallback_after_openai' : 'openai_primary',
@@ -118,6 +127,15 @@ export async function POST(req: Request) {
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'Unknown error';
+    const exceedFallback = buildLongResponseFallbackFromError(message);
+    if (exceedFallback?.exceededLimit) {
+      return NextResponse.json({
+        ok: false,
+        error: exceedFallback.actionHint ?? '응답이 길어 핵심만 표시합니다. 전문은 복사하거나 후속 작업으로 넘길 수 있습니다.',
+        longResponseFallback: exceedFallback,
+        code: 'response_too_long',
+      }, { status: 200 });
+    }
     const isSchema =
       message.includes('web_persona_chat_requests') ||
       message.includes('does not exist') ||

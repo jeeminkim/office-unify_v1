@@ -208,6 +208,8 @@ export type ResearchCenterGenerateResponseBody = {
   qualityMeta?: {
     researchCenter?: ResearchCenterQualityMeta;
   };
+  /** additive: 긴 리포트 본문 UI 요약·복사·후속 작업용 */
+  longResponseFallback?: import('./longResponseFallback').LongResponseFallback;
 };
 
 export type ResearchCenterGenerateErrorResponseBody = {

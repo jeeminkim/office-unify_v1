@@ -1,5 +1,12 @@
 import 'server-only';
 
+/**
+ * Partial line root causes (2026-05):
+ * 1) remediateCommitteePersonaReply hard-slices LLM output (~PERSONA_CHAT_ASSISTANT_TARGET_MAX_CHARS)
+ * 2) parse failure leaves JSON-ish fallbackSummary as line.content before guard
+ * 3) looksTruncated heuristics (unclosed fences, tail …, trailing {/[)
+ * UI: CommitteeLineCard + POST /line/regenerate (preview only, no DB write)
+ */
 import type { CommitteeDiscussionLineDto, CommitteeLineOutputQuality } from '@office-unify/shared-types';
 
 const PERSONA_REQUIRED: Record<string, string[]> = {
@@ -73,7 +80,7 @@ export function guardCommitteeDiscussionLine(
   else if (missing.length > 0) status = 'format_warning';
 
   const actionHint = truncated
-    ? '이 발언이 중간에 끊긴 것으로 보입니다. 정리 발언·액션 로드맵에서 보정하거나, 추후 이 발언만 다시 생성할 수 있습니다.'
+    ? '이 발언이 중간에 끊긴 것으로 보입니다. 아래 「이 발언 다시 생성」으로 복구하거나, 액션 로드맵·정리 발언을 함께 확인하세요.'
     : missing.length > 0
       ? '필수 소제목 일부가 누락되었습니다. 아래 본문과 액션 로드맵을 함께 확인하세요.'
       : undefined;

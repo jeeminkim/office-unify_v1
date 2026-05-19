@@ -17,6 +17,7 @@ import { buildConcentrationRiskPromptSection, getPortfolioExposureSnapshotForUse
 import { buildInvestorProfilePromptContext } from '@/lib/server/suitabilityAssessment';
 import { buildPrivateBankerContentHash, runPrivateBankerMessageWithDbIdempotency } from '@/lib/server/runPrivateBankerMessage';
 import { logResearchFollowupOpsEvent } from '@/lib/server/researchFollowupOps';
+import { loadUserPersonalizationBundle } from '@/lib/server/userPersonalizationContext';
 
 function asCategory(c: string): ResearchFollowupCategory {
   const allowed: ResearchFollowupCategory[] = [
@@ -118,6 +119,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const snap = await getPortfolioExposureSnapshotForUser(supabase, auth.userKey);
   const concentrationRiskSection = buildConcentrationRiskPromptSection(profileForConc, snap);
 
+  const personalization = await loadUserPersonalizationBundle(supabase, auth.userKey).catch(() => null);
+
   const content = buildResearchFollowupPrivateBankerPrompt({
     companyName: row.company_name ?? undefined,
     symbol: row.symbol ?? undefined,
@@ -125,6 +128,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     followups: followupsForPb,
     investorProfileSection,
     concentrationRiskSection,
+    personalizationContextSection: personalization?.promptAppend
+      ? `\n[사용자 운영 맥락 — 반복 패턴·열린 작업 참고, 추천 아님]\n${personalization.promptAppend}`
+      : undefined,
   });
   const contentHash = buildPrivateBankerContentHash(userKeyStr, content);
 
@@ -189,6 +195,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       assistantMessageId: assistantId,
       assistantPreview: result.body.assistantMessage.content.slice(0, 2000),
       deduplicated: result.deduplicated,
+      personalizationContextSummary: personalization?.summary ?? result.body.personalizationContextSummary,
     },
   });
 }

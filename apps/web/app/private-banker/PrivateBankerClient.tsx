@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PersonaChatMessageDto, PersonaChatSessionInitResponseBody } from "@office-unify/shared-types";
+import type {
+  LongResponseFallback,
+  PersonaChatMessageDto,
+  PersonaChatSessionInitResponseBody,
+} from "@office-unify/shared-types";
+import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
+import { buildLongResponseFallbackFromError } from "@/lib/longResponseFallback";
+import { buildLongResponseActionItemRequest } from "@/lib/longResponseFallbackSeeds";
 import { PERSONA_CHAT_USER_MESSAGE_MAX_CHARS } from "@office-unify/shared-types";
 import Link from "next/link";
 import { PersonaAssistantFeedbackRow } from "@/components/PersonaAssistantFeedbackRow";
@@ -28,6 +35,7 @@ export function PrivateBankerClient() {
     warnings: string[];
   } | null>(null);
   const [modelUsage, setModelUsage] = useState<{ providerUsed: string; fallbackUsed: boolean } | null>(null);
+  const [longResponseFallback, setLongResponseFallback] = useState<LongResponseFallback | null>(null);
 
   const sendInFlightRef = useRef(false);
   const idempotencyKeyRef = useRef<string | null>(null);
@@ -62,6 +70,7 @@ export function PrivateBankerClient() {
   const send = async () => {
     setError(null);
     setInfo(null);
+    setLongResponseFallback(null);
     if (sendInFlightRef.current) return;
     if (!input.trim()) return;
 
@@ -103,15 +112,26 @@ export function PrivateBankerClient() {
           warnings: string[];
         };
         modelUsage?: { providerUsed: string; fallbackUsed: boolean };
+        longResponseFallback?: LongResponseFallback;
         error?: string;
         code?: string;
       };
-      if (!res.ok) {
+      if (!res.ok && !(res.status === 200 && data.code === "response_too_long")) {
         if (res.status === 409 && data.code === "DUPLICATE_IN_PROGRESS") {
           setInfo("동일 멱등 키로 다른 요청이 처리 중입니다. 잠시 후 다시 시도하세요.");
           return;
         }
+        if (data.longResponseFallback) {
+          setLongResponseFallback(data.longResponseFallback);
+          setError(data.error ?? null);
+          return;
+        }
         throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      if (data.code === "response_too_long" && data.longResponseFallback) {
+        setLongResponseFallback(data.longResponseFallback);
+        setInfo(data.error ?? "응답이 길어 핵심만 표시합니다.");
+        return;
       }
       if (data.deduplicated) {
         setInfo("동일 요청이 이미 처리되어 저장된 응답을 반환했습니다.");
@@ -131,8 +151,16 @@ export function PrivateBankerClient() {
       if (data.longTermMemorySummary) setLongTerm(data.longTermMemorySummary);
       setOutputQuality(data.outputQuality ?? null);
       setModelUsage(data.modelUsage ?? null);
+      setLongResponseFallback(data.longResponseFallback ?? null);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "전송 실패");
+      const msg = e instanceof Error ? e.message : "전송 실패";
+      const fb = buildLongResponseFallbackFromError(msg);
+      if (fb) {
+        setLongResponseFallback(fb);
+        setError(null);
+      } else {
+        setError(msg);
+      }
     } finally {
       sendInFlightRef.current = false;
       setLoadingSend(false);
@@ -193,6 +221,19 @@ export function PrivateBankerClient() {
       {info ? (
         <div className="rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-700">{info}</div>
       ) : null}
+
+      {longResponseFallback ? (
+        <LongResponseFallbackCard
+          fallback={longResponseFallback}
+          seedSource="pb_response"
+          actionItemRequest={buildLongResponseActionItemRequest({
+            sourceType: "pb_response",
+            fallback: longResponseFallback,
+            title: "PB 응답 요약",
+          })}
+        />
+      ) : null}
+
       {(outputQuality || modelUsage) ? (
         <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
           <div className="flex flex-wrap gap-1">

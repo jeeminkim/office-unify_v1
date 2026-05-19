@@ -23,6 +23,7 @@ import {
   mergePersonaStructuredLayerIntoChatResponse,
   type PersonaStructuredLayer,
 } from '@/lib/server/personaStructuredOutput';
+import { loadUserPersonalizationBundle } from '@/lib/server/userPersonalizationContext';
 
 const STALE_PENDING_MS = 10 * 60 * 1000;
 
@@ -194,11 +195,14 @@ export function createPersonaChatMessageNdjsonStream(params: {
           }
         }
 
+        const personalization = await loadUserPersonalizationBundle(supabase, userKey).catch(() => null);
+
         const prepared = await preparePersonaChatTurnContext({
           supabase,
           userKey,
           personaKeyRaw,
           userContent: content,
+          personalizationContextAppend: personalization?.promptAppend,
         });
 
         let userMessage: PersonaChatMessageDto;
@@ -320,6 +324,9 @@ export function createPersonaChatMessageNdjsonStream(params: {
         }
 
         out = mergePersonaStructuredLayerIntoChatResponse(out, structuredLayer);
+        if (personalization?.summary) {
+          out = { ...out, personalizationContextSummary: personalization.summary };
+        }
 
         await updatePersonaChatRequestRow(supabase, row.id, {
           status: 'completed',

@@ -41,6 +41,7 @@ export async function executeCommitteeDiscussionRound(params: {
   topic: string;
   roundNote?: string;
   priorTranscript: CommitteeDiscussionLineDto[];
+  personalizationContextAppend?: string;
 }) {
   return runCommitteeDiscussionRound({
     supabase: params.supabase,
@@ -50,6 +51,7 @@ export async function executeCommitteeDiscussionRound(params: {
     topic: params.topic,
     roundNote: params.roundNote,
     priorTranscript: params.priorTranscript,
+    personalizationContextAppend: params.personalizationContextAppend,
   });
 }
 
@@ -60,6 +62,7 @@ export async function executeCommitteeDiscussionClosing(params: {
   openAiApiKey: string;
   topic: string;
   transcript: CommitteeDiscussionLineDto[];
+  personalizationContextAppend?: string;
 }) {
   return runCommitteeDiscussionClosing({
     supabase: params.supabase,
@@ -68,6 +71,7 @@ export async function executeCommitteeDiscussionClosing(params: {
     openAiApiKey: params.openAiApiKey,
     topic: params.topic,
     transcript: params.transcript,
+    personalizationContextAppend: params.personalizationContextAppend,
   });
 }
 

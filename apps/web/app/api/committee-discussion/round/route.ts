@@ -15,6 +15,7 @@ import {
 import { validateInvestmentAssistantOutput } from '@/lib/server/investmentAssistantOutputFormat';
 import { enrichCommitteeLinesWithStructuredOutput } from '@/lib/server/committeeStructuredOutput';
 import { guardCommitteeDiscussionLines } from '@/lib/server/committeeOutputGuard';
+import { loadUserPersonalizationBundle } from '@/lib/server/userPersonalizationContext';
 
 type Body = {
   topic?: string;
@@ -81,6 +82,8 @@ export async function POST(req: Request) {
       }
     }
 
+    const personalization = await loadUserPersonalizationBundle(supabase, userKey).catch(() => null);
+
     const { lines } = await executeCommitteeDiscussionRound({
       supabase,
       userKey,
@@ -89,6 +92,7 @@ export async function POST(req: Request) {
       topic,
       roundNote: roundNote || undefined,
       priorTranscript,
+      personalizationContextAppend: personalization?.promptAppend,
     });
 
     const enriched = enrichCommitteeLinesWithStructuredOutput(lines);
@@ -109,6 +113,7 @@ export async function POST(req: Request) {
       outputQuality?: ReturnType<typeof validateInvestmentAssistantOutput>;
       lineQualitySummary?: typeof lineQualitySummary;
       modelUsage?: { providerUsed: string; fallbackUsed: boolean };
+      personalizationContextSummary?: import('@office-unify/shared-types').PersonalizationContextSummary;
     } = {
       lines: guardedLines,
       committeeTurnId,
@@ -119,6 +124,7 @@ export async function POST(req: Request) {
         providerUsed: 'gemini_openai_committee_round',
         fallbackUsed: false,
       },
+      personalizationContextSummary: personalization?.summary,
     };
     return NextResponse.json(res);
   } catch (e: unknown) {

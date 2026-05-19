@@ -43,6 +43,8 @@ import {
   scrubTodayCandidateUiCopy,
 } from "@/lib/todayCandidateUiCopy";
 import { TodayCandidateRiskReviewPanel } from "@/app/components/TodayCandidateRiskReviewPanel";
+import { CommandCenterStrip } from "@/app/components/dashboard/CommandCenterStrip";
+import { buildCommandCenterPlan, type CommandCenterOpenActionItem } from "@/lib/commandCenterPolicy";
 import { UsDiagnosticsCard } from "@/app/components/UsDiagnosticsCard";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
 import { buildActionItemDetailFromTodayCandidate, buildGenericActionItemDetail } from "@/lib/actionItemDetailBuilders";
@@ -375,6 +377,8 @@ export function DashboardClient() {
   const [watchRecs, setWatchRecs] = useState<WatchlistRecommendationCandidate[]>([]);
   const [watchRecBusy, setWatchRecBusy] = useState<string | null>(null);
   const [watchRecHint, setWatchRecHint] = useState<string | null>(null);
+  const [openActionItems, setOpenActionItems] = useState<CommandCenterOpenActionItem[]>([]);
+  const [actionItemsLoading, setActionItemsLoading] = useState(false);
 
   const watchQueueTop5 = useMemo(() => {
     const rows = watchQueue?.candidates ?? [];
@@ -502,6 +506,39 @@ export function DashboardClient() {
         setWeeklySqlReadiness(null);
       } finally {
         setWeeklyPreviewLoading(false);
+      }
+      setActionItemsLoading(true);
+      try {
+        const aiRes = await fetch("/api/action-items?status=open", { credentials: "same-origin" });
+        const aiJson = (await aiRes.json()) as {
+          ok?: boolean;
+          items?: Array<{
+            id: string;
+            title: string;
+            priority: string;
+            source_type: string;
+            updated_at: string;
+            status: string;
+          }>;
+        };
+        if (aiRes.ok && aiJson.ok && Array.isArray(aiJson.items)) {
+          setOpenActionItems(
+            aiJson.items.map((i) => ({
+              id: i.id,
+              title: i.title,
+              priority: i.priority,
+              source_type: i.source_type,
+              updated_at: i.updated_at,
+              status: i.status,
+            })),
+          );
+        } else {
+          setOpenActionItems([]);
+        }
+      } catch {
+        setOpenActionItems([]);
+      } finally {
+        setActionItemsLoading(false);
       }
       setMonthlyJudgmentLoading(true);
       try {
@@ -1006,6 +1043,18 @@ export function DashboardClient() {
     return { errors, warns, notConfigured };
   }, [statusSections]);
 
+  const commandCenter = useMemo(
+    () =>
+      buildCommandCenterPlan({
+        statusSections,
+        weeklySqlReadiness,
+        todayBrief,
+        openActionItems,
+        opsOpenErrorCount,
+      }),
+    [statusSections, weeklySqlReadiness, todayBrief, openActionItems, opsOpenErrorCount],
+  );
+
   return (
     <div className="mx-auto max-w-6xl p-6 text-slate-900">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -1044,6 +1093,11 @@ export function DashboardClient() {
       </div>
 
       {error ? <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
+      <CommandCenterStrip
+        dataBlocker={commandCenter.dataBlocker}
+        todayItems={commandCenter.todayItems}
+        loading={reloading || actionItemsLoading}
+      />
       <section className="mb-5 rounded-xl border border-violet-200 bg-violet-50 p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-violet-900">오늘의 3줄 브리핑</h2>

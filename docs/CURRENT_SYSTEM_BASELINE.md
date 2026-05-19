@@ -9,6 +9,8 @@
 - LLM 결과는 판단 보조이며 확정 수익률을 보장하지 않음
 - `qualityMeta`(화면 상태)와 `web_ops_events`(운영 누적) 역할 분리
 - 운영 SQL 적용 순서·점검: `docs/sql/APPLY_ORDER.md` · 앱 **`/ops/sql-readiness`**(`GET /api/system/sql-readiness`, read-only) · 배포 전 API 스모크 `npm run pre-live-smoke --workspace=apps/web`(dry-run 기본)
+- **개인화 컨텍스트(P1 1차):** `buildUserPersonalizationContext` read-only 로더 → `compactKo` prompt block. Committee/Persona/PB/Research send-to-pb에 주입; Today Brief는 `qualityMeta.todayCandidates.personalization` 요약만. 추천 강화·자동 주문 아님; raw 민감 메모 미포함.
+- **긴 응답 UX(EVO-026):** `buildLongResponseFallback` — Research/PB/Trend·기존 Persona/Committee. 요약·복사·후속 seed(sessionStorage). 자동 저장 없음.
 
 ## 주요 화면
 
@@ -20,7 +22,7 @@
 - `/sector-radar`
 - `/trend`
 - `/research-center`
-- `/committee-discussion`
+- `/committee-discussion` (partial line regenerate preview · action roadmap materialization · ActionStepRunner)
 - `/trade-journal`
 - `/judgment-review` (EVO-012 30일 판단 품질 복기)
 - `/daily-review` (EVO-015 일일 점검 메모 · EVO-015-2 PB 초안 preview · 명시 저장만)
@@ -69,6 +71,11 @@
   - `GET /api/research-center/ops-summary` — read-only **집계**(SELECT만)
   - `GET /api/research-center/ops-trace` — read-only **단일 requestId 타임라인**(SELECT만)
   - `qualityMeta.researchCenter.timings`·`timeoutBudget`으로 단계별 소요·예산·근접 경고 관측; provider 동기 long-running은 job queue 후보; **requestId는 큐 전환 후에도 동일 추적 키로 재사용 가능**
+- Committee Discussion
+  - 턴제 토론(round/closing) + `actionRoadmap` additive
+  - **`POST /api/committee-discussion/line/regenerate`**: partial 발언 재생성(preview only, DB write 0; 적용은 클라이언트 state)
+  - UI: structuredOutput 섹션 · raw JSON 접기 · 「토론 후 내가 할 수 있는 일」·followups 빈 결과 시 로드맵 fallback drafts
+  - Action Item 저장 시 `detail_json` + `actionSteps`(명시 버튼만 write)
 - Ops
   - `web_ops_events` fingerprint upsert RPC 우선
   - `opsLogBudget` 기반 write budget/cooldown/read-only 억제

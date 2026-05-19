@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
 import { buildGenericActionItemDetail } from "@/lib/actionItemDetailBuilders";
+import { buildLongResponseFallback } from "@/lib/longResponseFallback";
+import { buildLongResponseActionItemRequest } from "@/lib/longResponseFallbackSeeds";
 import { useSearchParams } from "next/navigation";
 import {
   parseResearchCenterTotalTimeoutMs,
@@ -341,6 +344,30 @@ export function ResearchCenterClient() {
     if (result.editor?.trim()) parts.push(result.editor);
     return parts.join("\n\n");
   }, [result]);
+
+  const reportLongFallback = useMemo(() => {
+    if (!result) return null;
+    if (result.longResponseFallback) return result.longResponseFallback;
+    if (!combinedReportMarkdown.trim()) return null;
+    return buildLongResponseFallback(combinedReportMarkdown);
+  }, [result, combinedReportMarkdown]);
+
+  const reportActionItemRequest = useMemo(() => {
+    if (!reportLongFallback?.exceededLimit || !result?.requestId) return undefined;
+    return buildLongResponseActionItemRequest({
+      sourceType: "research_report",
+      fallback: reportLongFallback,
+      title: `[Research] ${name.trim() || symbol.trim()} 긴 리포트 요약`,
+      symbol: symbol.trim() || undefined,
+      name: name.trim() || undefined,
+      market,
+      sourceId: result.requestId,
+      description: result.reportDiff?.diffSummary ?? result.contextNote,
+    });
+  }, [reportLongFallback, result, name, symbol, market]);
+
+  const displayActiveBody =
+    reportLongFallback?.exceededLimit ? reportLongFallback.displayText : activeBody;
 
   const extractFollowups = useCallback(async () => {
     if (!combinedReportMarkdown.trim()) {
@@ -953,8 +980,24 @@ export function ResearchCenterClient() {
               );
             })}
           </div>
+          {reportLongFallback?.exceededLimit ? (
+            <LongResponseFallbackCard
+              fallback={reportLongFallback}
+              seedSource="research_report"
+              navigation={{
+                symbol: symbol.trim() || undefined,
+                name: name.trim() || undefined,
+                market,
+                requestId: result.requestId,
+                title: name.trim() || symbol.trim(),
+              }}
+              actionItemRequest={reportActionItemRequest}
+              actionItemSaveLabel="리포트 → Action Item"
+              compact
+            />
+          ) : null}
           <article className="prose prose-slate mt-3 max-w-none text-sm">
-            <pre className="whitespace-pre-wrap break-words font-sans text-slate-800">{activeBody}</pre>
+            <pre className="whitespace-pre-wrap break-words font-sans text-slate-800">{displayActiveBody}</pre>
           </article>
 
           <div className="mt-6 rounded border border-slate-200 bg-white p-3 text-xs text-slate-800">
