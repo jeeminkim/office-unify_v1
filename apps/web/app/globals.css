@@ -36,3 +36,107 @@ body {
     "Malgun Gothic",
     sans-serif;
 }
+
+html[data-mobile-web="true"] {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+}
+
+html[data-mobile-web="true"],
+html[data-mobile-web="true"] body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.mobile-bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.mobile-nav-target {
+  min-height: 2.75rem;
+  min-width: 3.25rem;
+}
+
+.mobile-nav-drawer {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 767px) {
+  .mobile-web-shell {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .mobile-web-shell > * {
+    max-width: 100%;
+  }
+
+  .mobile-web-shell > div,
+  .mobile-web-shell > section,
+  .mobile-web-shell > article {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .mobile-web-shell button,
+  .mobile-web-shell [role="button"],
+  .mobile-web-shell input,
+  .mobile-web-shell select,
+  .mobile-web-shell textarea {
+    min-height: 2.25rem;
+  }
+
+  .mobile-web-shell input,
+  .mobile-web-shell select,
+  .mobile-web-shell textarea {
+    font-size: 16px;
+  }
+
+  .mobile-web-shell table {
+    font-size: 0.75rem;
+  }
+
+  .mobile-web-shell pre,
+  .mobile-web-shell code,
+  .mobile-web-shell table {
+    max-width: 100%;
+  }
+
+  .mobile-web-shell a,
+  .mobile-web-shell button,
+  .mobile-web-shell summary {
+    overflow-wrap: anywhere;
+    -webkit-tap-highlight-color: rgba(15, 23, 42, 0.12);
+  }
+
+  .mobile-web-shell section,
+  .mobile-web-shell article,
+  .mobile-web-shell li,
+  .mobile-web-shell aside {
+    min-width: 0;
+  }
+
+  .mobile-auth-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .mobile-auth-toolbar > span {
+    max-width: 45vw;
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .mobile-web-shell {
+    font-size: 0.9375rem;
+  }
+
+  .mobile-web-shell h1 {
+    line-height: 1.2;
+  }
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   applyTodayCandidateFeedbackToDeck,
+  buildTodayCandidateFeedbackSummary,
   buildTodayCandidateFeedbackIdempotencyKey,
   indexActiveFeedbackByCandidateKey,
   saveTodayCandidateFeedback,
@@ -79,6 +80,69 @@ describe('todayCandidateFeedbackStore', () => {
     const { deck } = applyTodayCandidateFeedbackToDeck([baseCandidate()], byKey);
     expect(deck[0]?.userFeedbackState?.action).toBe('mark_reviewed');
     expect(deck[0]?.decisionTrace?.userFeedbackApplied).toBe(true);
+  });
+
+  it('mark_reviewed risk candidate moves out of main deck into reviewed risk list', () => {
+    const now = new Date().toISOString();
+    const byKey = indexActiveFeedbackByCandidateKey([
+      {
+        id: 'f-risk',
+        user_key: 'u1',
+        candidate_id: 'c-1',
+        symbol: '028300',
+        feedback_action: 'mark_reviewed',
+        effective_from: now,
+        effective_until: null,
+        idempotency_key: 'k-risk',
+        created_at: now,
+      },
+    ]);
+    const { deck, reviewedRiskCandidates, suppressedTraces } = applyTodayCandidateFeedbackToDeck(
+      [
+        baseCandidate({
+          briefDeckSlot: 'risk_review',
+          candidateAction: 'review_required',
+          corporateActionRisk: {
+            active: true,
+            riskType: 'rights_offering',
+            headline: 'risk',
+            sourceLabel: 'manual',
+            effectiveFrom: now,
+            expiresAt: null,
+          },
+        }),
+      ],
+      byKey,
+    );
+    expect(deck).toHaveLength(0);
+    expect(reviewedRiskCandidates[0]?.candidateAction).toBe('reviewed_risk');
+    expect(reviewedRiskCandidates[0]?.userFeedbackState?.reviewedAt).toBe(now);
+    expect(suppressedTraces.some((t) => t.suppressedReasons.some((r) => r.code === 'user_marked_reviewed'))).toBe(true);
+  });
+
+  it('feedback summary exposes additive semantic counts', () => {
+    const now = new Date().toISOString();
+    const summary = buildTodayCandidateFeedbackSummary(
+      [
+        baseCandidate({
+          candidateAction: 'reviewed_risk',
+          corporateActionRisk: {
+            active: true,
+            riskType: 'rights_offering',
+            headline: 'risk',
+            sourceLabel: 'manual',
+            effectiveFrom: now,
+            expiresAt: null,
+          },
+          userFeedbackState: { action: 'mark_reviewed', createdAt: now, reviewedAt: now, active: true },
+        }),
+      ],
+      1,
+      false,
+      { reviewedRiskSuppressedCount: 1 },
+    );
+    expect(summary.reviewedRiskCount).toBe(1);
+    expect(summary.reviewedRiskSuppressedCount).toBe(1);
   });
 
   it('saveTodayCandidateFeedback sets effectiveUntil ~7d for hide_7d', async () => {

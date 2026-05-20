@@ -11,11 +11,11 @@ export async function AuthToolbar() {
   } = await supabase.auth.getUser();
 
   return (
-    <header className="flex flex-wrap items-center justify-end gap-3 border-b border-slate-200 bg-white px-4 py-2 text-sm">
+    <header className="mobile-auth-toolbar flex flex-wrap items-center justify-end gap-3 border-b border-slate-200 bg-white px-4 py-2 text-sm">
       <Link href="/" className="mr-auto font-medium text-slate-800 hover:underline">
         dev_support
       </Link>
-      <nav className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+      <nav className="hidden flex-wrap items-center gap-2 text-xs text-slate-600 sm:flex">
         <Link href="/persona-chat" className="hover:text-slate-900 hover:underline">
           Persona chat
         </Link>

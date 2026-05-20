@@ -52,6 +52,7 @@ export type TodayCandidateFeedbackResponse = {
 export type TodayCandidateUserFeedbackState = {
   action: TodayCandidateFeedbackAction;
   createdAt: string;
+  reviewedAt?: string;
   effectiveUntil?: string;
   active: boolean;
   feedbackId?: string;
@@ -63,6 +64,10 @@ export type TodayCandidateFeedbackSummary = {
   reviewedCount: number;
   keepObservingCount: number;
   suppressedByFeedbackCount: number;
+  reviewedRiskCount?: number;
+  hiddenByUserCount?: number;
+  keptObservingCount?: number;
+  reviewedRiskSuppressedCount?: number;
   actionHint?: string;
 };
 

@@ -9,6 +9,8 @@ import type {
 import type { TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import { riskReviewChecklistItems } from "@/lib/todayCandidateUiCopy";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { ActionIntentBadge } from "@/app/components/ActionIntentBadge";
+import { PersonaCoachHint } from "@/app/components/PersonaCoachHint";
 import {
   buildActionItemDetailFromTodayCandidate,
   buildGenericActionItemDetail,
@@ -213,6 +215,7 @@ export function TodayCandidateRiskReviewPanel({
 
   return (
     <div className="mt-2 space-y-2">
+      <PersonaCoachHint role="risk_manager" className="mt-2" />
       <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap">
         <button
           type="button"
@@ -271,14 +274,25 @@ export function TodayCandidateRiskReviewPanel({
         ) : null}
         {feedbackButtons}
       </div>
+      <div className="flex flex-wrap gap-1.5">
+        <ActionIntentBadge intent="feedback_update" compact />
+        <ActionIntentBadge intent="save_to_inbox" compact />
+        <ActionIntentBadge intent="external_manual_check" compact />
+      </div>
       {fb?.active ? (
-        <p className="text-[10px] text-emerald-900">
-          {fb.action === "hide_7d"
-            ? "7일 낮은 우선순위 적용 중 · 매수 추천이 아닙니다."
-            : fb.action === "mark_reviewed"
-              ? "최근 점검 완료 · 리스크 상태는 계속 관찰"
-              : "계속 관찰 중 · 반복 노출 진단 유지"}
-        </p>
+        <div className="rounded border border-emerald-200 bg-emerald-50 p-2 text-[10px] text-emerald-950">
+          <p>
+            {fb.action === "hide_7d"
+              ? "7일 낮은 우선순위가 적용되었습니다. 후보 노출 정책에만 반영됩니다."
+              : fb.action === "mark_reviewed"
+                ? "리스크 점검 완료: 메인 후보에서는 낮은 우선순위로 이동했습니다."
+                : "사용자가 계속 관찰 선택: 반복 노출 진단은 유지됩니다."}
+          </p>
+          {fb.action === "mark_reviewed" ? (
+            <p className="mt-1">새 공시/이벤트가 감지되면 다시 표시될 수 있습니다.</p>
+          ) : null}
+          {fb.reviewedAt ? <p className="mt-1 text-emerald-800">reviewedAt: {fb.reviewedAt}</p> : null}
+        </div>
       ) : null}
       <p className="text-[9px] text-slate-500">
         확인 링크입니다. 매수·매도·주문은 실행되지 않습니다. 관심종목 삭제가 아닙니다.

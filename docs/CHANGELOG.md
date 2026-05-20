@@ -4,6 +4,15 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-20 Operational UX Guidance Layer - Button Contract and Risk Feedback
+
+- **Button Action Contract:** added deterministic action intent labels for navigate-only, read-only check, confirmed write, Action Inbox save, note save, feedback update, local-only, and external manual check actions.
+- **Persona Coach Guidance:** added deterministic role guidance components for operator, data manager, risk manager, private banker, committee chair, research analyst, journal coach, and action secretary contexts. Guidance is copy-only and does not call an LLM.
+- **Dashboard Command Center:** next-action cards now carry `whyNow`, `actionIntent`, and `afterClickExpectation` metadata so users know what happens after a click.
+- **Risk feedback semantics:** `mark_reviewed` risk-review candidates are moved out of the main deck into a reviewed-risk/monitoring path, with additive `reviewedAt`, `reviewedRiskCount`, `hiddenByUserCount`, `keptObservingCount`, and `reviewedRiskSuppressedCount` summary fields.
+- **Google Finance repair UX:** unsafe/disabled repair states now have user-facing reasons; low-risk blank anchor/formula fills remain confirmable while overwrite-risk operations stay disabled.
+- **Guardrails:** no SQL, no API field removal, no Supabase ledger mutation, and no automatic trading/order/rebalancing behavior.
+
 ### 2026-05-20 Google Finance Direct Sheet Repair - US Anchor E2E Fix
 
 - **Direct repair CLI:** added `npm run google-finance-repair --workspace=apps/web -- --dry-run|--confirm|--confirm --wait` for service-account based `portfolio_quotes` repair. Dry-run is the default and performs no write.

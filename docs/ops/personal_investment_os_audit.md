@@ -9,6 +9,8 @@
 
 ## 1. Executive Summary
 
+**2026-05-20 update:** The first Operational UX Guidance layer is now in place. Button Action Contract badges/hints make navigation, read-only checks, confirmed writes, inbox saves, note saves, feedback updates, local-only UI state, and external manual checks explicit. Persona Coach copy gives deterministic screen guidance without LLM calls. Risk-review feedback now treats `mark_reviewed` as a completed risk check by moving the candidate out of the main deck into a reviewed-risk/monitoring path; `hide_7d` and `keep_observing` remain additive feedback states.
+
 Office Unify는 **관찰·리스크 확인·복기·반복 실수 감소**를 목표로 한 운영체제이며, Today Brief / Action Items / Research / PB / Committee / Daily Review / Judgment Review 등 핵심 루프는 **이미 상당 부분 연결**되어 있다. 특히 **Action Item + `actionSteps` + `actionStepLinks`** 가 cross-feature 네비게이션의 허브 역할을 한다.
 
 그러나 다음이 **“유기체” 인상을 약화**한다.

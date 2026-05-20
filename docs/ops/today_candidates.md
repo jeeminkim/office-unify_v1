@@ -25,6 +25,8 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 
 ### 리스크 점검 후보 — 사용자 액션 (additive)
 
+- **2026-05-20 feedback semantics:** `mark_reviewed` means the user completed the risk check for the current feedback window. The candidate is removed from the main deck and shown as reviewed-risk/monitoring when diagnostic cards are available. `reviewedAt`, `reviewedRiskCount`, `hiddenByUserCount`, `keptObservingCount`, and `reviewedRiskSuppressedCount` are additive contract fields.
+- `hide_7d` suppresses normal deck display as `user_hidden_7d`; `keep_observing` keeps the candidate visible and preserves repeated-exposure diagnostics. A new corporate-action event key can be handled in a later round without changing existing fields.
 - **모듈:** `todayCandidateRiskReviewActions`(서버 생성) · `todayCandidateNavigationLinks`(href) · `todayCandidateActionPolicy`(`policyKind`: `local_expand` | `navigate` | `api_post_confirmed` | `disabled_todo`). UI(`TodayCandidateRiskReviewPanel`)는 렌더만.
 - **`riskReviewActions`**: `corporateActionRisk.active`·`risk_review` 슬롯 후보에만 내려오는 navigate/api_post 계약. 서버는 리포트 생성·복기 저장을 **자동 실행하지 않음**.
 - **Dashboard**: 「리스크 점검하기」패널 → 확인 체크리스트 · **리포트 확인**(Research Center query) · **복기로 남기기**(confirm 후 `POST …/from-today-candidate`) · **관찰 메모**(Trade Journal seed).

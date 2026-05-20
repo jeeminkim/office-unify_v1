@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import type { CommandCenterItem, CommandCenterPersonalizationSummary } from "@/lib/commandCenterPolicy";
+import { ActionIntentBadge } from "@/app/components/ActionIntentBadge";
+import { ActionStatusHint } from "@/app/components/ActionStatusHint";
+import { PersonaCoachHint } from "@/app/components/PersonaCoachHint";
 
 type Props = {
   dataBlocker: CommandCenterItem | null;
@@ -27,6 +30,7 @@ function ItemCard({ item, tag }: { item: CommandCenterItem; tag?: string }) {
       )}
       <p className="mt-0.5 font-semibold">{item.title}</p>
       <p className="mt-0.5 opacity-90">{item.reason}</p>
+      {item.whyNow ? <p className="mt-1 text-[10px] font-medium opacity-80">왜 지금: {item.whyNow}</p> : null}
       <div className="mt-2 flex flex-wrap gap-2">
         <Link
           href={item.href}
@@ -43,6 +47,12 @@ function ItemCard({ item, tag }: { item: CommandCenterItem; tag?: string }) {
           </Link>
         ) : null}
       </div>
+      {item.actionIntent ? (
+        <div className="mt-2 space-y-1">
+          <ActionIntentBadge intent={item.actionIntent} compact />
+          <ActionStatusHint intent={item.actionIntent} afterClick={item.afterClickExpectation} className="opacity-80" />
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -69,6 +79,7 @@ export function CommandCenterSection({ dataBlocker, todayItems, personalization,
           </Link>
         </div>
       </div>
+      <PersonaCoachHint role="operator" className="mt-3" />
 
       {personalization &&
       (personalization.openActionItemCount != null ||

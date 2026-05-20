@@ -429,10 +429,28 @@ export async function GET(req?: Request) {
     const feedbackApplied = applyTodayCandidateFeedbackToDeck(primaryCandidateDeck, feedbackByKey);
     primaryCandidateDeck = feedbackApplied.deck;
     const feedbackSuppressedTraces = feedbackApplied.suppressedTraces;
+    if (feedbackApplied.reviewedRiskCandidates.length > 0) {
+      diagnosticCandidateCards = [
+        ...feedbackApplied.reviewedRiskCandidates.map((c) => ({
+          ...c,
+          displayMetrics: c.displayMetrics
+            ? {
+                ...c.displayMetrics,
+                candidateCardKind: 'risk_review' as const,
+              }
+            : c.displayMetrics,
+        })),
+        ...diagnosticCandidateCards,
+      ];
+    }
     const feedbackSummaryEarly = buildTodayCandidateFeedbackSummary(
-      primaryCandidateDeck,
+      [...primaryCandidateDeck, ...feedbackApplied.reviewedRiskCandidates],
       feedbackSuppressedTraces.length,
       feedbackFetch.tableMissing,
+      {
+        reviewedRiskSuppressedCount: feedbackApplied.reviewedRiskCandidates.length,
+        suppressedTraces: feedbackSuppressedTraces,
+      },
     );
 
     const profileStatusForScoreExplanation: 'missing' | 'partial' | 'complete' =

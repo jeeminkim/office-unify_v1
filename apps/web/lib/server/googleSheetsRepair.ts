@@ -290,6 +290,8 @@ export async function buildGoogleSheetsRepairPlan(
       riskLevel: 'high',
       blockedReason: 'partial_headers_with_data',
     });
+    const appendOp = buildAppendMissingAnchorOperation(tab, dataRows, sheetRows);
+    if (appendOp) operations.push(appendOp);
   }
 
   if (headersPartial && hasData && operations.every((o) => o.type === 'no_op' || o.type === 'append_missing_anchor_rows')) {
@@ -301,7 +303,7 @@ export async function buildGoogleSheetsRepairPlan(
         requiresConfirmation: true,
         targetSpreadsheetId: id,
         credential,
-        operations: operations.filter((o) => o.type !== 'no_op'),
+        operations,
         warnings,
         actionHint:
           '기존 데이터는 덮어쓰지 않습니다. 누락 anchor 행만 append하는 보강을 사용하세요.',

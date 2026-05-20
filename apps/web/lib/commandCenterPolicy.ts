@@ -8,6 +8,7 @@ import { resolveActionItemSourceDisplay } from '@/lib/actionItemDisplayLabels';
 import { analyzeActionItemDetailCompleteness } from '@/lib/actionItemDetailCompleteness';
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
 import { isRiskReviewCandidateClient } from '@/lib/todayCandidateUiCopy';
+import type { ActionIntent } from '@/lib/actionIntentContract';
 
 export type CommandCenterItemType =
   | 'data_blocker'
@@ -31,6 +32,9 @@ export type CommandCenterItem = {
   secondaryActionLabel?: string;
   secondaryHref?: string;
   severity: CommandCenterSeverity;
+  whyNow?: string;
+  actionIntent?: ActionIntent;
+  afterClickExpectation?: string;
 };
 
 export type CommandCenterOpenActionItem = {
@@ -124,6 +128,9 @@ function pickDataBlocker(input: CommandCenterInput): CommandCenterItem | null {
       secondaryActionLabel: 'Google Finance 설정',
       secondaryHref: '/ops/google-finance-setup',
       severity: 'critical',
+      whyNow: 'SQL readiness가 핵심 기능의 데이터 계약을 막고 있습니다.',
+      actionIntent: 'read_only_check',
+      afterClickExpectation: 'SQL 준비 상태 화면으로 이동합니다. 이 버튼만으로 데이터는 변경되지 않습니다.',
     };
   }
   if (input.weeklySqlReadiness?.investorProfileTableMissing) {
@@ -136,6 +143,9 @@ function pickDataBlocker(input: CommandCenterInput): CommandCenterItem | null {
       primaryActionLabel: 'SQL 준비 상태 보기',
       href: '/ops/sql-readiness',
       severity: 'warning',
+      whyNow: '개인화와 PB 맥락의 기본 테이블 상태를 먼저 확인해야 합니다.',
+      actionIntent: 'read_only_check',
+      afterClickExpectation: 'SQL 준비 상태 화면으로 이동합니다. 실제 SQL 적용은 앱이 자동 실행하지 않습니다.',
     };
   }
   const errSections = input.statusSections.filter((s) => s.status === 'error');
@@ -154,6 +164,9 @@ function pickDataBlocker(input: CommandCenterInput): CommandCenterItem | null {
       secondaryActionLabel: '시세 상태',
       secondaryHref: '/system-status',
       severity: 'critical',
+      whyNow: '시세/Sheets 데이터가 Today Brief 후보 품질에 직접 영향을 줍니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: '설정 화면으로 이동합니다. 실제 수정은 안전 보강 적용 또는 CLI confirm에서만 실행됩니다.',
     };
   }
   const anchor =
@@ -168,6 +181,9 @@ function pickDataBlocker(input: CommandCenterInput): CommandCenterItem | null {
       primaryActionLabel: 'Google Finance 설정',
       href: '/ops/google-finance-setup',
       severity: 'warning',
+      whyNow: 'US 후보 게이팅이 Google Finance anchor 0 상태로 분리되어 있습니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: '설정 화면으로 이동합니다. 실제 수정은 안전 보강 적용 또는 CLI confirm에서만 실행됩니다.',
     };
   }
   const usCov = input.todayBrief?.qualityMeta?.todayCandidates?.usCoverage;
@@ -181,6 +197,9 @@ function pickDataBlocker(input: CommandCenterInput): CommandCenterItem | null {
       primaryActionLabel: 'Google Finance 설정',
       href: '/ops/google-finance-setup',
       severity: 'warning',
+      whyNow: '미국 데이터가 부족하면 일반 후보와 데이터 점검 카드를 분리해 봐야 합니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: 'Google Finance 설정 화면으로 이동합니다. 이동만으로 데이터는 변경되지 않습니다.',
     };
   }
   if ((input.opsOpenErrorCount ?? 0) > 0) {
@@ -193,6 +212,9 @@ function pickDataBlocker(input: CommandCenterInput): CommandCenterItem | null {
       primaryActionLabel: '운영 로그',
       href: '/ops-events',
       severity: 'warning',
+      whyNow: '열려 있는 운영 오류를 먼저 확인하면 오늘의 판단과 데이터 문제를 분리할 수 있습니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: '운영 로그 화면으로 이동합니다. 저장이나 수정은 없습니다.',
     };
   }
   return null;
@@ -225,6 +247,9 @@ export function buildCommandCenterPlan(input: CommandCenterInput): {
       secondaryActionLabel: a.source_href ? '원본 보기' : undefined,
       secondaryHref: a.source_href ?? undefined,
       severity: a.priority === 'high' ? 'warning' : 'info',
+      whyNow: '리스크 점검 Action Item이 아직 열려 있습니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: 'Action Inbox로 이동합니다. 완료 처리는 해당 화면에서 명시 버튼을 눌러야 합니다.',
     });
   }
 
@@ -243,12 +268,16 @@ export function buildCommandCenterPlan(input: CommandCenterInput): {
       primaryActionLabel: 'Action Inbox 열기',
       href: `/action-items?focus=${encodeURIComponent(a.id)}`,
       severity: 'warning',
+      whyNow: '오래 열린 작업은 오늘의 운영 판단을 흐리게 만들 수 있습니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: 'Action Inbox로 이동합니다. 완료/보류는 해당 화면에서만 저장됩니다.',
     });
   }
 
   const deck = input.todayBrief?.primaryCandidateDeck ?? [];
   const riskCards = deck.filter(isRiskReviewCandidateClient);
   for (const c of riskCards.slice(0, 2)) {
+    if (c.userFeedbackState?.active && c.userFeedbackState.action === 'mark_reviewed') continue;
     if (candidates.length >= 3) break;
     const sym = c.stockCode ?? c.symbol ?? '';
     candidates.push({
@@ -262,6 +291,9 @@ export function buildCommandCenterPlan(input: CommandCenterInput): {
       primaryActionLabel: '후보 카드에서 점검',
       href: sym ? `/?candidate=${encodeURIComponent(c.candidateId)}` : '/',
       severity: 'warning',
+      whyNow: '공시/권리 일정 등 확인 전에는 일반 관찰 후보와 다르게 다뤄야 합니다.',
+      actionIntent: 'feedback_update',
+      afterClickExpectation: '후보 카드에서 공시 확인/점검 완료/7일 낮은 우선순위를 선택할 수 있습니다.',
     });
   }
 
@@ -279,6 +311,9 @@ export function buildCommandCenterPlan(input: CommandCenterInput): {
       secondaryActionLabel: 'Action Inbox',
       secondaryHref: `/action-items?focus=${encodeURIComponent(a.id)}`,
       severity: 'info',
+      whyNow: '리서치 후속 확인이 열린 작업으로 남아 있습니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: 'Research Center 또는 Action Inbox로 이동합니다. 이동만으로 저장은 없습니다.',
     });
   }
 
@@ -293,6 +328,9 @@ export function buildCommandCenterPlan(input: CommandCenterInput): {
       primaryActionLabel: '판단 품질 복기',
       href: '/judgment-review',
       severity: 'warning',
+      whyNow: '최근 판단 패턴이 반복되어 30일 복기에서 확인할 가치가 있습니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: '30일 복기 화면으로 이동합니다. 저장은 버튼을 누를 때만 수행됩니다.',
     });
   }
 
@@ -306,6 +344,9 @@ export function buildCommandCenterPlan(input: CommandCenterInput): {
       primaryActionLabel: '관심종목 관리',
       href: '/watchlist',
       severity: 'info',
+      whyNow: '승인 대기 중인 관심종목 후보가 있습니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: 'Watchlist 화면으로 이동합니다. 후보 등록은 승인 버튼을 눌렀을 때만 실행됩니다.',
     });
   }
 
@@ -319,6 +360,9 @@ export function buildCommandCenterPlan(input: CommandCenterInput): {
       primaryActionLabel: 'Daily Review 열기',
       href: '/daily-review',
       severity: 'info',
+      whyNow: '오늘의 메모/PB 초안을 확인할 수 있습니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: 'Daily Review로 이동합니다. 저장은 명시 버튼을 누를 때만 수행됩니다.',
     });
   }
 
@@ -332,6 +376,9 @@ export function buildCommandCenterPlan(input: CommandCenterInput): {
       primaryActionLabel: 'Daily Review 열기',
       href: '/daily-review',
       severity: 'info',
+      whyNow: '오늘 상태를 짧게 정리할 기본 루트입니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: 'Daily Review로 이동합니다. 저장은 명시 버튼을 누를 때만 수행됩니다.',
     });
   }
 

@@ -1,4 +1,6 @@
 import Module from 'node:module';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 type CliOptions = {
   confirm: boolean;
@@ -9,6 +11,34 @@ type CliOptions = {
 type RepairModule = typeof import('../lib/server/googleSheetsRepair');
 
 const CLI_COMMAND = 'npm run google-finance-repair --workspace=apps/web -- --confirm --wait';
+
+function unquoteEnvValue(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+export function loadGoogleFinanceRepairLocalEnv(cwd = process.cwd()): void {
+  const candidates = [join(cwd, '.env.local'), join(cwd, 'apps', 'web', '.env.local')];
+  for (const file of candidates) {
+    if (!existsSync(file)) continue;
+    const text = readFileSync(file, 'utf8');
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim() || line.trimStart().startsWith('#')) continue;
+      const idx = line.indexOf('=');
+      if (idx <= 0) continue;
+      const key = line.slice(0, idx).trim();
+      if (!key || process.env[key]) continue;
+      process.env[key] = unquoteEnvValue(line.slice(idx + 1));
+    }
+    return;
+  }
+}
 
 function installServerOnlyShim(): void {
   const moduleWithLoad = Module as unknown as {
@@ -40,6 +70,7 @@ export async function runGoogleFinanceRepairCli(
   io: { write: (text: string) => void } = { write: (text) => process.stdout.write(text) },
 ): Promise<number> {
   const options = parseGoogleFinanceRepairArgs(argv);
+  loadGoogleFinanceRepairLocalEnv();
   installServerOnlyShim();
   const repair = (await import('../lib/server/googleSheetsRepair')) as RepairModule;
   const result = await repair.runGoogleSheetsRepairCore({
@@ -52,6 +83,10 @@ export async function runGoogleFinanceRepairCli(
   const post = result.postCheck;
   const operations = result.appliedOperations.length > 0 ? result.appliedOperations.join(', ') : '(none)';
   const appended = result.appendedAnchorSymbols?.length ? result.appendedAnchorSymbols.join(', ') : '(none)';
+  const plannedOperations = (plan?.operations ?? [])
+    .filter((op) => op.type !== 'no_op')
+    .map((op) => `${op.operationId}:${op.riskLevel}${op.blockedReason ? `:${op.blockedReason}` : ''}`)
+    .join(', ') || '(none)';
   const portfolioQuotesStatus =
     post?.parsedRowsOk != null
       ? post.parsedRowsOk > 0 || (post.anchorMatched ?? 0) > 0
@@ -66,6 +101,8 @@ export async function runGoogleFinanceRepairCli(
       '[Google Finance Repair]',
       line('mode', options.confirm ? 'confirm' : 'dry-run'),
       line('serviceAccount', plan?.credential.serviceAccountEmailMasked ?? 'not_configured'),
+      line('repairPlan', plan?.status ?? result.status),
+      line('planned operations', plannedOperations),
       line('portfolio_quotes', portfolioQuotesStatus),
       line('operations applied', operations),
       line('appended anchors', appended),

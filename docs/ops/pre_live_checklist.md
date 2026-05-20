@@ -57,6 +57,10 @@ npm run pre-live-smoke --workspace=apps/web
 
 ## 2h. Dashboard Command Center Refactor (EVO-027 · 2026-05-20)
 
+- [ ] Button Action Contract badges/hints distinguish navigation, read-only checks, confirmed writes, Action Inbox saves, note saves, feedback updates, local-only UI state, and external manual checks.
+- [ ] Persona Coach hints render deterministic guidance on Command Center, Google Finance setup, risk review, Action Items, Daily/Judgment review, and Committee surfaces without saving data by themselves.
+- [ ] `mark_reviewed` risk candidates move out of the main deck into reviewed-risk/monitoring copy; `hide_7d` suppresses as user-hidden; `keep_observing` remains visible with repeat-exposure diagnostics.
+
 - [ ] `/` 상단 `CommandCenterSection`이 data blocker 1개와 오늘 확인할 운영 작업 최대 3개를 보여준다.
 - [ ] `DataReadinessSection` 문구가 “데이터 상태 문제입니다. 투자 판단이 아닙니다.” 관점으로 표시된다.
 - [ ] `ActionItemsSummarySection`은 open/in_progress top 3만 표시하고, 완료 처리는 `/action-items`에서만 가능하다.

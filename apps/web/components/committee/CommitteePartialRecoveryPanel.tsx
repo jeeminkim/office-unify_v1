@@ -10,6 +10,7 @@ import type {
 import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
 import { ActionStatusBanner } from "@/components/ActionStatusBanner";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { ActionIntentBadge } from "@/app/components/ActionIntentBadge";
 import { buildCommitteeLineRegenerateActionItemDetail } from "@/lib/actionItemDetailBuilders";
 import {
   buildJournalHrefFromActionItem,
@@ -168,6 +169,11 @@ export function CommitteePartialRecoveryPanel({
         >
           복사
         </button>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <ActionIntentBadge intent="local_only" compact />
+        <ActionIntentBadge intent="save_to_inbox" compact />
+        <ActionIntentBadge intent="navigate_only" compact />
       </div>
       <ActionStatusBanner statusMessage={statusMessage} duplicateMessage={duplicateMessage} logs={logs} />
       {preview ? (

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ActionItemDetailJson, CommitteeActionItem, CommitteeActionRoadmap } from "@office-unify/shared-types";
 import { ActionStepRunner } from "@/components/ActionStepRunner";
+import { ActionIntentBadge } from "@/app/components/ActionIntentBadge";
+import { PersonaCoachHint } from "@/app/components/PersonaCoachHint";
 import { buildCommitteeRoadmapItemDetail } from "@/lib/actionItemDetailBuilders";
 import { createActionItem, committeeRoadmapToCreateRequests } from "@/lib/actionItemsClient";
 import { persistActionStepSeedForNavigation } from "@/lib/actionStepLinks";
@@ -166,6 +168,12 @@ export function CommitteePostDiscussionActionsPanel({ topic, committeeTurnId, ro
       <p className="mt-1 text-[10px] text-violet-800/80">
         「화면에서만 완료 표시」는 새로고침하면 사라집니다. 실제 작업 추적은 Action Inbox 저장을 사용하세요.
       </p>
+      <PersonaCoachHint role="committee_chair" className="mt-2" />
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <ActionIntentBadge intent="save_to_inbox" compact />
+        <ActionIntentBadge intent="navigate_only" compact />
+        <ActionIntentBadge intent="local_only" compact />
+      </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"

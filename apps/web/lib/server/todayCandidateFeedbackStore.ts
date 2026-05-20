@@ -94,6 +94,7 @@ function rowToUserState(row: TodayCandidateFeedbackRow, now = Date.now()): Today
   return {
     action: row.feedback_action,
     createdAt: row.created_at,
+    reviewedAt: row.feedback_action === 'mark_reviewed' ? row.created_at : undefined,
     effectiveUntil: row.effective_until ?? undefined,
     active,
     feedbackId: row.id,
@@ -285,23 +286,35 @@ export function buildTodayCandidateFeedbackSummary(
   deck: TodayStockCandidate[],
   suppressedCount: number,
   tableMissing?: boolean,
+  extra?: { reviewedRiskSuppressedCount?: number; suppressedTraces?: CandidateDecisionTrace[] },
 ): TodayCandidateFeedbackSummary {
   let hide7dActiveCount = 0;
   let reviewedCount = 0;
   let keepObservingCount = 0;
+  let reviewedRiskCount = 0;
   for (const c of deck) {
     const s = c.userFeedbackState;
     if (!s?.active) continue;
     if (s.action === 'hide_7d') hide7dActiveCount += 1;
-    if (s.action === 'mark_reviewed') reviewedCount += 1;
+    if (s.action === 'mark_reviewed') {
+      reviewedCount += 1;
+      if (c.corporateActionRisk?.active || c.candidateAction === 'reviewed_risk') reviewedRiskCount += 1;
+    }
     if (s.action === 'keep_observing') keepObservingCount += 1;
   }
+  const hiddenByUserCount =
+    hide7dActiveCount +
+    (extra?.suppressedTraces ?? []).filter((t) => t.suppressedReasons.some((r) => r.code === 'user_hidden_7d')).length;
   return {
     status: tableMissing ? 'table_missing' : 'ok',
     hide7dActiveCount,
     reviewedCount,
     keepObservingCount,
     suppressedByFeedbackCount: suppressedCount,
+    reviewedRiskCount,
+    hiddenByUserCount,
+    keptObservingCount: keepObservingCount,
+    reviewedRiskSuppressedCount: extra?.reviewedRiskSuppressedCount ?? 0,
     ...(tableMissing ? { actionHint: feedbackTableMissingActionHint() } : {}),
   };
 }
@@ -338,8 +351,9 @@ function withFeedbackTracePatch(
 export function applyTodayCandidateFeedbackToDeck(
   deck: TodayStockCandidate[],
   byKey: Map<string, TodayCandidateUserFeedbackState>,
-): { deck: TodayStockCandidate[]; suppressedTraces: CandidateDecisionTrace[] } {
+): { deck: TodayStockCandidate[]; suppressedTraces: CandidateDecisionTrace[]; reviewedRiskCandidates: TodayStockCandidate[] } {
   const suppressedTraces: CandidateDecisionTrace[] = [];
+  const reviewedRiskCandidates: TodayStockCandidate[] = [];
   const adjusted: TodayStockCandidate[] = [];
 
   for (const c of deck) {
@@ -390,9 +404,48 @@ export function applyTodayCandidateFeedbackToDeck(
       next = withFeedbackTracePatch(next, {
         downgradeReasons: [
           ...(next.decisionTrace?.downgradeReasons ?? []),
-          traceReason('user_marked_reviewed', '최근 리스크·근거를 점검 완료로 표시함'),
+          traceReason('user_marked_reviewed', '리스크 점검 완료: 메인 후보에서는 낮은 우선순위로 이동했습니다.'),
         ],
       });
+      const riskReviewed = c.corporateActionRisk?.active === true || c.briefDeckSlot === 'risk_review';
+      if (riskReviewed) {
+        const reviewed = mergeScoreBreakdownIntoCandidate(
+          {
+            ...next,
+            candidateAction: 'reviewed_risk',
+            reasonSummary: `${next.reasonSummary} · 리스크 점검 완료`,
+            cautionNotes: [
+              ...next.cautionNotes,
+              '리스크 점검 완료: 메인 후보에서는 낮은 우선순위로 이동했습니다.',
+              '새 공시/이벤트가 감지되면 다시 표시될 수 있습니다.',
+            ],
+          },
+          {
+            finalScore: clampObservationScore((next.scoreBreakdown?.finalScore ?? next.score) - 18),
+            riskPenalty: (next.scoreBreakdown?.riskPenalty ?? 0) + 6,
+          },
+        );
+        reviewedRiskCandidates.push(reviewed);
+        suppressedTraces.push({
+          candidateId: c.candidateId,
+          symbol: c.stockCode ?? c.symbol,
+          name: c.name,
+          market: c.market,
+          decisionStatus: 'suppressed',
+          candidateBucket: next.decisionTrace?.candidateBucket ?? 'corporate_action_risk',
+          selectedReasons: [],
+          suppressedReasons: [traceReason('user_marked_reviewed', '최근 점검 완료된 리스크 후보')],
+          rejectedReasons: [],
+          downgradeReasons: next.decisionTrace?.downgradeReasons ?? [],
+          missingEvidence: [],
+          dataQualityFlags: [],
+          riskFlags: next.decisionTrace?.riskFlags ?? [],
+          nextChecks: next.decisionTrace?.nextChecks ?? [],
+          doNotDo: next.decisionTrace?.doNotDo ?? [],
+          userFeedbackApplied: true,
+        });
+        continue;
+      }
     }
 
     if (fb.action === 'keep_observing') {
@@ -415,7 +468,7 @@ export function applyTodayCandidateFeedbackToDeck(
     return ah - bh;
   });
 
-  return { deck: hideLast, suppressedTraces };
+  return { deck: hideLast, suppressedTraces, reviewedRiskCandidates };
 }
 
 export const TODAY_CANDIDATE_FEEDBACK_API_ROUTE = FEEDBACK_ROUTE;

@@ -89,7 +89,7 @@ export type CorporateActionRiskSnapshot = {
   basisNote?: string;
 };
 
-export type TodayCandidateCandidateAction = 'observe_only' | 'review_required';
+export type TodayCandidateCandidateAction = 'observe_only' | 'review_required' | 'reviewed_risk' | 'risk_review_completed';
 
 export interface TodayCandidateDataQuality {
   overall: 'high' | 'medium' | 'low' | 'very_low';

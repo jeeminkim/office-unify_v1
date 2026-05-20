@@ -14,6 +14,8 @@
 
 ## Repair Assistant (confirmed write only)
 
+- **Operational UX (2026-05-20):** the setup screen now explains why the safe repair button is disabled. Unsafe overwrite-only plans show a preservation-policy reason, while low-risk blank anchor/formula fills remain confirmable. CLI copy and manual sample copy stay available in disabled states.
+
 - UI **「Sheets 자동 보강/복구」** 섹션은 항상 표시(write 불가 시 disabled).
 - `repairPlan`은 GET 응답에 포함되며 Sheets를 수정하지 않습니다.
 - `POST /api/system/google-finance-setup/repair/apply` — **`confirm: true`일 때만** write

@@ -5,6 +5,8 @@ import { useRef, useState } from "react";
 import type { DailyReviewNote, DailyReviewNotePreview } from "@office-unify/shared-types";
 import { DAILY_REVIEW_NOTE_SUBJECT_LABELS } from "@office-unify/shared-types";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
+import { ActionIntentBadge } from "@/app/components/ActionIntentBadge";
+import { PersonaCoachHint } from "@/app/components/PersonaCoachHint";
 import { buildDailyReviewNoteActionItemDetail } from "@/lib/actionItemDetailBuilders";
 import { saveDailyReviewNote } from "@/lib/dailyReviewNotesClient";
 import {
@@ -147,6 +149,7 @@ export function DailyReviewNoteCard({ preview, saved, onSaved, onDismissed }: Pr
   return (
     <li className="w-full rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-sm">
       <NoteCardHeader preview={preview} isSaved={isSaved} savedAtLabel={savedAtLabel} />
+      <PersonaCoachHint role="journal_coach" className="mt-2" />
 
       <button type="button" className="mt-1 text-[10px] underline" onClick={() => setExtraOpen((v) => !v)}>
         {extraOpen ? "접기" : "하지 말 것·증거"}
@@ -186,6 +189,11 @@ export function DailyReviewNoteCard({ preview, saved, onSaved, onDismissed }: Pr
         </p>
       ) : null}
       <p className="mt-1 text-[9px] text-slate-400">저장 전 미리보기 · 자동 주문 없음 · 매수 추천 아님</p>
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        <ActionIntentBadge intent="save_note" compact />
+        <ActionIntentBadge intent="save_to_inbox" compact />
+        <ActionIntentBadge intent="navigate_only" compact />
+      </div>
     </li>
   );
 }

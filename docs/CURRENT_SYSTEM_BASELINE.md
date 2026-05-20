@@ -34,6 +34,8 @@
 
 ## Dashboard Command Center baseline (EVO-027)
 
+- **Operational UX guidance layer (2026-05-20):** Button Action Contract labels distinguish navigation, read-only checks, confirmed writes, Action Inbox saves, note saves, feedback updates, local-only UI state, and external manual checks. Persona Coach hints provide deterministic screen guidance without LLM calls.
+- **Risk feedback semantics:** `mark_reviewed` risk-review candidates move out of the main candidate deck into a reviewed-risk/monitoring path for the current feedback window. `hide_7d` remains suppressed as user-hidden, and `keep_observing` keeps repeat-exposure diagnostics visible. Summary counts are additive under `qualityMeta.todayCandidates.feedbackSummary`.
 - 홈은 메뉴 모음이 아니라 "오늘의 투자 운영 관제탑" 역할을 한다.
 - SQL/Google Finance/quote/ops 문제는 **데이터 blocker**로 표시하며, 투자 후보 점수나 판단과 섞지 않는다.
 - Action Item summary는 open/in_progress top 3을 source label, 원본 링크, Research/PB/위원회 링크와 함께 보여준다. 완료 처리는 `/action-items`에서만 한다.

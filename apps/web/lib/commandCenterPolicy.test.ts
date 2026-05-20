@@ -12,6 +12,8 @@ describe('commandCenterPolicy', () => {
     });
     expect(plan.dataBlocker?.type).toBe('data_blocker');
     expect(plan.dataBlocker?.href).toBe('/ops/sql-readiness');
+    expect(plan.dataBlocker?.actionIntent).toBe('read_only_check');
+    expect(plan.dataBlocker?.afterClickExpectation).toBeTruthy();
   });
 
   it('includes open action items in today list', () => {
@@ -65,7 +67,31 @@ describe('commandCenterPolicy', () => {
       opsOpenErrorCount: null,
     });
     expect(plan.todayItems.some((i) => i.type === 'committee_recovery' && i.severity === 'warning')).toBe(true);
+    expect(plan.todayItems.find((i) => i.type === 'committee_recovery')?.actionIntent).toBe('navigate_only');
     expect(plan.personalization?.repeatedPatternCount).toBe(2);
+  });
+
+  it('does not promote already reviewed risk cards as next actions', () => {
+    const plan = buildCommandCenterPlan({
+      statusSections: [],
+      weeklySqlReadiness: null,
+      todayBrief: {
+        primaryCandidateDeck: [
+          {
+            name: 'HLB',
+            stockCode: '028300',
+            candidateAction: 'review_required',
+            briefDeckSlot: 'risk_review',
+            reasonSummary: 'risk review',
+            userFeedbackState: { action: 'mark_reviewed', active: true, createdAt: '2026-05-19', reviewedAt: '2026-05-19' },
+          },
+        ],
+      },
+      openActionItems: [],
+      opsOpenErrorCount: null,
+    });
+
+    expect(plan.todayItems.some((i) => i.type === 'risk_review')).toBe(false);
   });
 
   it('orders open action items and marks weak detail for dashboard summary', () => {

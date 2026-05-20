@@ -17,6 +17,8 @@ import {
 import { analyzeActionItemDetailCompleteness } from "@/lib/actionItemDetailCompleteness";
 import { resolveActionItemSourceDisplay } from "@/lib/actionItemDisplayLabels";
 import { ActionStepRunner } from "@/components/ActionStepRunner";
+import { ActionIntentBadge } from "@/app/components/ActionIntentBadge";
+import { PersonaCoachHint } from "@/app/components/PersonaCoachHint";
 
 const DISMISS_OPTIONS: { value: ActionItemDismissReason; label: string }[] = [
   { value: "already_confirmed", label: "이미 확인함" },
@@ -241,6 +243,12 @@ export function ActionItemCard({
 
       {open ? (
         <>
+          <PersonaCoachHint role="action_secretary" className="mt-2" />
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <ActionIntentBadge intent="navigate_only" compact />
+            <ActionIntentBadge intent="save_to_inbox" compact />
+            <ActionIntentBadge intent="feedback_update" compact />
+          </div>
           <DetailExpanded detail={detail} it={it} showMissingSteps={showMissingSteps} onStepDone={onStepDone} />
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <NavLink href={researchHref} label="Research" hint="맥락을 Research로" />

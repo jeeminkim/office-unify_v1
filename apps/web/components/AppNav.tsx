@@ -80,13 +80,16 @@ export function AppNav() {
           ))}
         </div>
       </nav>
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden">
+      <nav
+        className="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur md:hidden"
+        aria-label="Mobile navigation"
+      >
         <div className="flex justify-around px-1 py-2">
           {MOBILE_PRIMARY.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex min-w-[3rem] flex-col items-center rounded-lg px-2 py-1 text-[10px] ${
+              className={`mobile-nav-target flex min-w-[3rem] flex-col items-center justify-center rounded-lg px-2 py-1 text-[10px] ${
                 isNavActive(pathname, item.href) ||
                 (item.href === "/portfolio" &&
                   (pathname.startsWith("/portfolio-ledger") || pathname.startsWith("/watchlist")))
@@ -100,16 +103,17 @@ export function AppNav() {
           ))}
           <button
             type="button"
-            className={`flex min-w-[3rem] flex-col items-center rounded-lg px-2 py-1 text-[10px] ${
+            className={`mobile-nav-target flex min-w-[3rem] flex-col items-center justify-center rounded-lg px-2 py-1 text-[10px] ${
               moreActive || moreOpen ? "font-semibold text-slate-900" : "text-slate-600"
             }`}
+            aria-expanded={moreOpen}
             onClick={() => setMoreOpen((v) => !v)}
           >
             More
           </button>
         </div>
         {moreOpen ? (
-          <div className="max-h-[50vh] overflow-y-auto border-t bg-white px-3 py-2">
+          <div className="mobile-nav-drawer max-h-[50vh] overflow-y-auto border-t bg-white px-3 py-2">
             {NAV_TREE.map((group) => (
               <details key={group.id} className="mb-2 rounded border border-slate-100" open={isGroupActive(pathname, group)}>
                 <summary className="cursor-pointer select-none px-2 py-1.5 text-[11px] font-semibold text-slate-800">

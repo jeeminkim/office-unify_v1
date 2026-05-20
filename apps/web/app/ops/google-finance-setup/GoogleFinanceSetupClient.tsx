@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { GoogleFinanceAnchorRecovery, GoogleFinanceRepairPostCheck } from "@office-unify/shared-types";
 import { ActionStatusBanner } from "@/components/ActionStatusBanner";
+import { ActionIntentBadge } from "@/app/components/ActionIntentBadge";
+import { PersonaCoachHint } from "@/app/components/PersonaCoachHint";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
 import {
   buildGoogleFinanceSetupActionItemDetail,
   type GoogleFinanceSetupActionItemInput,
 } from "@/lib/actionItemDetailBuilders";
 import { useGoogleFinanceSetupActions, usePostApplyWaitTimer } from "./useGoogleFinanceSetupActions";
+import { resolveGoogleFinanceRepairDisabledReason } from "./googleFinanceRepairUx";
 
 type TabProbe = {
   name: string;
@@ -251,15 +254,7 @@ export function GoogleFinanceSetupClient() {
   const repairOps = repair.operations.filter((o) => o.type !== "no_op");
   const applyRunning = isRunning("repair_apply");
   const cliRepairCommand = "npm run google-finance-repair --workspace=apps/web -- --confirm --wait";
-  const repairDisabledReason = !repair.writeAvailable
-    ? !repair.credential.serviceAccountEmailMasked
-      ? "service account write credential missing or spreadsheet not configured"
-      : "editor permission missing or write credential unavailable"
-    : repair.status === "unsafe"
-      ? "unsafe operation only"
-      : repairOps.length === 0
-        ? "no operations needed"
-        : null;
+  const repairDisabledReason = resolveGoogleFinanceRepairDisabledReason(repair);
 
   const runLoad = () =>
     runAction(
@@ -316,6 +311,7 @@ export function GoogleFinanceSetupClient() {
         보지 않습니다. GET 점검은 read-only이며, <strong>Repair Assistant</strong>는 사용자가 「적용」을 눌렀을 때만
         표시된 operation을 1회 write합니다.
       </p>
+      <PersonaCoachHint role="data_manager" className="mt-3" />
 
       <div className="mt-3 flex flex-wrap gap-2">
         <button
@@ -349,6 +345,11 @@ export function GoogleFinanceSetupClient() {
         >
           Today Brief 다시 실행
         </Link>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <ActionIntentBadge intent="read_only_check" compact />
+        <ActionIntentBadge intent="confirmed_write" compact />
+        <ActionIntentBadge intent="local_only" compact />
       </div>
 
       <ActionStatusBanner statusMessage={statusMessage} duplicateMessage={duplicateMessage} logs={actionLogs} />
@@ -470,8 +471,17 @@ export function GoogleFinanceSetupClient() {
         </p>
         {repairDisabledReason ? (
           <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-950">
-            Repair disabled: {repairDisabledReason}
+            {repairDisabledReason}
           </p>
+        ) : null}
+        {repairDisabledReason ? (
+          <details className="mt-2 rounded border border-slate-200 bg-white/80 p-2 text-[10px] text-slate-700">
+            <summary className="cursor-pointer font-medium">이 버튼은 왜 비활성인가?</summary>
+            <p className="mt-1">
+              안전 보강은 confirm 후 portfolio_quotes의 빈 anchor/formula만 보강합니다. 덮어쓰기 위험이 있거나
+              write 권한이 확인되지 않으면 버튼을 막고, CLI 명령 복사 또는 수동 샘플 복사를 먼저 제공합니다.
+            </p>
+          </details>
         ) : null}
         <h3 className="mt-3 font-medium">수정 미리보기 (operations)</h3>
         {repairOps.length === 0 ? (
