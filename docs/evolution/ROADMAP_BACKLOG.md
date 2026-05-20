@@ -15,7 +15,7 @@
 | ~~P1~~ | EVO-024 | `buildUserPersonalizationContext` 통합 컨텍스트 로더 | **1차 shipped** (uncommitted) |
 | ~~P1~~ | EVO-025 | Persona/Committee/PB/Research에 personalization prompt block 주입 | **1차 shipped** (uncommitted) |
 | ~~P1~~ | EVO-026 | Research/PB/Trend LongResponseFallback | **1차 shipped** (uncommitted) |
-| **P1** | EVO-027 | DashboardClient 섹션 분리 (Command Center 포함) | `#dashboard` `#ux` |
+| ~~P1~~ | EVO-027 | DashboardClient 섹션 분리 + Command Center refactor | **1차 shipped** (uncommitted) · `#dashboard` `#ux` |
 | ~~P1~~ | EVO-028 | 모든 inbox create 경로 `sourceRefs` + steps 보강 | **1차 shipped** (uncommitted) — `ensureDetailContract`, 출처별 builders, `/action-items` UI, `manual`+`sourceLabel`; DB enum 후속 SQL |
 | **P2** | EVO-029 | Judgment patterns → Brief/PB/Committee 프롬프트 루프백 | `#judgment-review` |
 | **P2** | EVO-030 | Today feedback → Brief qualityMeta 요약 | `#today-brief` |
@@ -23,7 +23,7 @@
 | **P3** | EVO-032 | read-only route manifest 테스트 확장 | `#ops` |
 | **P3** | EVO-033 | PortfolioLedgerClient 분리 | `#portfolio` |
 
-**이번 라운드 소규모 보강 (uncommitted):** `POST /api/action-items` → `enrichCreateRequestWithDetail`; Committee `doThisWeek` 라벨·로컬 완료 문구.
+**이번 라운드 소규모 보강 (uncommitted):** `POST /api/action-items` → `enrichCreateRequestWithDetail`; Committee `doThisWeek` 라벨·로컬 완료 문구; Dashboard Command Center 섹션 분리와 data blocker/action item/personalization 요약 보강; WatchlistRecommendationSection 분리로 pending 관심종목 후보의 approve/reject 경계를 명시.
 
 ---
 

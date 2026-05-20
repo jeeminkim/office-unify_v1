@@ -3,7 +3,6 @@ import 'server-only';
 import type {
   CandidateDecisionTrace,
   CandidateJudgmentQuality,
-  CandidateTraceReason,
   ConcentrationRiskAssessment,
   ObservationScoreExplanation,
   ObservationScoreFactor,

@@ -11,10 +11,7 @@ import {
 import { inspectGoogleSheetsCredentialMeta, type GoogleSheetsCredentialMeta } from '@/lib/server/googleSheetsRepairCredential';
 import type { GoogleFinanceQuoteRow } from '@/lib/server/googleFinanceSheetQuoteService';
 import { isSimplifiedPortfolioQuotesLayout } from '@/lib/server/googleFinanceSheetQuoteService';
-import {
-  missingRequiredAnchors,
-  PORTFOLIO_QUOTES_REQUIRED_ANCHORS,
-} from '@/lib/server/portfolioQuotesAnchorMatch';
+import { missingRequiredAnchors } from '@/lib/server/portfolioQuotesAnchorMatch';
 import { runGoogleFinanceSetupCheck } from '@/lib/server/googleFinanceSetupCheck';
 
 export type GoogleSheetsRepairPlanStatus =

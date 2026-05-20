@@ -55,6 +55,17 @@ npm run pre-live-smoke --workspace=apps/web
 - [ ] 위원회 partial regenerate 미리보기: `actionHints` CTA(교체·복사·저장·Research 등).
 - [ ] 위원회 로드맵: **Action Item으로 저장** 우선 · 「화면에서만 완료 표시」는 새로고침 시 사라짐.
 
+## 2h. Dashboard Command Center Refactor (EVO-027 · 2026-05-20)
+
+- [ ] `/` 상단 `CommandCenterSection`이 data blocker 1개와 오늘 확인할 운영 작업 최대 3개를 보여준다.
+- [ ] `DataReadinessSection` 문구가 “데이터 상태 문제입니다. 투자 판단이 아닙니다.” 관점으로 표시된다.
+- [ ] `ActionItemsSummarySection`은 open/in_progress top 3만 표시하고, 완료 처리는 `/action-items`에서만 가능하다.
+- [ ] `qualityMeta.todayCandidates.personalization` 요약은 count만 표시하고 raw note/민감 정보/계좌 원문은 노출하지 않는다.
+- [ ] `WatchlistRecommendationSection`은 render만으로 write하지 않고, 관심종목 후보 approve/reject는 명시 버튼 클릭에서만 기존 API를 호출한다.
+- [ ] 관심종목 등록 후보는 승인 전 `web_portfolio_watchlist`에 등록되지 않으며, empty state가 표시된다.
+- [ ] Dashboard 분리 후에도 Today Brief, 후보 덱, watchlist 추천, 투자자 프로필, PB weekly, Judgment Review, Sector Radar 카드가 사라지지 않는다.
+- [ ] 자동매매·자동주문·자동 리밸런싱 기능이나 매수/매도 지시 표현이 추가되지 않았다.
+
 ## 2c. Today Candidate feedback (EVO-011)
 
 - [ ] `append_today_candidate_feedback.sql` 적용 · `/ops/sql-readiness`에서 `today_candidate_feedback` ready.

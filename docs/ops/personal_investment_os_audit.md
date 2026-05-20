@@ -373,3 +373,49 @@ Personal Investment OS P0 — Command Center + Broken Actions
 ---
 
 *Maintainer: update this doc when P0/P1 items ship; link PRs in `ROADMAP_BACKLOG.md`.*
+
+---
+
+## 13. P1 Dashboard Command Center Refactor shipped (2026-05-20, uncommitted)
+
+### Scope
+
+EVO-027 1차 작업은 대형 기능 추가가 아니라 홈을 "링크 모음"에서 "오늘의 투자 운영 관제탑"으로 정리하는 리팩토링이다. 신규 SQL은 만들지 않았고, 기존 API 필드는 삭제하지 않았다.
+
+### DashboardClient responsibility split
+
+`apps/web/app/DashboardClient.tsx`는 데이터 로딩과 상위 상태 조립을 유지하고, 다음 렌더 섹션을 `apps/web/app/components/dashboard/`로 분리했다.
+
+- `CommandCenterSection`: 데이터 blocker 1개 + 오늘 확인할 운영 작업 최대 3개
+- `TodayBriefSection`: 3줄 브리핑, disclaimer, 낮은 신뢰도 후보 토글
+- `TodayCandidatesSection`: Today candidate deck wrapper
+- `DataReadinessSection`: SQL/Google Finance/quote/ops 상태를 투자 판단과 분리
+- `ActionItemsSummarySection`: open Action Item top 3, source label, 원본/Research/PB/위원회 링크
+- `JudgmentReviewSummarySection`: 30일 판단 품질 복기 미리보기
+- `WatchlistRecommendationSection`: 관심종목 등록 후보 렌더, approve/reject 명시 버튼, Research/Action Item/Watchlist 연결
+
+후속 소규모 보강으로 `WatchlistRecommendationSection`도 분리했다. pending candidate는 승인 전 `web_portfolio_watchlist`에 등록되지 않으며, DashboardClient에는 기존 state와 approve/reject handler를 유지했다.
+
+이번 라운드 이후에도 `TodayCandidateRiskSection`, `UsDiagnosticsSection`, `InvestorProfileSection`, `PbWeeklyReviewSection`, `SectorRadarSummarySection`은 기존 기능 보존을 우선해 DashboardClient 내부에 유지한다.
+
+### Command Center policy
+
+`apps/web/lib/commandCenterPolicy.ts`는 read-only 휴리스틱으로 유지한다. 우선순위는 다음과 같다.
+
+1. SQL/Google Finance/quote/ops data blocker
+2. risk_review open Action Item
+3. stale open Action Item
+4. repeated personalization pattern
+5. Today candidate risk card
+6. Daily Review/PB note pending
+7. Watchlist sector/ticker blocker
+
+표시 필드는 `severity`, `sourceLabel`, `reason`, `primaryActionLabel`, `href`, optional `secondaryActionLabel`/`secondaryHref`로 정리했다.
+
+### Guardrails
+
+- 데이터 blocker와 투자 판단을 분리해서 표시한다.
+- 개인화 요약은 추천 강화가 아니라 리스크·확인·복기 관점에만 사용한다.
+- raw note, 민감 메모, 계좌 원문은 표시하지 않는다.
+- 자동매매, 자동주문, 자동 리밸런싱 기능은 추가하지 않았다.
+- 홈에서 Action Item 완료 처리는 하지 않는다. 완료는 `/action-items`에서만 한다.

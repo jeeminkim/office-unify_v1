@@ -11,6 +11,9 @@
 ## 메인 화면 구조
 
 - `/` : 개인 투자 대시보드
+  - **Command Center(EVO-027):** data blocker 1개 + 오늘 확인할 운영 작업 최대 3개. 데이터 문제와 투자 판단을 분리하고 자동 주문을 실행하지 않는다.
+  - **Section split:** `DashboardClient.tsx`는 상위 state/API orchestration을 유지하고, 렌더링은 `apps/web/app/components/dashboard/*`의 `CommandCenterSection`, `TodayBriefSection`, `TodayCandidatesSection`, `DataReadinessSection`, `ActionItemsSummarySection`, `JudgmentReviewSummarySection`, `WatchlistRecommendationSection`으로 1차 분리한다.
+  - **WatchlistRecommendationSection:** pending candidate는 approve 전 `web_portfolio_watchlist`에 등록되지 않으며, approve/reject는 명시 버튼에서만 기존 write API를 호출한다.
   - 시스템 상태 요약
   - 포트폴리오 요약
   - Trend/Research 기억 요약
@@ -51,7 +54,7 @@
 - **US diagnostics:** `qualityMeta.todayCandidates.usCandidateDiagnostics`
 - **Impressions:** `today_candidate_impressions` → `exposureDiagnostics`
 - **Sector snapshot fallback:** live Sector Radar degraded 시 DB snapshot seed → `sourceRefs.sector_radar_snapshot`
-- **Watchlist recommendations:** `watchlist_recommendation_candidates` · approve 시에만 `web_portfolio_watchlist` write
+- **Watchlist recommendations:** `watchlist_recommendation_candidates` · approve 시에만 `web_portfolio_watchlist` write. Dashboard render는 `WatchlistRecommendationSection`이 담당하며 render-only 상태에서는 write가 없다.
 - **Research history:** `research_report_runs` / `research_report_diffs` · reuse·7일 diff
 
 ### Dashboard Today Candidates
@@ -288,4 +291,3 @@
 - aggregate 이벤트 `detail`은 `schemaVersion`·`kind`·집계 필드·`reasonCodes` 등 **고정 스키마**(`apps/web/lib/server/opsAggregateWarnings.ts`)로 생성한다.
 - 명시적 refresh 경로에서는 상대적으로 상세 기록을 허용할 수 있으나, **요청당 write budget은 모든 경로에서 최우선**이다. (기존 구현에서 `isExplicitRefresh` 분기는 read-only 억제 해제 등에 쓰인다.)
 - 선택 필드: `qualityMeta.*.opsLogging.eventTrace`에 최근 write 판정 요약을 붙일 수 있다(additive).
-

@@ -52,8 +52,8 @@ export function DailyReviewClient() {
     return m;
   }, [savedNotes]);
 
-  const previews = data?.previewNotes ?? [];
   const grouped = useMemo(() => {
+    const previews = data?.previewNotes ?? [];
     const order = ["holding", "watchlist", "us_data", "ops", "sector", "market", "portfolio", "manual"] as const;
     const buckets = new Map<string, typeof previews>();
     for (const p of previews) {
@@ -62,7 +62,7 @@ export function DailyReviewClient() {
       buckets.set(p.subjectType, list);
     }
     return order.filter((k) => buckets.has(k)).map((k) => ({ key: k, items: buckets.get(k)! }));
-  }, [previews]);
+  }, [data?.previewNotes]);
 
   return (
     <div className="mx-auto max-w-4xl p-4 pb-24 text-slate-900 sm:p-6">

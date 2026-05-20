@@ -43,7 +43,13 @@ import {
   scrubTodayCandidateUiCopy,
 } from "@/lib/todayCandidateUiCopy";
 import { TodayCandidateRiskReviewPanel } from "@/app/components/TodayCandidateRiskReviewPanel";
-import { CommandCenterStrip } from "@/app/components/dashboard/CommandCenterStrip";
+import { ActionItemsSummarySection } from "@/app/components/dashboard/ActionItemsSummarySection";
+import { CommandCenterSection } from "@/app/components/dashboard/CommandCenterSection";
+import { DataReadinessSection } from "@/app/components/dashboard/DataReadinessSection";
+import { JudgmentReviewSummarySection } from "@/app/components/dashboard/JudgmentReviewSummarySection";
+import { TodayBriefSection } from "@/app/components/dashboard/TodayBriefSection";
+import { TodayCandidatesSection } from "@/app/components/dashboard/TodayCandidatesSection";
+import { WatchlistRecommendationSection } from "@/app/components/dashboard/WatchlistRecommendationSection";
 import { buildCommandCenterPlan, type CommandCenterOpenActionItem } from "@/lib/commandCenterPolicy";
 import { UsDiagnosticsCard } from "@/app/components/UsDiagnosticsCard";
 import { SaveToActionInboxButton } from "@/components/SaveToActionInboxButton";
@@ -517,8 +523,12 @@ export function DashboardClient() {
             title: string;
             priority: string;
             source_type: string;
+            source_label?: string | null;
+            source_href?: string | null;
+            symbol?: string | null;
             updated_at: string;
             status: string;
+            detail_json?: Record<string, unknown>;
           }>;
         };
         if (aiRes.ok && aiJson.ok && Array.isArray(aiJson.items)) {
@@ -528,8 +538,12 @@ export function DashboardClient() {
               title: i.title,
               priority: i.priority,
               source_type: i.source_type,
+              source_label: i.source_label,
+              source_href: i.source_href,
+              symbol: i.symbol,
               updated_at: i.updated_at,
               status: i.status,
+              detail_json: i.detail_json,
             })),
           );
         } else {
@@ -1051,8 +1065,9 @@ export function DashboardClient() {
         todayBrief,
         openActionItems,
         opsOpenErrorCount,
+        watchlistRecommendationCount: watchRecs.length,
       }),
-    [statusSections, weeklySqlReadiness, todayBrief, openActionItems, opsOpenErrorCount],
+    [statusSections, weeklySqlReadiness, todayBrief, openActionItems, opsOpenErrorCount, watchRecs.length],
   );
 
   return (
@@ -1093,54 +1108,22 @@ export function DashboardClient() {
       </div>
 
       {error ? <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div> : null}
-      <CommandCenterStrip
+      <CommandCenterSection
         dataBlocker={commandCenter.dataBlocker}
         todayItems={commandCenter.todayItems}
+        personalization={commandCenter.personalization}
         loading={reloading || actionItemsLoading}
       />
+      <ActionItemsSummarySection items={openActionItems} loading={actionItemsLoading} />
       <section className="mb-5 rounded-xl border border-violet-200 bg-violet-50 p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-violet-900">오늘의 3줄 브리핑</h2>
-          <div className="flex flex-wrap gap-1">
-            {(todayBrief?.badges ?? []).map((b) => <span key={b} className="rounded bg-white px-2 py-0.5 text-[10px] text-violet-900">{b}</span>)}
-          </div>
-        </div>
-        {(todayBrief?.lines ?? []).length === 0 ? (
-          <p className="mt-2 text-xs text-violet-900">오늘 브리핑을 만들 데이터가 부족합니다.</p>
-        ) : (
-          <ol className="mt-2 space-y-2 text-xs">
-            {(todayBrief?.lines ?? []).slice(0, 3).map((line, idx) => (
-              <li key={`${line.title}-${idx}`} className="rounded border border-violet-100 bg-white p-2">
-                <p className="font-semibold text-violet-950">{idx + 1}. {line.title}</p>
-                <p className="mt-1 text-violet-900">{line.body}</p>
-              </li>
-            ))}
-          </ol>
-        )}
-        <div className="mt-3 rounded border border-violet-100 bg-white p-2 text-[11px] text-violet-900">
-          매수 권유 아님 · 관찰 후보 · 시세/뉴스/실적/리스크 확인 필요
-        </div>
-        {todayBrief?.disclaimer ? <p className="mt-2 text-[11px] text-violet-900/90">{todayBrief.disclaimer}</p> : null}
-        <label className="mt-2 flex items-center gap-2 text-[11px] text-violet-900">
-          <input
-            type="checkbox"
-            checked={showLowConfidenceCandidates}
-            onChange={(e) => setShowLowConfidenceCandidates(e.target.checked)}
-          />
-          낮은 신뢰도 후보도 보기
-        </label>
-        {!showLowConfidenceCandidates ? (
-          <p className="mt-1 text-[11px] text-violet-900/90">
-            낮은 신뢰도 후보는 데이터가 부족하거나 시세/섹터 연결이 약한 항목입니다. 매수 판단에 사용하지 말고 관찰만 하세요.
-          </p>
-        ) : null}
-        {!showLowConfidenceCandidates && lowConfidenceOnly ? (
-          <p className="mt-1 text-[11px] text-amber-800">데이터 신뢰도가 낮은 후보만 있습니다. 필요 시 토글을 켜서 확인하세요.</p>
-        ) : null}
+        <TodayBriefSection
+          todayBrief={todayBrief}
+          showLowConfidenceCandidates={showLowConfidenceCandidates}
+          onToggleLowConfidence={setShowLowConfidenceCandidates}
+          lowConfidenceOnly={lowConfidenceOnly}
+        />
         {(todayBrief?.primaryCandidateDeck?.length ?? 0) > 0 ? (
-          <div className="mt-3">
-            <p className="text-xs font-semibold text-violet-950">오늘의 관찰 후보 (다양성 · 관찰 전용)</p>
-            <p className="mt-0.5 text-[10px] text-violet-800/90">매수 권유 아님 · 관찰·복기·리스크 점검용입니다.</p>
+          <TodayCandidatesSection>
             {todayBrief?.qualityMeta?.todayCandidates?.usCoverage?.status === "degraded" ? (
               <p className="mt-2 rounded border border-amber-200 bg-amber-50/90 p-2 text-[11px] text-amber-950">
                 미국 데이터 없음·부분 확인:{" "}
@@ -1578,76 +1561,16 @@ export function DashboardClient() {
                 ) : null}
               </details>
             ) : null}
-          </div>
+          </TodayCandidatesSection>
         ) : null}
 
-        {watchRecs.length > 0 ? (
-          <details className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 p-2">
-            <summary className="cursor-pointer select-none text-xs font-semibold text-violet-950">
-              관심종목 등록 후보 ({watchRecs.length}건 · 승인 전 미등록)
-            </summary>
-            <p className="mt-1 text-[10px] text-violet-900">
-              내 관심사와 최근 리서치·섹터 흐름을 바탕으로 만든 관찰 후보입니다. 승인 전에는 관심종목에 등록되지 않습니다.
-              매수 추천이 아니라 추적할지 여부를 고르는 단계입니다.
-            </p>
-            {watchRecHint ? <p className="mt-1 text-[10px] text-violet-800">{watchRecHint}</p> : null}
-            <ul className="mt-2 space-y-2">
-              {watchRecs.map((rec) => (
-                <li key={rec.recommendationId ?? `${rec.market}-${rec.symbol}`} className="rounded border border-violet-100 bg-white p-2 text-[11px]">
-                  <p className="font-medium text-slate-900">
-                    {rec.name} · {rec.market}:{rec.symbol}
-                  </p>
-                  <p className="text-slate-600">
-                    신뢰도 {rec.confidence} · 데이터 {rec.dataStatus}
-                    {rec.alreadyInWatchlist ? " · 이미 등록됨" : ""}
-                  </p>
-                  {(rec.displayReasons ?? []).slice(0, 2).map((r, i) => (
-                    <p key={i} className="text-slate-700">
-                      {r}
-                    </p>
-                  ))}
-                  {(rec.sourceRefs ?? []).length > 0 ? (
-                    <p className="text-[10px] text-slate-500">
-                      근거: {(rec.sourceRefs ?? []).map((s) => s.label ?? s.sourceType).join(" · ")}
-                    </p>
-                  ) : null}
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    <button
-                      type="button"
-                      className="rounded border border-violet-300 px-2 py-0.5 text-[10px] disabled:opacity-50"
-                      disabled={watchRecBusy === rec.recommendationId || rec.alreadyInWatchlist}
-                      onClick={() => void approveWatchRec(rec)}
-                    >
-                      {rec.alreadyInWatchlist ? "이미 등록됨" : watchRecBusy === rec.recommendationId ? "처리 중…" : "관심종목에 추가"}
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border border-slate-300 px-2 py-0.5 text-[10px] disabled:opacity-50"
-                      disabled={watchRecBusy === rec.recommendationId}
-                      onClick={() => void rejectWatchRec(rec)}
-                    >
-                      관련 없음
-                    </button>
-                    {rec.recommendationId ? (
-                      <SaveToActionInboxButton
-                        compact
-                        request={{
-                          title: `[관심후보] ${rec.name} 검토`,
-                          description: (rec.displayReasons ?? []).slice(0, 2).join(" · "),
-                          sourceType: "watchlist_recommendation",
-                          sourceId: rec.recommendationId,
-                          sourceLabel: rec.name,
-                          symbol: rec.symbol,
-                          idempotencyKey: `watchlist-rec:${rec.recommendationId}`,
-                        }}
-                      />
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
+        <WatchlistRecommendationSection
+          recommendations={watchRecs}
+          busyRecommendationId={watchRecBusy}
+          hint={watchRecHint}
+          onApprove={approveWatchRec}
+          onReject={rejectWatchRec}
+        />
 
         <details className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/50 p-2">
           <summary className="cursor-pointer select-none text-xs font-semibold text-indigo-950">
@@ -2017,31 +1940,14 @@ export function DashboardClient() {
         )}
       </section>
 
-      <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-800">시스템 상태</h2>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Link href="/system-status" className="text-slate-500 underline underline-offset-4">상세 보기</Link>
-            <Link href="/ops-events" className="text-amber-800 underline underline-offset-4">
-              운영 로그{opsOpenErrorCount != null && opsOpenErrorCount > 0 ? ` · 열린 오류 ${opsOpenErrorCount}` : ""}
-            </Link>
-          </div>
-        </div>
-        <p className="mt-1 text-xs text-slate-600">
-          error {statusSummary.errors} · warn {statusSummary.warns} · not_configured {statusSummary.notConfigured}
-        </p>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {statusSections.slice(0, 6).map((section) => (
-            <div key={section.key} className="rounded border border-slate-200 bg-slate-50 p-2 text-xs">
-              <div className="flex items-center justify-between">
-                <p className="font-medium text-slate-800">{section.title}</p>
-                <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${statusTone(section.status)}`}>{section.status}</span>
-              </div>
-              <p className="mt-1 text-slate-600">{section.message}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      <DataReadinessSection
+        statusSections={statusSections}
+        statusSummary={statusSummary}
+        opsOpenErrorCount={opsOpenErrorCount}
+        weeklySqlReadiness={weeklySqlReadiness}
+        dataBlocker={commandCenter.dataBlocker}
+        statusTone={statusTone}
+      />
 
       <section className="mb-5 grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -2282,39 +2188,7 @@ export function DashboardClient() {
         </div>
       </section>
 
-      <section className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold text-indigo-950">30일 판단 품질 복기</h2>
-            <p className="mt-0.5 text-[11px] text-indigo-900/90">수익률 평가가 아닌 판단 과정 복기 · 자동 주문 없음</p>
-          </div>
-          <Link href="/judgment-review" className="rounded border border-indigo-300 bg-white px-2 py-1 text-[11px] font-medium text-indigo-950">
-            자세히 보기
-          </Link>
-        </div>
-        {monthlyJudgmentLoading ? (
-          <p className="mt-2 text-xs text-indigo-800">불러오는 중…</p>
-        ) : monthlyJudgmentPreview ? (
-          <div className="mt-2 grid gap-2 text-xs text-indigo-950 sm:grid-cols-3">
-            <p>
-              상태: <span className="font-medium">{monthlyJudgmentPreview.status}</span>
-            </p>
-            <p>
-              주요 패턴: <span className="font-medium">{monthlyJudgmentPreview.headline.primaryPattern}</span>
-            </p>
-            <p>
-              방치 open: <span className="font-medium">{monthlyJudgmentPreview.actionQueueReview.staleOpenItems.length}</span>
-            </p>
-            <p className="sm:col-span-3 text-[11px] leading-relaxed">
-              {monthlyJudgmentPreview.headline.summary.length > 160
-                ? `${monthlyJudgmentPreview.headline.summary.slice(0, 160)}…`
-                : monthlyJudgmentPreview.headline.summary}
-            </p>
-          </div>
-        ) : (
-          <p className="mt-2 text-xs text-indigo-800">미리보기를 불러오지 못했습니다. SQL readiness를 확인하세요.</p>
-        )}
-      </section>
+      <JudgmentReviewSummarySection preview={monthlyJudgmentPreview} loading={monthlyJudgmentLoading} />
 
       <section className="mb-5 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
         <details className="group">

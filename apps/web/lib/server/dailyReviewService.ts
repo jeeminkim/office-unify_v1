@@ -2,7 +2,6 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { listActionItemsForUser } from '@office-unify/supabase-access';
-import { resolveJudgmentReviewWindow } from '@/lib/server/monthlyJudgmentReviewSources';
 
 function ymdKst(d = new Date()): string {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(d);
@@ -23,7 +22,6 @@ export async function buildDailyReview(
   reviewDate?: string,
 ): Promise<DailyReviewResponse> {
   const date = reviewDate?.trim() || ymdKst();
-  const window = resolveJudgmentReviewWindow({ days: 1, startDate: date, endDate: date });
 
   const impressionsRes = await supabase
     .from('today_candidate_impressions')

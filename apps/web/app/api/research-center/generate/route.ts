@@ -5,8 +5,6 @@ import type {
   ResearchCenterGenerateRequestBody,
   ResearchCenterGenerateResponseBody,
   ResearchCenterQualityMeta,
-  ResearchDeskId,
-  ResearchToneMode,
 } from "@office-unify/shared-types";
 import { RESEARCH_CENTER_ERROR_CODE } from "@office-unify/shared-types";
 import { runResearchCenterGeneration } from "@office-unify/ai-office-engine";
@@ -45,72 +43,11 @@ import {
 } from "@/lib/server/researchReportHistoryStore";
 import { buildLongResponseFallback } from "@/lib/longResponseFallback";
 import { combineResearchReportMarkdown } from "@/lib/longResponseFallbackSeeds";
-
-const DESK_IDS: readonly ResearchDeskId[] = [
-  "goldman_buy",
-  "blackrock_quality",
-  "hindenburg_short",
-  "citadel_tactical_short",
-] as const;
-
-function isDeskId(v: unknown): v is ResearchDeskId {
-  return typeof v === "string" && (DESK_IDS as readonly string[]).includes(v);
-}
-
-function isTone(v: unknown): v is ResearchToneMode {
-  return v === "standard" || v === "strong" || v === "forensic";
-}
-
-function parseBody(raw: unknown): ResearchCenterGenerateRequestBody | null {
-  if (!raw || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
-
-  const market = o.market === "KR" || o.market === "US" ? o.market : null;
-  const symbol = typeof o.symbol === "string" ? o.symbol.trim() : "";
-  const name = typeof o.name === "string" ? o.name.trim() : "";
-  if (!market || !symbol || !name) return null;
-
-  let selectedDesks: ResearchDeskId[] | "all" = "all";
-  if (o.selectedDesks === "all") {
-    selectedDesks = "all";
-  } else if (Array.isArray(o.selectedDesks)) {
-    const picked: ResearchDeskId[] = [];
-    for (const x of o.selectedDesks) {
-      if (isDeskId(x)) picked.push(x);
-    }
-    selectedDesks = picked.length > 0 ? picked : "all";
-  }
-
-  const toneMode = o.toneMode === undefined || o.toneMode === null ? undefined : o.toneMode;
-  if (toneMode !== undefined && !isTone(toneMode)) return null;
-
-  return {
-    market,
-    symbol,
-    name,
-    requestId: typeof o.requestId === "string" ? o.requestId.trim() : undefined,
-    sector: typeof o.sector === "string" ? o.sector : undefined,
-    selectedDesks,
-    toneMode,
-    userHypothesis: typeof o.userHypothesis === "string" ? o.userHypothesis : undefined,
-    knownRisk: typeof o.knownRisk === "string" ? o.knownRisk : undefined,
-    holdingPeriod: typeof o.holdingPeriod === "string" ? o.holdingPeriod : undefined,
-    keyQuestion: typeof o.keyQuestion === "string" ? o.keyQuestion : undefined,
-    includeSheetContext: o.includeSheetContext === true,
-    saveToSheets: o.saveToSheets === true,
-    forceRefresh: o.forceRefresh === true,
-    previousEditorVerdict:
-      typeof o.previousEditorVerdict === "string" ? o.previousEditorVerdict : undefined,
-  };
-}
-
-function normalizeDesksList(
-  d: ResearchCenterGenerateRequestBody['selectedDesks'],
-): ResearchDeskId[] {
-  const ALL: ResearchDeskId[] = [...DESK_IDS];
-  if (d === "all") return ALL;
-  return d.length ? d : ALL;
-}
+import {
+  RESEARCH_DESK_IDS,
+  normalizeResearchDesksList,
+  parseResearchCenterGenerateBody,
+} from "@/lib/server/researchCenterGenerateRequest";
 
 function elapsedMs(start: number): number {
   return Math.max(0, Date.now() - start);
@@ -294,7 +231,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const body = parseBody(raw);
+  const body = parseResearchCenterGenerateBody(raw);
   if (!body) {
     return fail({
       status: 400,
@@ -372,7 +309,7 @@ export async function POST(req: Request) {
 
   const priorForDiff = priorReport;
 
-  const desks = normalizeDesksList(body.selectedDesks);
+  const desks = normalizeResearchDesksList(body.selectedDesks);
   await logEvent({
     eventCode: "research_report_generation_started",
     severity: "info",
@@ -710,7 +647,7 @@ export async function POST(req: Request) {
       const combinedMarkdown = combineResearchReportMarkdown({
         reports: result.reports,
         editor: result.editor,
-        deskIds: DESK_IDS,
+        deskIds: RESEARCH_DESK_IDS,
       });
       const longResponseFallback = buildLongResponseFallback(combinedMarkdown, {
         actionHint:
@@ -751,7 +688,7 @@ export async function POST(req: Request) {
     const combinedMarkdown = combineResearchReportMarkdown({
       reports: result.reports,
       editor: result.editor,
-      deskIds: DESK_IDS,
+      deskIds: RESEARCH_DESK_IDS,
     });
     const longResponseFallback = buildLongResponseFallback(combinedMarkdown, {
       actionHint:

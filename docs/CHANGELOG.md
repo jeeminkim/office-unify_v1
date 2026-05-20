@@ -4,6 +4,21 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-20 Structure Hygiene - Route Helper Refactor
+
+- **Persona chat routes:** `/api/persona-chat/message` and `/api/persona-chat/message/stream` now share request parsing, idempotency preparation, persona resolution, and provider key checks through `personaChatRouteRequest`.
+- **Research generate route:** `/api/research-center/generate` now delegates request body parsing and desk normalization to `researchCenterGenerateRequest`.
+- **README:** root README refreshed to match the current Personal Investment OS direction, Dashboard section split, guardrails, validation commands, and route-thinning policy.
+
+### 2026-05-20 Personal Investment OS P1 - Dashboard Command Center Refactor (EVO-027, 1차)
+
+- **Dashboard split:** `DashboardClient.tsx` now delegates first-pass render sections to `CommandCenterSection`, `TodayBriefSection`, `TodayCandidatesSection`, `DataReadinessSection`, `ActionItemsSummarySection`, and `JudgmentReviewSummarySection`.
+- **Watchlist recommendations:** `WatchlistRecommendationSection` now owns the home watchlist recommendation render path. Pending candidates stay unregistered until explicit approve, and reject remains an explicit button.
+- **Command Center:** top-of-home policy separates one data blocker from up to three operating actions using open/stale Action Items, risk review items, repeated personalization patterns, Today candidate risk cards, and watchlist blockers.
+- **Action Items summary:** home shows top open items with source labels, best available original/research/PB/committee link, and weak-detail indicators. Completion remains in `/action-items`.
+- **Data readiness:** SQL, Google Finance, quote/ops blockers are framed as data state problems, not investment judgment.
+- **Guardrails:** no new SQL, no API field deletion, no automatic trading/order/rebalancing behavior, and no buy/sell directive flow.
+
 ### 2026-05-19 Personal Investment OS P1 — Action Item SourceRefs + Steps (EVO-028, 1차)
 
 - **Contract:** `sourceRefs`, `sourceLabel`, `decisionContext.originalQuestion`, `recommendedNextLinks.actionKey` (additive).

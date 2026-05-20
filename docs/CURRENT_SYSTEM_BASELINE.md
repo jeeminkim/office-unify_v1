@@ -12,6 +12,7 @@
 - **개인화 컨텍스트(P1 1차):** `buildUserPersonalizationContext` read-only 로더 → `compactKo` prompt block. Committee/Persona/PB/Research send-to-pb에 주입; Today Brief는 `qualityMeta.todayCandidates.personalization` 요약만. 추천 강화·자동 주문 아님; raw 민감 메모 미포함.
 - **긴 응답 UX(EVO-026):** `buildLongResponseFallback` — Research/PB/Trend·기존 Persona/Committee. 요약·복사·후속 seed(sessionStorage). 자동 저장 없음.
 - **Action Item hub(EVO-028 1차):** 모든 inbox 저장 경로는 `sourceSummary`·`checklist`·`doNotDo`·`sourceRefs`/`recommendedNextLinks`·`actionSteps` 목표. `source_type=manual`이어도 `detail_json.sourceLabel`로 PB/Trend 등 구분. `POST`만 write; GET·링크는 read-only. 상세: `docs/ops/action_items.md`.
+- **Dashboard Command Center(EVO-027 1차):** `/` 상단은 data blocker 1개와 오늘 확인할 운영 작업 최대 3개를 보여준다. `DashboardClient.tsx`는 `CommandCenterSection`, `TodayBriefSection`, `TodayCandidatesSection`, `DataReadinessSection`, `ActionItemsSummarySection`, `JudgmentReviewSummarySection`, `WatchlistRecommendationSection`으로 1차 렌더 분리했다.
 
 ## 주요 화면
 
@@ -29,6 +30,15 @@
 - `/daily-review` (EVO-015 일일 점검 메모 · EVO-015-2 PB 초안 preview · 명시 저장만)
 - `/action-items`
 - `/ops-events`
+
+## Dashboard Command Center baseline (EVO-027)
+
+- 홈은 메뉴 모음이 아니라 "오늘의 투자 운영 관제탑" 역할을 한다.
+- SQL/Google Finance/quote/ops 문제는 **데이터 blocker**로 표시하며, 투자 후보 점수나 판단과 섞지 않는다.
+- Action Item summary는 open/in_progress top 3을 source label, 원본 링크, Research/PB/위원회 링크와 함께 보여준다. 완료 처리는 `/action-items`에서만 한다.
+- Watchlist recommendation은 승인 전 `web_portfolio_watchlist`에 등록되지 않는다. 홈 섹션의 approve/reject는 명시 버튼이며, Research/Watchlist 링크 이동은 write가 아니다.
+- Personalization summary는 `qualityMeta.todayCandidates.personalization`의 count 요약만 표시한다. raw note, 민감 메모, 계좌 원문은 표시하지 않는다.
+- 신규 SQL 없음, 기존 API 필드 삭제 없음, 자동매매/자동주문/자동 리밸런싱 없음 원칙을 유지한다.
 
 ## 현재 핵심 기능
 

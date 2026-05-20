@@ -1,178 +1,146 @@
-# Office Unify v1
+# Office Unify
 
-`office-unify_v1`는 **투자/리서치 지원 웹앱**을 중심으로 구성된 모노레포입니다.  
-기술 스택은 Next.js App Router + TypeScript + Supabase + `ai-office-engine`이며, 기능 확장보다 **실사용 안정성**을 우선합니다.
+Office Unify는 개인 투자 운영을 위한 Next.js 기반 콘솔입니다. 목표는 종목 추천 엔진을 만드는 것이 아니라, 포트폴리오 상태, Today Brief, 리서치, PB 대화, Action Items, Watchlist, 판단 복기를 한 화면 흐름 안에서 연결해 “오늘 무엇을 확인해야 하는지”를 분명하게 만드는 것입니다.
 
-## 핵심 목표
+## Product Principles
 
-- 토론/분석/정리/회고 흐름을 하나의 웹앱에서 제공
-- LLM 결과를 그대로 노출하지 않고, 후처리/검증/복구를 포함한 운영 친화 구조 유지
-- 자동 실행 기능(자동 매매/자동 주문/자동 원장 수정) 없이 의사결정 보조에 집중
+- 자동매매, 자동주문, 자동 리밸런싱을 하지 않습니다.
+- 매수/매도 지시가 아니라 관찰, 확인, 복기, 데이터 점검을 돕습니다.
+- 기존 API 필드는 가능한 유지하고 변경은 additive로 진행합니다.
+- GET/read-only 경로는 write를 하지 않는 것을 원칙으로 합니다.
+- SQL은 명시 문서에 따라 수동 적용하며 앱이 자동 적용하지 않습니다.
+- AI 출력은 원문 노출보다 검증 가능한 구조, fallback, Action Item 연결을 우선합니다.
 
-## 제품 원칙
+## Current Focus
 
-- 자동 매매 / 자동 주문 / 자동 원장 수정 **금지**
-- checklist(원칙 점검)가 1차 기준, PB/페르소나는 2차 검토자
-- report(사람용 문서)와 extractor(JSON 작업 초안) 책임 분리
-- additive 변경 우선(기존 기능 충돌 최소화)
+### Personal Investment OS
 
----
+`apps/web`의 홈 Dashboard는 “링크 모음”이 아니라 투자 운영 관제탑을 지향합니다.
 
-## 빠른 시작
+- `CommandCenterSection`: 데이터 blocker 1개와 오늘 확인할 운영 작업 최대 3개
+- `TodayBriefSection`: 오늘의 3줄 브리핑과 낮은 신뢰도 후보 토글
+- `TodayCandidatesSection`: 관찰 후보 덱 wrapper
+- `DataReadinessSection`: SQL, Google Finance, quote, ops 상태를 투자 판단과 분리
+- `ActionItemsSummarySection`: open Action Item top 3와 source link
+- `JudgmentReviewSummarySection`: 30일 판단 품질 복기 preview
+- `WatchlistRecommendationSection`: 승인 대기 중인 관심종목 후보 관리
 
-### 1) 요구 사항
+Watchlist 추천 후보는 승인 전 `web_portfolio_watchlist`에 등록되지 않습니다. approve/reject는 명시 버튼으로만 실행되며, Research/Watchlist 링크 이동은 write가 아닙니다.
+
+### Action Item Hub
+
+Action Item은 `sourceRefs`, `sourceSummary`, `checklist`, `doNotDo`, `recommendedNextLinks`, `actionSteps`를 중심으로 PB, Research, Committee, Trend, Watchlist 흐름을 이어주는 중앙 작업 큐입니다. 홈에서는 요약만 보여주고 완료 처리는 `/action-items`에서 합니다.
+
+### Research / PB / Persona
+
+Research Center, Private Banker, Persona Chat은 긴 응답 fallback, 구조화 출력, 후속 작업 seed를 사용합니다. 투자 판단을 자동 실행하지 않고, 확인할 질문과 근거를 남기는 데 초점을 둡니다.
+
+## Monorepo Structure
+
+- `apps/web`: Next.js App Router 웹앱
+- `packages/ai-office-engine`: AI orchestration, prompt, report generation
+- `packages/supabase-access`: Supabase repository/access helpers
+- `packages/shared-types`: shared DTO and contract types
+- `packages/shared-utils`: shared utility code
+- `docs`: architecture, SQL, ops, changelog, product evolution docs
+
+## Local Setup
+
+### Requirements
 
 - Node.js 20+
-- npm (workspaces 사용)
+- npm workspaces
 
-### 2) 설치
-
-저장소 루트에서 실행:
+### Install
 
 ```bash
 npm install
 ```
 
-### 3) 환경 변수
+### Environment
 
-`apps/web/.env.local`에 아래 값을 설정:
+Create `apps/web/.env.local` with the values needed for your environment:
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `GEMINI_API_KEY`
-- `OPENAI_API_KEY`
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+GEMINI_API_KEY=
+OPENAI_API_KEY=
+```
 
-보안 주의:
+Do not expose service keys or model API keys with `NEXT_PUBLIC_`.
 
-- `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`는 `NEXT_PUBLIC_`로 노출 금지
-- `.env.local`은 절대 커밋 금지
-
-### 4) 실행
+### Run
 
 ```bash
 npm run dev
 ```
 
-- 기본 주소: `http://localhost:3000`
-- 워크스페이스 구조이므로 명령은 **루트에서 실행**하는 것이 안전합니다.
+Default local URL: `http://localhost:3000`
 
-### 5) 품질 점검 명령
+## Validation Commands
+
+Run from the repository root:
 
 ```bash
-npm run typecheck
-npm run lint
-npm run build
-npm run selfcheck
+npm run lint --workspace=apps/web
+npm run typecheck --workspace=apps/web
+npm run test --workspace=apps/web -- --run
+npm run build --workspace=apps/web
+npm run pre-live-smoke --workspace=apps/web
 ```
 
----
+`pre-live-smoke` runs in dry-run mode by default and does not call live HTTP endpoints. For live smoke, provide an origin and session cookie as described by the script output.
 
-## 모노레포 구조
+## Architecture Notes
 
-- `apps/web`: 메인 Next.js 앱
-- `packages/ai-office-engine`: 프롬프트/추출/리뷰 오케스트레이션
-- `packages/supabase-access`: DB 접근 레이어(repository)
-- `packages/shared-types`: 공용 타입/DTO
-- `packages/shared-utils`: 공용 유틸
-- `docs`: SQL/기능/운영 문서
+### Thin Route Direction
 
----
+API route files should stay close to request/response orchestration. Reusable parsing, normalization, idempotency preparation, policy, and business logic should live under `apps/web/lib/server/*` or package-level modules.
 
-## 주요 기능 지도
+Recent examples:
 
-### 1) Trade Journal (원칙 기반 매매일지)
+- `personaChatRouteRequest`: shared request preparation for `/api/persona-chat/message` and `/api/persona-chat/message/stream`
+- `researchCenterGenerateRequest`: input parsing and desk normalization for `/api/research-center/generate`
+- dashboard sections under `apps/web/app/components/dashboard/*`
 
-- 경로: `/trade-journal`, `/trade-journal/analytics`
-- 역할:
-  - 원칙 세트 관리
-  - 거래 입력 + 자동 checklist 평가
-  - PB/페르소나 2차 검토
-  - 회고/누적 분석
-- 최근 품질 보강:
-  - 구조화 규칙 실행(`rule_key`, `target_metric`, `operator`)
-  - 매수/매도 유형(`entry_type`, `exit_type`) + `conviction_level`
-  - review snapshot 저장
-  - `evidence_json` 기반 판정 근거 저장
-  - sell 전용 지표(details) 확장
+### Domain Boundaries
 
-### 2) Committee Discussion / Followups
+- `/api/portfolio/watchlist/*`: portfolio/watchlist management and portfolio-adjacent write flows
+- `/api/watchlist/recommendations/*`: recommendation candidate lifecycle
+- `/research-center`: report generation and follow-up research
+- `/private-banker`: PB-style advisory conversation, no automatic portfolio modification
+- `/persona-chat`: persona discussion and structured output
 
-- `/committee-discussion`: 토론, 보고서 생성, 후속작업 초안 추출
-- `/committee-followups`: 후속작업 운영 보드(필터/상태 전이/재분석)
-- 안정화 특징:
-  - JSON 파싱 복구 파이프라인(엄격 파싱 + repair + fallback)
-  - 사용자용 자연어 경고 및 권장 행동 가이드
-  - 보고서/추출 책임 분리 유지
+When adding a feature, prefer an existing domain boundary over creating a parallel route tree.
 
-### 3) Infographic Generator
+## SQL and Data
 
-- `/infographic`
-- 입력: `text`, `url`, `pdf_upload`, `pdf_url`
-- 파이프라인:
-  - source extract -> cleanup -> preview/edit -> spec 생성 -> 렌더 -> PNG 저장
-- 안정화 특징:
-  - 모바일 reader-first (읽기 우선, export 후순위)
-  - degraded fallback 가이드
-  - article-aware / opinion-aware 경로
+SQL files live in `docs/sql`. Apply them manually in the documented order. Use:
 
-### 4) Dev Assistant
+- `docs/sql/APPLY_ORDER.md`
+- `docs/CURRENT_SYSTEM_BASELINE.md`
+- `docs/SYSTEM_ARCHITECTURE.md`
+- `docs/ops/pre_live_checklist.md`
 
-- `/`에서 Flow/Mermaid, SQL, TypeScript 생성 보조
-- Mermaid는 extract/sanitize/validate/fallback 파이프라인으로 운영
+Missing optional SQL should degrade gracefully where possible and show action hints instead of silently failing.
 
----
+## Documentation Map
 
-## 데이터베이스 적용
+- `docs/CHANGELOG.md`: shipped and uncommitted changes
+- `docs/CURRENT_SYSTEM_BASELINE.md`: current operating baseline
+- `docs/SYSTEM_ARCHITECTURE.md`: architecture and API map
+- `docs/evolution/ROADMAP_BACKLOG.md`: product evolution backlog
+- `docs/ops/personal_investment_os_audit.md`: Personal Investment OS audit and refactor notes
+- `docs/ops/pre_live_checklist.md`: pre-live validation checklist
+- `apps/web/README.md`: web app details
 
-1. Supabase 프로젝트 준비
-2. `docs/sql/*.sql` 파일을 필요한 순서로 적용
-3. 스키마 참조:
-   - `docs/DATABASE_SCHEMA.md`
-   - `docs/sql/append_web_trade_journal.sql`
-   - `docs/sql/append_web_committee_followups.sql`
+## Maintenance Rules
 
-주의:
-
-- SQL은 idempotent/additive 기준으로 관리합니다.
-- 운영 환경에서는 인덱스/제약 적용 순서와 락 영향 확인이 필요합니다.
-
----
-
-## 배포 요약 (Vercel)
-
-- Repository 연결
-- Root Directory: `apps/web`
-- 환경 변수 등록
-- 배포 전 `npm run build` 통과 확인 권장
-
----
-
-## 트러블슈팅
-
-- 패키지/모듈 오류: 루트에서 `npm install` 재실행
-- API 503: Supabase 환경변수 누락 또는 SQL 미적용 가능성 확인
-- 로그인 실패: Supabase Auth provider + redirect URL 확인
-- LLM 실패: `GEMINI_API_KEY`/`OPENAI_API_KEY` 값 및 제한 확인
-- Windows 권한 오류:
-  - `apps/web`에서 `npm run clean:win` 실행 후 재설치/재실행
-
----
-
-## 문서 인덱스
-
-- `apps/web/README.md`: 웹앱 상세 동작
-- `docs/CHANGELOG.md`: 변경 이력
-- `docs/DATABASE_SCHEMA.md`: 스키마 개요
-- `docs/trade-journal.md`: 매매일지 설계/검증
-- `docs/committee-discussion.md`: 위원회 기능
-- `docs/INFOGRAPHIC_GENERATOR.md`: 인포그래픽 파이프라인
-- `docs/trend-analysis-center.md`: 트렌드 분석 센터
-- `docs/overview/project-vision.md`: 프로젝트 상위 비전
-
----
-
-## 라이선스
-
-Private repository (내부 사용 전제)
+- Keep route files thin.
+- Split very large client components by render section before moving business logic.
+- Add smoke/contract tests for every extracted helper when behavior matters.
+- Do not commit generated or unrelated changes without an explicit request.
+- Preserve user/worktree changes you did not make.
