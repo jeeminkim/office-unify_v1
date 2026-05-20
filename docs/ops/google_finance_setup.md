@@ -14,6 +14,10 @@
 
 ## Repair Assistant (confirmed write only)
 
+- **Anchor OK state (2026-05-21):** if `anchorOk > 0`, Google Finance repair is complete. The setup UI should not present safe repair as the primary next action. It should show Today Brief rerun, US gating diagnostics, quote refresh, and status recheck instead.
+- If `anchorMatched > 0 && anchorOk == 0`, rows/formulas are present but GOOGLEFINANCE read-back is still pending or failing. Refresh quotes and recheck after a short wait.
+- If `missingAnchors > 0`, safe repair can append missing anchor rows when the plan contains confirmable low-risk operations.
+- If the plan is unsafe-only, automatic overwrite stays blocked by the existing value preservation policy.
 - **Operational UX (2026-05-20):** the setup screen now explains why the safe repair button is disabled. Unsafe overwrite-only plans show a preservation-policy reason, while low-risk blank anchor/formula fills remain confirmable. CLI copy and manual sample copy stay available in disabled states.
 
 - UI **「Sheets 자동 보강/복구」** 섹션은 항상 표시(write 불가 시 disabled).
@@ -47,6 +51,14 @@
 - Sheets anchor OK와 Today Candidate US 노출은 별도입니다.
 - `usCandidateDiagnostics.googleFinanceAnchorSummary`·`gatingReason`으로 degraded 사유 구분.
 - read-back OK인데 Brief가 `sheets_anchor_zero`이면 refresh 후 Brief 재실행.
+- When `anchorOk > 0`, remaining US candidate absence should be investigated as US signal/gating/mapping, not as Google Finance repair. Expected follow-up reasons are `sheets_anchor_ok_but_us_signal_empty`, `us_signal_mapping_empty`, or `gating_not_connected`.
+
+## Codex repair execution policy
+
+1. Run dry-run first: `npm run google-finance-repair --workspace=apps/web -- --dry-run`.
+2. If `anchorOk >= 1`, do not run confirm write; report anchor already OK.
+3. If `anchorOk == 0` and the plan contains low-risk append/fill operations, confirmed repair may be run only with explicit `--confirm` or UI confirm.
+4. Never print `GOOGLE_SERVICE_ACCOUNT_JSON`, private keys, or raw secrets.
 
 ## 점검 순서
 

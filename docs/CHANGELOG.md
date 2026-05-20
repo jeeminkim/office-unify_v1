@@ -4,6 +4,14 @@
 
 > 문서 관리 메모: Unreleased 항목이 누적되어 길어졌습니다. 이력은 유지하고, 현재 운영 기준은 `docs/CURRENT_SYSTEM_BASELINE.md`를 우선 참조합니다.
 
+### 2026-05-21 Google Finance Repair UX Finalization - Anchor OK State
+
+- **Anchor completed CTA:** `/ops/google-finance-setup` now treats `anchorOk > 0` as a completed Google Finance repair state. The safe repair apply CTA is hidden in this state and Today Brief / US gating / quote refresh actions are emphasized instead.
+- **Disabled reason semantics:** completed, unsafe-only, missing-anchor, formula-pending, and not-configured states now use separate user-facing messages instead of showing repair disabled as a generic error.
+- **US gating copy:** Dashboard US diagnostics maps `sheets_anchor_ok_but_us_signal_empty`, `us_signal_mapping_empty`, and `gating_not_connected` separately, so `sheets_anchor_zero` is not shown after Google Finance anchors are OK.
+- **Execution result:** latest dry-run reported `anchorMatched: 16`, `anchorOk: 16`, `missingAnchors: none`, so no additional confirm write was run in this round.
+- **Guardrails:** no SQL, no API field removal, no Supabase ledger mutation, no automatic trading/order/rebalancing behavior, and no secret/private key logging.
+
 ### 2026-05-20 Operational UX Guidance Layer - Button Contract and Risk Feedback
 
 - **Button Action Contract:** added deterministic action intent labels for navigate-only, read-only check, confirmed write, Action Inbox save, note save, feedback update, local-only, and external manual check actions.

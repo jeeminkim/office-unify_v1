@@ -1521,16 +1521,18 @@ export function DashboardClient() {
               </details>
             ) : null}
             {todayBrief?.qualityMeta?.todayCandidates?.usCandidateDiagnostics ? (
-              <UsDiagnosticsCard
-                diagnostics={todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics}
-                anchorCoverageLabel={todayBrief.qualityMeta.todayCandidates.usMarketAnchorCoverageLabel}
-                diagnosticCardCount={todayBrief.diagnosticCandidateCards?.length ?? 0}
-                onRefreshQuotes={() => {
-                  void fetch("/api/portfolio/quotes/refresh", { method: "POST", credentials: "same-origin" }).then(() =>
-                    window.location.reload(),
-                  );
-                }}
-              />
+              <div id="us-diagnostics">
+                <UsDiagnosticsCard
+                  diagnostics={todayBrief.qualityMeta.todayCandidates.usCandidateDiagnostics}
+                  anchorCoverageLabel={todayBrief.qualityMeta.todayCandidates.usMarketAnchorCoverageLabel}
+                  diagnosticCardCount={todayBrief.diagnosticCandidateCards?.length ?? 0}
+                  onRefreshQuotes={() => {
+                    void fetch("/api/portfolio/quotes/refresh", { method: "POST", credentials: "same-origin" }).then(() =>
+                      window.location.reload(),
+                    );
+                  }}
+                />
+              </div>
             ) : null}
             {(todayBrief?.diagnosticCandidateCards?.length ?? 0) > 0 ? (
               <details className="mt-2 rounded border border-slate-200 bg-slate-50/80 p-2">

@@ -59,6 +59,7 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 - **UI `UsDiagnosticsCard`:** 「미국 anchor 시세를 가져오지 못해 일반 관찰 후보에서 US 종목 제외」안내 · 접이식 「설정 점검」·복사 · **설정 점검 Action Item 저장**(사용자 클릭 시만 write).
 - **점검 순서:** (1) Sheets tab 존재 (2) SPY/QQQ/TSLA `GOOGLEFINANCE` 결과 (3) range parse (4) ticker format (5) `GET /api/system/google-finance-setup` (read-only) (6) `GET /api/portfolio/quotes/status` (7) `POST /api/portfolio/quotes/refresh` (8) Today Brief 재조회.
 - **gating 진단 (additive):** `usCandidateDiagnostics.googleFinanceAnchorSummary` · `gatingReason` (`sheets_anchor_zero` vs `gating_not_connected` 등). Setup에서 anchorOk>0인데 Brief가 여전히 anchor 0이면 refresh 후 Brief 재실행.
+- **Anchor OK 후속 진단:** `anchorOk > 0`이면 Google Finance 복구는 완료로 보고, 미국 후보 미노출은 `sheets_anchor_ok_but_us_signal_empty`, `us_signal_mapping_empty`, `gating_not_connected` 중 하나로 분리해 표시한다. `sheets_anchor_zero`는 anchor OK 상태에서 표시하지 않는다.
 - **Action Item:** 설정 화면 「설정 점검을 Action Item으로 저장」→ `detail_json.googleFinanceReadback`(sheets OK/fallback/missing·failed tickers) · 당일 `idempotencyKey` 중복 방지.
 - **GET 경로:** quotes status/refresh preview는 read-only; refresh POST는 사용자 명시 시만.
 

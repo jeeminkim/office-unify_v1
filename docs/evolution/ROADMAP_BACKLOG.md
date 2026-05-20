@@ -22,6 +22,11 @@
 | **P2** | EVO-031 | `nextBestActionPolicy` 서버 모듈 | `#dashboard` |
 | **P3** | EVO-032 | read-only route manifest 테스트 확장 | `#ops` |
 | **P3** | EVO-033 | PortfolioLedgerClient 분리 | `#portfolio` |
+| **P0** | EVO-034 | `personaPrinciples` centralization: no-trade guardrails, forbidden phrase registry, check/do-not-do/next-check copy | `#persona` `#guardrails` |
+| **P1** | EVO-035 | `personaPromptComposer`: role profile + principles + personalization + output contract assembly | `#persona` `#prompt` |
+| **P1** | EVO-036 | PB output contract validator for PB message, weekly, daily note, and research send-to-PB | `#pb` `#quality` |
+| **P2** | EVO-037 | `personaActionBridge`: structured output to Action Item / Research / Journal / Retrospective link suggestions | `#action-items` `#persona` |
+| **P2** | EVO-038 | memory namespace cleanup policy for `j-pierpont`, `j-pierpont-lt`, `committee-lt`, and web persona keys | `#memory` `#persona` |
 
 **이번 라운드 소규모 보강 (uncommitted):** `POST /api/action-items` → `enrichCreateRequestWithDetail`; Committee `doThisWeek` 라벨·로컬 완료 문구; Dashboard Command Center 섹션 분리와 data blocker/action item/personalization 요약 보강; WatchlistRecommendationSection 분리로 pending 관심종목 후보의 approve/reject 경계를 명시.
 

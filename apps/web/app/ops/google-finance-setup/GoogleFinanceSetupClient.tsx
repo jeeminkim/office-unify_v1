@@ -12,7 +12,7 @@ import {
   type GoogleFinanceSetupActionItemInput,
 } from "@/lib/actionItemDetailBuilders";
 import { useGoogleFinanceSetupActions, usePostApplyWaitTimer } from "./useGoogleFinanceSetupActions";
-import { resolveGoogleFinanceRepairDisabledReason } from "./googleFinanceRepairUx";
+import { resolveGoogleFinanceAnchorCtaState } from "./googleFinanceRepairUx";
 
 type TabProbe = {
   name: string;
@@ -254,7 +254,14 @@ export function GoogleFinanceSetupClient() {
   const repairOps = repair.operations.filter((o) => o.type !== "no_op");
   const applyRunning = isRunning("repair_apply");
   const cliRepairCommand = "npm run google-finance-repair --workspace=apps/web -- --confirm --wait";
-  const repairDisabledReason = resolveGoogleFinanceRepairDisabledReason(repair);
+  const anchorCtaState = resolveGoogleFinanceAnchorCtaState({
+    anchorOk: summary?.sheetsAnchorOk ?? 0,
+    anchorMatched: summary?.sheetsAnchorMatched ?? 0,
+    parsedRowsOk: summary?.parsedRowsOk ?? data?.portfolioQuotesTab.okRows ?? 0,
+    missingAnchors: summary?.missingAnchorSymbols ?? [],
+    repairPlan: repair,
+  });
+  const repairDisabledReason = anchorCtaState.repairCtaDisabledReason;
 
   const runLoad = () =>
     runAction(
@@ -411,6 +418,23 @@ export function GoogleFinanceSetupClient() {
             </p>
           ) : null}
           <p className="mt-2 text-[10px] text-slate-600">{data?.usMarketGatingNote}</p>
+          <div
+            className={`mt-3 rounded border p-2 text-[11px] ${
+              anchorCtaState.kind === "anchor_ok"
+                ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                : anchorCtaState.kind === "calculation_pending"
+                  ? "border-amber-300 bg-amber-50 text-amber-950"
+                  : "border-slate-200 bg-white/80 text-slate-800"
+            }`}
+          >
+            <p className="font-semibold">{anchorCtaState.headline}</p>
+            <p className="mt-1 leading-relaxed">{anchorCtaState.message}</p>
+            {anchorCtaState.kind === "anchor_ok" ? (
+              <p className="mt-1">
+                qualityMeta.todayCandidates.usCandidateDiagnostics.gatingReason에서 다음 원인을 확인하세요.
+              </p>
+            ) : null}
+          </div>
         </section>
       ) : null}
 
@@ -445,8 +469,9 @@ export function GoogleFinanceSetupClient() {
         <h2 className="font-semibold text-violet-950">Sheets 자동 보강/복구 (확인 후 1회 write)</h2>
         <p className="mt-1 text-[10px]">{data?.repairModeNote ?? EMPTY_REPAIR_PLAN.actionHint}</p>
         <p className="mt-2 text-[10px] text-violet-900">
-          시트 직접 편집이 어렵다면 「안전 보강 적용」을 누르세요. 기존 데이터는 덮어쓰지 않고, 누락된 탭/헤더/anchor
-          행만 추가합니다.
+          {anchorCtaState.kind === "anchor_ok"
+            ? "이미 anchor가 확인되어 추가 보강이 필요하지 않습니다. 다음 단계는 Today Brief에서 US signal/gating/mapping을 확인하는 것입니다."
+            : "시트 직접 편집이 어렵다면 「안전 보강 적용」을 누르세요. 기존 데이터는 덮어쓰지 않고, 누락된 탭/헤더/anchor 행만 추가합니다."}
         </p>
         {!repair.writeAvailable ? (
           <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-950">
@@ -454,11 +479,31 @@ export function GoogleFinanceSetupClient() {
             편집자로 공유하세요. 아래 「수동 샘플 복사」로 직접 붙여넣을 수 있습니다.
           </p>
         ) : null}
-        {repair.status === "unsafe" ? (
+        {repair.status === "unsafe" && anchorCtaState.kind !== "anchor_ok" ? (
           <p className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-[10px] text-red-950">
             기존 데이터가 있어 자동 덮어쓰기를 막았습니다. 기존 탭을 유지하면서 누락 anchor 행만 추가하는 보강을
             사용하세요 (overwrite=false).
           </p>
+        ) : null}
+        {anchorCtaState.kind === "anchor_ok" ? (
+          <div className="mt-2 rounded border border-emerald-300 bg-emerald-50 p-2 text-[10px] text-emerald-950">
+            <p className="font-semibold">Google Finance anchor 복구 완료</p>
+            <p className="mt-1">안전 보강 적용 버튼은 완료 상태에서는 숨깁니다. 미국 후보가 비어 있으면 Today Brief의 US gating 진단을 확인하세요.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Link href="/" className="rounded border border-emerald-500 bg-white px-2 py-1">
+                Today Brief 다시 실행
+              </Link>
+              <Link href="/#us-diagnostics" className="rounded border border-emerald-500 bg-white px-2 py-1">
+                US gating 진단 보기
+              </Link>
+              <button type="button" className="rounded border border-emerald-500 bg-white px-2 py-1" onClick={() => void runQuoteRefresh()}>
+                시세 새로고침
+              </button>
+              <button type="button" className="rounded border border-emerald-500 bg-white px-2 py-1" onClick={() => void runLoad()}>
+                상태 다시 확인
+              </button>
+            </div>
+          </div>
         ) : null}
         <p className="mt-2 text-[10px]">
           <span className="font-medium">Write 가능:</span> {repair.writeAvailable ? "예" : "아니오"}
@@ -469,12 +514,12 @@ export function GoogleFinanceSetupClient() {
         <p className="mt-1 text-[10px]">
           <span className="font-medium">repairPlan:</span> {repair.status}
         </p>
-        {repairDisabledReason ? (
+        {repairDisabledReason && anchorCtaState.kind !== "anchor_ok" ? (
           <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-950">
             {repairDisabledReason}
           </p>
         ) : null}
-        {repairDisabledReason ? (
+        {repairDisabledReason && anchorCtaState.kind !== "anchor_ok" ? (
           <details className="mt-2 rounded border border-slate-200 bg-white/80 p-2 text-[10px] text-slate-700">
             <summary className="cursor-pointer font-medium">이 버튼은 왜 비활성인가?</summary>
             <p className="mt-1">
@@ -512,17 +557,19 @@ export function GoogleFinanceSetupClient() {
           >
             {isRunning("repair_preview") ? "새로고침 중…" : "수정 미리보기 새로고침"}
           </button>
-          <button
-            type="button"
-            className="rounded border border-violet-600 bg-violet-700 px-3 py-1 text-white disabled:opacity-50"
-            disabled={Boolean(repairDisabledReason) || applyRunning}
-            onClick={() => {
-              setStatusMessage("요청을 받았습니다. 확인 후 Sheets에 안전 보강을 적용합니다.");
-              setConfirmOpen(true);
-            }}
-          >
-            {applyRunning ? "적용 중…" : "안전 보강 적용"}
-          </button>
+          {anchorCtaState.showRepairCta ? (
+            <button
+              type="button"
+              className="rounded border border-violet-600 bg-violet-700 px-3 py-1 text-white disabled:opacity-50"
+              disabled={Boolean(repairDisabledReason) || applyRunning}
+              onClick={() => {
+                setStatusMessage("요청을 받았습니다. 확인 후 Sheets에 안전 보강을 적용합니다.");
+                setConfirmOpen(true);
+              }}
+            >
+              {applyRunning ? "적용 중…" : "안전 보강 적용"}
+            </button>
+          ) : null}
           <button
             type="button"
             className="rounded border px-2 py-1"

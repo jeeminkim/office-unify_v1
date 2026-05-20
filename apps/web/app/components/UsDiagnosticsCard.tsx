@@ -18,6 +18,23 @@ function ymdSeoul(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
 }
 
+export function gatingReasonCopy(reason?: UsCandidateDiagnostics["gatingReason"]): string | null {
+  switch (reason) {
+    case "sheets_anchor_zero":
+      return "Google Finance anchor가 0이라 미국 후보가 제외되었습니다.";
+    case "sheets_anchor_ok_but_us_signal_empty":
+      return "미국 anchor는 정상입니다. 미국장 신호 생성 결과가 비어 있습니다.";
+    case "us_signal_mapping_empty":
+      return "미국 신호는 있으나 한국 후보 매핑이 비었습니다.";
+    case "gating_not_connected":
+      return "Google Finance 상태와 Today Brief gating 연결을 점검해야 합니다.";
+    case "quote_provider_failed":
+      return "시세 제공자 확인이 실패했습니다. 상태 확인 후 다시 실행하세요.";
+    default:
+      return null;
+  }
+}
+
 export function UsDiagnosticsCard({ diagnostics, anchorCoverageLabel, diagnosticCardCount, onRefreshQuotes }: Props) {
   const [setupOpen, setSetupOpen] = useState(false);
   const [copyHint, setCopyHint] = useState<string | null>(null);
@@ -28,6 +45,7 @@ export function UsDiagnosticsCard({ diagnostics, anchorCoverageLabel, diagnostic
 
   const setup = diagnostics.setupDiagnosis;
   const anchorLabel = anchorCoverageLabel ?? `확인 ${diagnostics.quoteOkCount}/${diagnostics.seedSymbolCount || 18}`;
+  const gatingCopy = gatingReasonCopy(diagnostics.gatingReason);
 
   const copySetup = async () => {
     if (!setup) return;
@@ -57,6 +75,11 @@ export function UsDiagnosticsCard({ diagnostics, anchorCoverageLabel, diagnostic
 
       {setup?.actionHint ? <p className="mt-1 text-[10px]">{setup.actionHint}</p> : null}
       {diagnostics.actionHint ? <p className="mt-1 text-[10px] text-sky-800">{diagnostics.actionHint}</p> : null}
+      {gatingCopy ? (
+        <p className="mt-2 rounded border border-sky-200 bg-white/80 p-2 text-[10px] font-medium text-sky-950">
+          {gatingCopy}
+        </p>
+      ) : null}
 
       <button
         type="button"

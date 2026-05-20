@@ -106,6 +106,7 @@ npm run pre-live-smoke --workspace=apps/web
 - [ ] `/ops/google-finance-setup` 1순위 탭 `portfolio_quotes` vs 보조 탭(US_Anchor·시세·Quotes) 구분 · 탭별 found/missing 표시.
 - [ ] `portfolio_quotes 샘플 표 복사` → Sheets A1 붙여넣기 · prefix 수식(NYSEARCA/NASDAQ) · Fallback only ≠ OK.
 - [ ] Repair UI 항상 표시 · GET write 0 · 「안전 보강 적용」 confirm 후만 · append_missing_anchor_rows.
+- [ ] `anchorOk > 0`이면 Google Finance 복구 완료 상태로 보이고, 「안전 보강 적용」이 primary CTA로 보이지 않으며 Today Brief/US gating/시세 새로고침 CTA가 보이는지.
 - [ ] Anchor Recovery 단계·버튼 피드백·중복 클릭 방지 · apply 후 postCheck·60초 대기 안내.
 - [ ] parsed rows OK vs Sheets anchor OK 분리 표시 · mismatch 시 anchor 매칭 점검.
 - [ ] 행동 순서: 샘플 표 또는 Repair apply → price 확인 → 시세 새로고침 → 상태 확인 → Today Brief · API는 접기 영역.
