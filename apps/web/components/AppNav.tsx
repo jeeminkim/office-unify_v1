@@ -141,7 +141,7 @@ export function AppNav() {
             ))}
             <Link
               href={NAV_HOME.href}
-              className="block rounded border border-slate-200 px-2 py-1.5 text-center text-[11px]"
+              className="flex min-h-11 items-center justify-center rounded border border-slate-200 px-2 py-1.5 text-center text-[11px]"
               onClick={() => setMoreOpen(false)}
             >
               {NAV_HOME.label}

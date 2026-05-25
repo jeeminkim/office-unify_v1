@@ -73,7 +73,7 @@ npm run pre-live-smoke --workspace=apps/web
 ## 2e. Command Center + Risk Review actions (P0 · 2026-05-19)
 
 - [ ] 홈 최상단 **오늘의 운영 관제** strip: 데이터 blocker(SQL/Google Finance) 또는 오늘 우선 3건 표시.
-- [ ] 리스크 점검 카드: **공시 확인** 링크(Research seed) · **외부 확인** Action Item 저장(명시 버튼만).
+- [ ] 리스크 점검 카드: Research seed는 **리스크 리서치**로 표시하고, verified DART/KIND 또는 explicit disclosure source ref일 때만 **공시 확인**으로 표시.
 - [ ] 위원회 partial regenerate 미리보기: `actionHints` CTA(교체·복사·저장·Research 등).
 - [ ] 위원회 로드맵: **Action Item으로 저장** 우선 · 「화면에서만 완료 표시」는 새로고침 시 사라짐.
 
