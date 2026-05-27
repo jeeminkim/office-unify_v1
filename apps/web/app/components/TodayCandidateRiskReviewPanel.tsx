@@ -269,7 +269,11 @@ export function TodayCandidateRiskReviewPanel({
             >
               {disclosurePresentation.label}
             </Link>
-          ) : null}
+          ) : (
+            <div className="flex min-h-11 w-full items-center justify-center rounded border border-amber-200 bg-amber-50 px-3 py-2 text-center text-sm font-medium text-amber-950">
+              {disclosurePresentation.label}
+            </div>
+          )}
           {journalHref ? (
             <Link
               href={journalHref}
@@ -379,7 +383,11 @@ export function TodayCandidateRiskReviewPanel({
           >
             {disclosurePresentation.label}
           </Link>
-        ) : null}
+        ) : (
+          <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-center text-[11px] font-medium text-amber-950">
+            {disclosurePresentation.label}
+          </span>
+        )}
         {journalHref ? (
           <Link
             href={journalHref}

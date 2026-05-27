@@ -9,6 +9,17 @@ type Props = {
   lowConfidenceOnly: boolean;
 };
 
+export function hasTodayBriefUsableData(todayBrief: TodayBriefWithCandidatesResponse | null): boolean {
+  if (!todayBrief) return false;
+  return (
+    (todayBrief.lines?.length ?? 0) > 0 ||
+    (todayBrief.primaryCandidateDeck?.length ?? 0) > 0 ||
+    (todayBrief.diagnosticCandidateCards?.length ?? 0) > 0 ||
+    (todayBrief.candidates?.userContext?.length ?? 0) > 0 ||
+    (todayBrief.candidates?.usMarketKr?.length ?? 0) > 0
+  );
+}
+
 /** Today Brief 3줄 요약 + 관찰 후보 토글 (후보 카드는 TodayCandidatesSection). */
 export function TodayBriefSection({
   todayBrief,
@@ -16,6 +27,7 @@ export function TodayBriefSection({
   onToggleLowConfidence,
   lowConfidenceOnly,
 }: Props) {
+  const hasUsableData = hasTodayBriefUsableData(todayBrief);
   return (
     <>
       <div className="flex items-center justify-between">
@@ -31,8 +43,10 @@ export function TodayBriefSection({
           ))}
         </div>
       </div>
-      {(todayBrief?.lines ?? []).length === 0 ? (
+      {(todayBrief?.lines ?? []).length === 0 && !hasUsableData ? (
         <p className="mt-2 text-xs text-violet-900">오늘 브리핑을 만들 데이터가 부족합니다.</p>
+      ) : (todayBrief?.lines ?? []).length === 0 ? (
+        <p className="mt-2 text-xs text-violet-900">후보와 진단 카드는 아래에서 확인하세요.</p>
       ) : (
         <ol className="mt-2 space-y-2 text-xs">
           {(todayBrief?.lines ?? []).slice(0, 3).map((line, idx) => (

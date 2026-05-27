@@ -472,29 +472,52 @@ export function buildGoogleFinanceSetupActionItemDetail(
   });
 }
 
-export function buildUsDiagnosticsActionItemDetail(): ActionItemDetailJson {
+export function buildUsDiagnosticsActionItemDetail(input?: {
+  googleFinanceAnchorOk?: boolean;
+  gatingReason?: string;
+  suggestedNextChecks?: string[];
+}): ActionItemDetailJson {
+  const anchorOk = input?.googleFinanceAnchorOk === true;
   return attachActionStepsToDetail({
     notTradeInstruction: true,
     actionCategory: 'check_now',
-    whyCreated: '미국 anchor 데이터가 0개라 미국 후보가 일반 관찰 후보에서 제외됨',
-    confirmNow: ['미국 anchor 시세 상태 확인', 'Today Brief 재확인'],
-    checklist: [
-      { label: 'Google Sheets tab 존재 확인', source: 'us_setup' },
-      { label: 'SPY/QQQ/SMH GOOGLEFINANCE 수식 결과 확인', source: 'us_setup' },
-      { label: 'range parse 오류 확인', source: 'us_setup' },
-      { label: 'ticker format 확인', source: 'us_setup' },
-      { label: 'refresh 후 Today Brief 재실행', source: 'us_setup' },
-    ],
+    whyCreated: anchorOk
+      ? 'Google Finance anchor는 정상이나 미국장 신호가 한국/관심 후보로 연결되지 않음'
+      : '미국 anchor 데이터가 0개라 미국 후보가 일반 관찰 후보에서 제외됨',
+    confirmNow: anchorOk
+      ? ['Watchlist sector/theme 확인', 'Sector Radar mapping 확인', 'quote quality 확인', 'US→KR theme registry 확인']
+      : ['미국 anchor 시세 상태 확인', 'Today Brief 재확인'],
+    checklist: anchorOk
+      ? [
+          { label: 'Watchlist sector/theme 확인', source: 'us_mapping' },
+          { label: 'Sector Radar mapping 확인', source: 'us_mapping' },
+          { label: 'quote quality 확인', source: 'us_mapping' },
+          { label: 'US→KR theme registry 확인', source: 'us_mapping' },
+        ]
+      : [
+          { label: 'Google Sheets tab 존재 확인', source: 'us_setup' },
+          { label: 'SPY/QQQ/SMH GOOGLEFINANCE 수식 결과 확인', source: 'us_setup' },
+          { label: 'range parse 오류 확인', source: 'us_setup' },
+          { label: 'ticker format 확인', source: 'us_setup' },
+          { label: 'refresh 후 Today Brief 재실행', source: 'us_setup' },
+        ],
     doNotDo: ['미국 데이터 empty 상태에서 미국 종목을 일반 후보로 판단하지 않기', '즉시 매수·매도·자동 주문 금지'],
-    evidenceNeeded: ['anchor_coverage', 'quote_provider', 'sheets_tab'],
+    evidenceNeeded: anchorOk
+      ? ['us_signal_mapping', 'watchlist_theme', 'quote_quality']
+      : ['anchor_coverage', 'quote_provider', 'sheets_tab'],
     decisionContext: {
-      sourceQuestion: '미국 시장 anchor·Google Sheets 설정이 충분한가?',
-      sourceSummary: '미국 후보는 점검 카드로 분리됩니다. SQL이 아니라 quote provider·Sheets 문제일 수 있습니다.',
+      sourceQuestion: anchorOk
+        ? '미국장 신호가 한국/관심 후보로 연결되는가?'
+        : '미국 시장 anchor·Google Sheets 설정이 충분한가?',
+      sourceSummary: anchorOk
+        ? 'Google Finance anchor는 정상입니다. 미국 후보 미노출은 mapping/gating 진단으로 확인합니다.'
+        : '미국 후보는 점검 카드로 분리됩니다. SQL이 아니라 quote provider·Sheets 문제일 수 있습니다.',
     },
     recommendedNextLinks: linksFor('pending', {
       whyCreated: 'US diagnostics',
       decisionContext: { sourceQuestion: '미국 anchor 확인' },
     }),
+    usDiagnostics: input,
   });
 }
 

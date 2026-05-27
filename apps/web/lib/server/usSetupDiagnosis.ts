@@ -6,6 +6,7 @@ import type {
   UsCandidateSetupRootCause,
 } from '@office-unify/shared-types';
 import type { UsMarketMorningSummary } from '@/lib/todayCandidatesContract';
+import { normalizeGoogleFinanceAnchorSummary } from '@/lib/server/googleFinanceAnchorSummaryNormalizer';
 
 const GOOGLE_FINANCE_GUIDE = {
   requiredTabs: ['portfolio_quotes', 'US_Anchor', '시세', 'Quotes'],
@@ -22,11 +23,13 @@ const GOOGLE_FINANCE_GUIDE = {
 function inferRootCause(input: {
   anchorOk: number;
   anchorRequested: number;
+  normalizedAnchorOk?: boolean;
   fetchFailed?: boolean;
   emptyReason?: string;
   quoteMissingCount: number;
 }): UsCandidateSetupRootCause {
-  const { anchorOk, anchorRequested, fetchFailed, emptyReason, quoteMissingCount } = input;
+  const { anchorOk, anchorRequested, normalizedAnchorOk, fetchFailed, emptyReason, quoteMissingCount } = input;
+  if (normalizedAnchorOk) return 'unknown';
   if (anchorRequested > 0 && anchorOk === 0) return 'all_anchors_empty';
   if (fetchFailed) return 'provider_permission_or_network';
   const reason = (emptyReason ?? '').toLowerCase();
@@ -43,12 +46,19 @@ export function buildUsSetupDiagnosis(input: {
   diagnostics: UsCandidateDiagnostics;
 }): UsCandidateSetupDiagnosis {
   const diag = input.usMarketSummary.diagnostics;
-  const anchorOk = diag?.yahooQuoteResultCount ?? 0;
   const anchorRequested = diag?.anchorSymbolsRequested ?? input.diagnostics.seedSymbolCount ?? 18;
+  const normalizedAnchor = normalizeGoogleFinanceAnchorSummary({
+    sheetsAnchorOk: input.diagnostics.googleFinanceAnchorSummary?.sheetsAnchorOk,
+    anchorMatched: input.diagnostics.googleFinanceAnchorSummary?.anchorMatched,
+    requestedAnchorCount: anchorRequested,
+    receivedAnchorCount: diag?.yahooQuoteResultCount,
+  });
+  const anchorOk = normalizedAnchor.anchorOkCount;
 
   const likelyRootCause = inferRootCause({
     anchorOk,
     anchorRequested,
+    normalizedAnchorOk: normalizedAnchor.isAnchorOk,
     fetchFailed: diag?.fetchFailed,
     emptyReason: diag?.emptyReason,
     quoteMissingCount: input.diagnostics.quoteMissingCount,
@@ -87,7 +97,9 @@ export function buildUsSetupDiagnosis(input: {
       label: 'Today Brief 재확인',
       description: '시세 refresh 후 Today Brief를 다시 불러 anchor coverage를 봅니다.',
       howToCheck: 'Dashboard 새로고침',
-      expectedResult: `anchor ${anchorOk}/${anchorRequested} 이상 개선`,
+      expectedResult: normalizedAnchor.isAnchorOk
+        ? `anchor 정상(${anchorOk}건) · mapping/gating 상태 확인`
+        : `anchor ${anchorOk}/${anchorRequested} 이상 개선`,
       actionKey: 'recheck_brief',
     },
   ];
@@ -100,7 +112,9 @@ export function buildUsSetupDiagnosis(input: {
     range_parse_failed: 'range 문자열 parse 실패 — tab·열 범위를 확인하세요.',
     ticker_format_invalid: 'ticker 형식이 잘못되었을 수 있습니다. resolver에서 수정하세요.',
     provider_permission_or_network: 'Yahoo/네트워크 조회 실패 — /system-status를 확인하세요.',
-    unknown: '미국 데이터가 부족하면 US 종목은 일반 관찰 후보로 쓰지 않습니다.',
+    unknown: normalizedAnchor.isAnchorOk
+      ? 'Google Finance anchor는 정상입니다. 미국장 신호가 국내/관심 후보로 연결되지 않았습니다. US→KR 테마 매핑 규칙 또는 관심종목 sector/theme 태그를 점검하세요.'
+      : '미국 데이터가 부족하면 US 종목은 일반 관찰 후보로 쓰지 않습니다.',
   };
 
   return {

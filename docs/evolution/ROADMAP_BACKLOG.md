@@ -28,6 +28,7 @@
 | **P2** | EVO-037 | `personaActionBridge`: structured output to Action Item / Research / Journal / Retrospective link suggestions | `#action-items` `#persona` |
 | **P2** | EVO-038 | memory namespace cleanup policy for `j-pierpont`, `j-pierpont-lt`, `committee-lt`, and web persona keys | `#memory` `#persona` |
 | ~~P1~~ | EVO-039 | Mobile Trust Repair + Disclosure Truth Contract | **1차 shipped** (uncommitted) · mobile IA, verified disclosure labels, reviewed-risk mobile card actions · `#mobile` `#trust` |
+| ~~P1~~ | EVO-042 | Today Brief US Diagnostics Consistency + Mapping Diagnosis | **1차 shipped** (uncommitted) · anchor OK normalization, `us_signal_mapping_empty` copy, empty-state guard, href-less disclosure method · `#today-brief` `#us-diagnostics` `#trust` |
 
 **이번 라운드 소규모 보강 (uncommitted):** `POST /api/action-items` → `enrichCreateRequestWithDetail`; Committee `doThisWeek` 라벨·로컬 완료 문구; Dashboard Command Center 섹션 분리와 data blocker/action item/personalization 요약 보강; WatchlistRecommendationSection 분리로 pending 관심종목 후보의 approve/reject 경계를 명시.
 

@@ -1,7 +1,6 @@
 import type { TodayCandidateRiskReviewAction } from '@office-unify/shared-types';
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
 import {
-  buildDisclosureResearchHrefFromCandidate,
   buildResearchCenterHrefFromCandidate,
 } from '@/lib/todayCandidateNavigationLinks';
 
@@ -55,8 +54,11 @@ export function resolveRiskReviewActionHref(
   candidate: TodayStockCandidate,
 ): string | null {
   if (action.href?.trim()) return action.href;
-  if (action.actionKey === 'check_disclosure' || action.actionType === 'external_hint') {
-    return buildDisclosureResearchHrefFromCandidate(candidate);
+  if (action.actionKey === 'check_disclosure') {
+    return null;
+  }
+  if (action.actionType === 'external_hint') {
+    return null;
   }
   if (action.actionKey === 'generate_research_report' || action.actionKey === 'view_report_history') {
     return buildResearchCenterHrefFromCandidate(candidate, { riskReview: true });

@@ -62,7 +62,7 @@ function riskCandidate(): TodayStockCandidate {
 }
 
 describe('TodayCandidateRiskReviewPanel mobile trust surface', () => {
-  it('renders mobile primary actions with truthful research labeling and More grouping', () => {
+  it('renders mobile primary actions with truthful manual disclosure labeling and More grouping', () => {
     const html = renderToStaticMarkup(
       <TodayCandidateRiskReviewPanel
         candidate={riskCandidate()}
@@ -72,10 +72,12 @@ describe('TodayCandidateRiskReviewPanel mobile trust surface', () => {
     );
 
     expect(html).toContain('리스크 점검하기');
-    expect(html).toContain('리스크 리서치');
+    expect(html).toContain('공시 확인 방법');
+    expect(html).not.toContain('공시 확인</a>');
+    expect(html).not.toContain('리스크 리서치');
     expect(html).toContain('관찰 메모');
     expect(html).toContain('더보기');
-    expect(html).toContain('공시 원문을 직접 여는 버튼이 아닙니다');
+    expect(html).toContain('공시 URL이 없어 확인 방법만 안내합니다');
   });
 
   it('renders reviewed feedback as monitoring state', () => {

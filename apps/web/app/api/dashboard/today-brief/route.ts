@@ -54,7 +54,10 @@ import { enrichDeckWithDecisionTraces } from '@/lib/server/todayCandidateDecisio
 import { buildUsCandidateDiagnostics } from '@/lib/server/todayCandidateUsDiagnostics';
 import { isGoogleFinanceQuoteConfigured } from '@/lib/server/googleFinanceSheetQuoteService';
 import { runGoogleFinanceSetupCheck } from '@/lib/server/googleFinanceSetupCheck';
-import { buildUsMarketAnchorCoverageLabel } from '@/lib/server/todayCandidateUsGating';
+import {
+  applyUsAnchorContextToDiagnosticCandidateCard,
+  buildUsMarketAnchorCoverageLabel,
+} from '@/lib/server/todayCandidateUsGating';
 import { emitUsCandidateDiagnosticsOps } from '@/lib/server/todayCandidateUsDiagnosticsOps';
 import { loadUserPersonalizationBundle } from '@/lib/server/userPersonalizationContext';
 import {
@@ -524,8 +527,6 @@ export async function GET(req?: Request) {
       }),
     }));
 
-    const usMarketAnchorCoverageLabel = buildUsMarketAnchorCoverageLabel(todayCandidates.usMarketSummary);
-
     let googleFinanceAnchorSummary:
       | {
           sheetsAnchorOk: number;
@@ -547,6 +548,14 @@ export async function GET(req?: Request) {
         /* optional snapshot */
       }
     }
+
+    diagnosticCandidateCards = diagnosticCandidateCards.map((c) =>
+      applyUsAnchorContextToDiagnosticCandidateCard(c, todayCandidates.usMarketSummary, googleFinanceAnchorSummary),
+    );
+    const usMarketAnchorCoverageLabel = buildUsMarketAnchorCoverageLabel(
+      todayCandidates.usMarketSummary,
+      googleFinanceAnchorSummary,
+    );
 
     const usCandidateDiagnostics = buildUsCandidateDiagnostics({
       usMarketSummary: todayCandidates.usMarketSummary,

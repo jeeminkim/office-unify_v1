@@ -8,6 +8,15 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 
 # Today Candidates (아침 관찰 후보)
 
+## EVO-042 US diagnostics consistency
+
+- Google Finance anchor 판단은 `anchorOk`, `sheetsAnchorOk`, `anchorMatched`, missing anchors, fallback-only, and legacy received counts를 정규화한 뒤 수행한다. `sheetsAnchorOk > 0` 또는 `anchorOk > 0`이면 과거 `receivedAnchorCount=0` 값이 남아 있어도 zero-anchor copy를 만들지 않는다.
+- `us_signal_mapping_empty`는 Google Finance 고장으로 보지 않는다. 의미는 “미국장 신호는 있으나 한국/관심 후보로 연결되지 않음”이며, 다음 점검은 Watchlist sector/theme, Sector Radar mapping, quote quality, US→KR theme registry다.
+- `topSuppressReasons`는 사용자 문구로 바꿔 보여준다: `deck_rank_lowered`는 최종 덱 순위/슬롯에서 밀림, `low_confidence_mapping`은 테마 연결 신뢰도 낮음, `quote_quality_low`는 시세 품질 낮음이다.
+- US diagnostic card와 `usMarketAnchorCoverageLabel`도 같은 anchor normalization을 사용한다. Google Finance anchor가 OK이면 `미국 시장 anchor: 0/18` 같은 legacy quote-provider 문구를 표시하지 않는다.
+- API deck 또는 diagnostic cards가 있으면 Dashboard Today Brief는 전체 empty state를 표시하지 않는다. US coverage degraded는 전체 브리핑 부재 사유가 아니다.
+- href 없는 `check_disclosure` 또는 기업 이벤트 external-hint는 클릭형 `공시 확인` 버튼이 아니다. verified DART/KIND 또는 explicit disclosure URL/sourceRef일 때만 `공시 확인`; Research href가 있으면 `리스크 리서치`; manual-only는 `공시 확인 방법`이다.
+
 홈 대시보드의 `오늘의 3줄 브리핑`에 개인화 관찰 후보를 추가한다.
 
 ## 원칙

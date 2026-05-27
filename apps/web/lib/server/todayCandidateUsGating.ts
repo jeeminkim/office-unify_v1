@@ -1,16 +1,51 @@
-import type { TodayCandidateCardKind } from '@office-unify/shared-types';
+import type { GoogleFinanceAnchorSummaryForGating, TodayCandidateCardKind } from '@office-unify/shared-types';
 import type { TodayStockCandidate, UsMarketMorningSummary } from '@/lib/todayCandidatesContract';
 import { buildTodayCandidateDisplayMetrics } from '@/lib/server/todayBriefCandidateDisplay';
+import {
+  normalizeGoogleFinanceAnchorSummary,
+  type GoogleFinanceAnchorSummaryNormalizerInput,
+} from '@/lib/server/googleFinanceAnchorSummaryNormalizer';
 
 export type UsMarketSummaryStatus = 'ok' | 'degraded_usable' | 'empty' | 'failed' | 'unknown';
 
 export type UsCandidateGateTier = 'primary_deck' | 'diagnostic_only' | 'holding_check_only';
+
+type UsAnchorSummaryContext = GoogleFinanceAnchorSummaryForGating & GoogleFinanceAnchorSummaryNormalizerInput;
 
 const DIAGNOSTIC_COPY = {
   headline: '미국 데이터 점검용 카드입니다.',
   body: '미국 시장 데이터가 부족해 일반 관찰 후보로 사용하지 않았습니다.',
   follow: '시세·시장 요약이 정상화되면 다시 관찰 후보로 평가됩니다.',
 } as const;
+
+function buildUsAnchorReadbackDetail(
+  summary: UsMarketMorningSummary,
+  googleFinanceAnchorSummary?: UsAnchorSummaryContext,
+): string {
+  const normalized = normalizeGoogleFinanceAnchorSummary({
+    sheetsAnchorOk: googleFinanceAnchorSummary?.sheetsAnchorOk,
+    anchorOk: googleFinanceAnchorSummary?.anchorOk,
+    anchorMatched: googleFinanceAnchorSummary?.anchorMatched,
+    sheetsAnchorMatched: googleFinanceAnchorSummary?.sheetsAnchorMatched,
+    missingAnchors: googleFinanceAnchorSummary?.missingAnchors,
+    missingAnchorSymbols: googleFinanceAnchorSummary?.missingAnchorSymbols,
+    fallbackOnly: googleFinanceAnchorSummary?.fallbackOnly,
+    requestedAnchorCount: summary.diagnostics?.anchorSymbolsRequested,
+    receivedAnchorCount: summary.diagnostics?.yahooQuoteResultCount,
+  });
+
+  if (normalized.isAnchorOk) {
+    return `Google Finance anchor 정상: ${normalized.anchorOkCount}건 확인`;
+  }
+
+  if (normalized.isFormulaPending) {
+    return `Google Finance anchor 행 ${normalized.anchorMatchedCount}건 매칭 · 수식 계산 대기`;
+  }
+
+  const ok = summary.diagnostics?.yahooQuoteResultCount ?? normalized.anchorOkCount;
+  const req = summary.diagnostics?.anchorSymbolsRequested ?? 0;
+  return `미국 시장 anchor: ${ok}/${req} 확인`;
+}
 
 export function resolveUsMarketSummaryStatus(summary: UsMarketMorningSummary): UsMarketSummaryStatus {
   const diag = summary.diagnostics;
@@ -74,6 +109,7 @@ export function buildUsDiagnosticCandidateCard(
   c: TodayStockCandidate,
   summary: UsMarketMorningSummary,
   tier: UsCandidateGateTier,
+  opts?: { googleFinanceAnchorSummary?: UsAnchorSummaryContext },
 ): TodayStockCandidate {
   const isHolding = tier === 'holding_check_only';
   const withSlot: TodayStockCandidate = {
@@ -87,7 +123,7 @@ export function buildUsDiagnosticCandidateCard(
     reasonDetails: [
       DIAGNOSTIC_COPY.follow,
       summary.summary,
-      `미국 시장 anchor: ${summary.diagnostics?.yahooQuoteResultCount ?? 0}/${summary.diagnostics?.anchorSymbolsRequested ?? 0} 확인`,
+      buildUsAnchorReadbackDetail(summary, opts?.googleFinanceAnchorSummary),
       ...(c.reasonDetails ?? []).slice(0, 2),
     ],
     cautionNotes: [
@@ -118,6 +154,7 @@ export function buildUsDiagnosticCandidateCard(
 export function partitionUsDirectForBrief(input: {
   usDirectCandidates: TodayStockCandidate[];
   usMarketSummary: UsMarketMorningSummary;
+  googleFinanceAnchorSummary?: UsAnchorSummaryContext;
 }): {
   diagnosticCards: TodayStockCandidate[];
   primaryEligible: TodayStockCandidate[];
@@ -128,7 +165,9 @@ export function partitionUsDirectForBrief(input: {
   for (const c of input.usDirectCandidates) {
     const isHolding = c.candidateId.includes('-holding-');
     const tier = classifyUsDirectCandidate(c, input.usMarketSummary, { isHolding });
-    const card = buildUsDiagnosticCandidateCard(c, input.usMarketSummary, tier);
+    const card = buildUsDiagnosticCandidateCard(c, input.usMarketSummary, tier, {
+      googleFinanceAnchorSummary: input.googleFinanceAnchorSummary,
+    });
     if (tier === 'primary_deck') {
       primaryEligible.push(card);
     } else {
@@ -166,6 +205,7 @@ export function attachUsMarketDiagnosticsToBrief(input: {
   usDirectCandidates: TodayStockCandidate[];
   usMarketSummary: UsMarketMorningSummary;
   userUsWatchlistCount: number;
+  googleFinanceAnchorSummary?: UsAnchorSummaryContext;
 }): {
   primaryDeck: TodayStockCandidate[];
   diagnosticCandidateCards: TodayStockCandidate[];
@@ -175,6 +215,7 @@ export function attachUsMarketDiagnosticsToBrief(input: {
   const { diagnosticCards, primaryEligible } = partitionUsDirectForBrief({
     usDirectCandidates: input.usDirectCandidates,
     usMarketSummary: input.usMarketSummary,
+    googleFinanceAnchorSummary: input.googleFinanceAnchorSummary,
   });
 
   if (status === 'ok' && primaryEligible.length > 0 && !primaryDeck.some((c) => c.briefDeckSlot === 'us_market_check')) {
@@ -193,14 +234,53 @@ export function attachUsMarketDiagnosticsToBrief(input: {
     input.usDirectCandidates[0]
   ) {
     diagnosticCandidateCards.push(
-      buildUsDiagnosticCandidateCard(input.usDirectCandidates[0], input.usMarketSummary, 'diagnostic_only'),
+      buildUsDiagnosticCandidateCard(input.usDirectCandidates[0], input.usMarketSummary, 'diagnostic_only', {
+        googleFinanceAnchorSummary: input.googleFinanceAnchorSummary,
+      }),
     );
   }
 
   return { primaryDeck, diagnosticCandidateCards: diagnosticCandidateCards.slice(0, 3) };
 }
 
-export function buildUsMarketAnchorCoverageLabel(summary: UsMarketMorningSummary): string {
+export function applyUsAnchorContextToDiagnosticCandidateCard(
+  card: TodayStockCandidate,
+  summary: UsMarketMorningSummary,
+  googleFinanceAnchorSummary?: UsAnchorSummaryContext,
+): TodayStockCandidate {
+  if (!googleFinanceAnchorSummary || card.briefDeckSlot !== 'us_market_check') {
+    return card;
+  }
+  const anchorDetail = buildUsAnchorReadbackDetail(summary, googleFinanceAnchorSummary);
+  const reasonDetails = (card.reasonDetails ?? []).map((detail) =>
+    detail.startsWith('미국 시장 anchor:') || detail.startsWith('Google Finance anchor')
+      ? anchorDetail
+      : detail,
+  );
+  return { ...card, reasonDetails };
+}
+
+export function buildUsMarketAnchorCoverageLabel(
+  summary: UsMarketMorningSummary,
+  googleFinanceAnchorSummary?: UsAnchorSummaryContext,
+): string {
+  const normalized = normalizeGoogleFinanceAnchorSummary({
+    sheetsAnchorOk: googleFinanceAnchorSummary?.sheetsAnchorOk,
+    anchorOk: googleFinanceAnchorSummary?.anchorOk,
+    anchorMatched: googleFinanceAnchorSummary?.anchorMatched,
+    sheetsAnchorMatched: googleFinanceAnchorSummary?.sheetsAnchorMatched,
+    missingAnchors: googleFinanceAnchorSummary?.missingAnchors,
+    missingAnchorSymbols: googleFinanceAnchorSummary?.missingAnchorSymbols,
+    fallbackOnly: googleFinanceAnchorSummary?.fallbackOnly,
+    requestedAnchorCount: summary.diagnostics?.anchorSymbolsRequested,
+    receivedAnchorCount: summary.diagnostics?.yahooQuoteResultCount,
+  });
+  if (normalized.isAnchorOk) {
+    return `Google Finance anchor 정상: ${normalized.anchorOkCount}개 확인`;
+  }
+  if (normalized.isFormulaPending) {
+    return `Google Finance anchor 수식 계산 대기: ${normalized.anchorMatchedCount}개 행 매칭`;
+  }
   const ok = summary.diagnostics?.yahooQuoteResultCount ?? 0;
   const req = summary.diagnostics?.anchorSymbolsRequested ?? 0;
   const status = resolveUsMarketSummaryStatus(summary);

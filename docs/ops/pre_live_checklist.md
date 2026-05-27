@@ -9,6 +9,15 @@
 - [ ] After `mark_reviewed`, the active feedback window shows the risk as review-complete monitoring rather than a main deck candidate.
 - [ ] Mobile risk cards show primary/secondary actions first and move inbox, retrospective, report, and feedback extras behind More.
 
+## EVO-042 US Diagnostics Consistency
+
+- [ ] If `/ops/google-finance-setup` reports `anchorOk > 0` or `sheetsAnchorOk > 0`, Today Brief and setup cards do not say “미국 anchor 시세가 0건입니다” or “요청 anchor 18건 · 수신 0건”.
+- [ ] US diagnostic cards and `usMarketAnchorCoverageLabel` also avoid `0/18` legacy quote-provider copy when Google Finance anchors are OK.
+- [ ] `us_signal_mapping_empty` is explained as “미국장 신호가 국내/관심 후보로 연결되지 않음,” not as a Google Finance repair problem.
+- [ ] Suppressed US reasons are readable: `deck_rank_lowered`, `low_confidence_mapping`, and `quote_quality_low` map to rank/slot, theme confidence, and quote-quality copy.
+- [ ] If API deck or diagnostic cards are present, Dashboard Today Brief does not show the global empty state.
+- [ ] href-less corporate-event/disclosure actions are non-clickable/manual “공시 확인 방법”; only verified DART/KIND or explicit disclosure URLs use “공시 확인”.
+
 ## 1. SQL 적용 확인
 
 - [ ] [`docs/sql/APPLY_ORDER.md`](../sql/APPLY_ORDER.md)의 순서와 사전 점검을 따랐는지 확인합니다.

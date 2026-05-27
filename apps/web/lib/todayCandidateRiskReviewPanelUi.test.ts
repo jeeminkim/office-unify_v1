@@ -36,18 +36,19 @@ function hlb(): TodayStockCandidate {
 }
 
 describe('todayCandidateRiskReviewPanelUi', () => {
-  it('check_disclosure resolves research seed href without claiming it is a disclosure page', () => {
+  it('check_disclosure without href explains the manual path without a clickable disclosure claim', () => {
     const c = hlb();
     const actions = buildRiskReviewActions(c);
     const disc = actions.find((a) => a.actionKey === 'check_disclosure');
     expect(disc).toBeDefined();
     expect(isRiskReviewNavigateAction(disc!)).toBe(true);
     const href = resolveRiskReviewActionHref(disc!, c);
-    expect(href).toContain('/research-center');
-    expect(href).toContain('riskReview=1');
-    expect(riskReviewActionButtonLabel(disc!, c)).toBe('리스크 리서치');
+    expect(href).toBeNull();
+    expect(riskReviewActionButtonLabel(disc!, c)).toBe('공시 확인 방법');
     expect(resolveRiskReviewActionPresentation(disc!, c)).toMatchObject({
-      label: '리스크 리서치',
+      href: null,
+      label: '공시 확인 방법',
+      afterClickExpectation: '공시 URL이 없어 확인 방법만 안내합니다.',
       isVerifiedDisclosure: false,
     });
   });
@@ -63,6 +64,7 @@ describe('todayCandidateRiskReviewPanelUi', () => {
       dangerLevel: 'caution',
     } as const;
     expect(resolveRiskReviewActionPresentation(manual, c)).toMatchObject({
+      href: null,
       label: '공시 확인 방법',
       afterClickExpectation: '공시 URL이 없어 확인 방법만 안내합니다.',
       isVerifiedDisclosure: false,
@@ -92,9 +94,9 @@ describe('todayCandidateRiskReviewPanelUi', () => {
     };
     const disc = buildRiskReviewActions(c).find((a) => a.actionKey === 'check_disclosure');
     const presentation = resolveRiskReviewActionPresentation(disc!, c);
-    expect(presentation.label).toBe('리스크 리서치');
+    expect(presentation.label).toBe('공시 확인 방법');
     expect(presentation.isVerifiedDisclosure).toBe(false);
-    expect(presentation.href).toContain('/research-center');
+    expect(presentation.href).toBeNull();
   });
 
   it('ordered actions include navigate keys for UI', () => {

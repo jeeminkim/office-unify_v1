@@ -100,6 +100,58 @@ describe('US candidate diagnostics', () => {
     expect(diag.actionHint).toBeTruthy();
   });
 
+  it('uses anchor OK mapping copy when legacy received count is zero', () => {
+    const pool = [
+      baseCand({
+        source: 'user_context',
+        country: 'US',
+        dataQuality: {
+          overall: 'low',
+          badges: [],
+          reasons: [],
+          warnings: [],
+          quoteReady: false,
+        } as TodayStockCandidate['dataQuality'],
+      }),
+    ];
+    const diag = buildUsCandidateDiagnostics({
+      usMarketSummary: {
+        available: true,
+        signals: [{ signalKey: 'x', label: 'x', direction: 'positive', confidence: 'low', evidence: [] }],
+        diagnostics: { yahooQuoteResultCount: 0, anchorSymbolsRequested: 18, fetchFailed: false, coverageStatus: 'degraded' },
+      } as never,
+      userUsWatchlistCount: 1,
+      userUsHoldingCount: 0,
+      pool,
+      usDirectCandidates: pool,
+      usKrMappedCandidates: [],
+      selectedDeck: [],
+      googleFinanceAnchorSummary: {
+        sheetsAnchorOk: 16,
+        anchorMatched: 16,
+        quoteSource: 'google_sheets_readback',
+      },
+      suppressedTraces: [
+        trace({
+          decisionStatus: 'suppressed',
+          suppressedReasons: [
+            { code: 'deck_rank_lowered', labelKo: '덱 순위 밀림' },
+            { code: 'low_confidence_mapping', labelKo: '매핑 신뢰 낮음' },
+            { code: 'quote_quality_low', labelKo: '시세 품질 낮음' },
+          ],
+        }),
+      ],
+    });
+    const flat = JSON.stringify(diag);
+    expect(diag.gatingReason).toBe('us_signal_mapping_empty');
+    expect(diag.setupDiagnosis?.actionHint ?? '').not.toContain('anchor 시세가 0건');
+    expect(flat).not.toContain('요청 anchor 18건 · 수신 0건');
+    expect(diag.remediationSteps?.[0]?.description).toContain('Google Finance 문제가 아닙니다');
+    expect(diag.topSuppressReasons).toEqual(
+      expect.arrayContaining(['deck_rank_lowered', 'low_confidence_mapping', 'quote_quality_low']),
+    );
+  });
+
   it('reports sheets_anchor_zero when Google Finance anchors are zero', () => {
     const diag = buildUsCandidateDiagnostics({
       usMarketSummary: { ...emptyUsSummary, available: true, signals: [] } as never,

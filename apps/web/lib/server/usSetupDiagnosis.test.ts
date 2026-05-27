@@ -46,4 +46,37 @@ describe('buildUsSetupDiagnosis', () => {
     expect(setup.googleFinanceGuide.sampleFormulas.length).toBeGreaterThan(0);
     expect(setup.googleFinanceGuide.sampleTickers).toContain('SPY');
   });
+
+  it('does not diagnose all anchors empty when Today Brief has anchor OK summary', () => {
+    const diagnostics = buildUsCandidateDiagnostics({
+      usMarketSummary: {
+        available: true,
+        signals: [{ signalKey: 'x', label: 'x', direction: 'positive', confidence: 'low', evidence: [] }],
+        diagnostics: { yahooQuoteResultCount: 0, anchorSymbolsRequested: 18, coverageStatus: 'degraded' },
+      } as never,
+      userUsWatchlistCount: 1,
+      userUsHoldingCount: 0,
+      pool: [],
+      usDirectCandidates: [],
+      usKrMappedCandidates: [],
+      selectedDeck: [],
+      googleFinanceAnchorSummary: {
+        sheetsAnchorOk: 16,
+        anchorMatched: 16,
+        quoteSource: 'google_sheets_readback',
+      },
+    });
+    const setup = buildUsSetupDiagnosis({
+      usMarketSummary: {
+        available: true,
+        signals: [{ signalKey: 'x', label: 'x', direction: 'positive', confidence: 'low', evidence: [] }],
+        diagnostics: { yahooQuoteResultCount: 0, anchorSymbolsRequested: 18, coverageStatus: 'degraded' },
+      } as never,
+      diagnostics,
+    });
+    expect(setup.likelyRootCause).not.toBe('all_anchors_empty');
+    expect(setup.actionHint).toContain('Google Finance anchor는 정상');
+    expect(JSON.stringify(setup)).not.toContain('미국 anchor 시세가 0건');
+    expect(JSON.stringify(setup)).toContain('mapping/gating');
+  });
 });

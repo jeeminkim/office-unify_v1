@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { TodayStockCandidate, UsMarketMorningSummary } from '@/lib/todayCandidatesContract';
 import {
+  applyUsAnchorContextToDiagnosticCandidateCard,
   attachUsMarketDiagnosticsToBrief,
+  buildUsMarketAnchorCoverageLabel,
   classifyUsDirectCandidate,
   resolveUsMarketSummaryStatus,
   stripUsFromPrimaryWhenMarketWeak,
@@ -112,5 +114,48 @@ describe('todayCandidateUsGating', () => {
       userUsWatchlistCount: 1,
     });
     expect(out.primaryDeck.map((c) => c.candidateId)).toEqual(['kr-a', 'kr-b', 'kr-c']);
+  });
+
+  it('does not show zero-anchor copy when Google Finance anchors are ok', () => {
+    const summary = {
+      ...usSumEmpty(),
+      diagnostics: {
+        ...usSumEmpty().diagnostics,
+        anchorSymbolsRequested: 18,
+        yahooQuoteResultCount: 0,
+        fetchFailed: true,
+      },
+    };
+    const googleFinanceAnchorSummary = {
+      sheetsAnchorOk: 16,
+      anchorMatched: 16,
+    };
+    const card = attachUsMarketDiagnosticsToBrief({
+      primaryDeck: [krInterest('kr-a'), krInterest('kr-b'), krInterest('kr-c')],
+      usDirectCandidates: [usDirectTsla()],
+      usMarketSummary: summary,
+      userUsWatchlistCount: 1,
+      googleFinanceAnchorSummary,
+    }).diagnosticCandidateCards[0]!;
+
+    expect(card.reasonDetails?.join(' ')).toContain('Google Finance anchor 정상: 16건 확인');
+    expect(card.reasonDetails?.join(' ')).not.toContain('0/18');
+    expect(buildUsMarketAnchorCoverageLabel(summary, googleFinanceAnchorSummary)).toBe(
+      'Google Finance anchor 정상: 16개 확인',
+    );
+
+    const legacyCard = attachUsMarketDiagnosticsToBrief({
+      primaryDeck: [krInterest('kr-a'), krInterest('kr-b'), krInterest('kr-c')],
+      usDirectCandidates: [usDirectTsla()],
+      usMarketSummary: summary,
+      userUsWatchlistCount: 1,
+    }).diagnosticCandidateCards[0]!;
+    const updated = applyUsAnchorContextToDiagnosticCandidateCard(
+      legacyCard,
+      summary,
+      googleFinanceAnchorSummary,
+    );
+    expect(updated.reasonDetails?.join(' ')).toContain('Google Finance anchor 정상: 16건 확인');
+    expect(updated.reasonDetails?.join(' ')).not.toContain('0/18');
   });
 });

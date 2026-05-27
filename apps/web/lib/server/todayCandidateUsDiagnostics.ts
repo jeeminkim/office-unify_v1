@@ -7,6 +7,7 @@ import type {
 } from '@office-unify/shared-types';
 import type { TodayStockCandidate, UsMarketMorningSummary } from '@/lib/todayCandidatesContract';
 import { buildUsSetupDiagnosis } from '@/lib/server/usSetupDiagnosis';
+import { normalizeGoogleFinanceAnchorSummary } from '@/lib/server/googleFinanceAnchorSummaryNormalizer';
 import type { CandidateDecisionTrace } from '@office-unify/shared-types';
 
 function countReasons(traces: CandidateDecisionTrace[], field: 'rejectedReasons' | 'suppressedReasons'): string[] {
@@ -136,12 +137,65 @@ export function buildUsCandidateDiagnostics(input: {
   }
 
   const anchorRequested = diag?.anchorSymbolsRequested ?? input.seedSymbolCount ?? 0;
-  const anchorOk = diag?.yahooQuoteResultCount ?? input.usMarketSummary.signals?.length ?? 0;
-  const remediationSteps: UsCandidateDiagnostics['remediationSteps'] = [
+  const normalizedAnchor = normalizeGoogleFinanceAnchorSummary({
+    sheetsAnchorOk: input.googleFinanceAnchorSummary?.sheetsAnchorOk,
+    anchorMatched: input.googleFinanceAnchorSummary?.anchorMatched,
+    requestedAnchorCount: anchorRequested,
+    receivedAnchorCount: diag?.yahooQuoteResultCount,
+  });
+  const anchorOk = normalizedAnchor.anchorOkCount;
+
+  const sheetsAnchorOk = normalizedAnchor.anchorOkCount;
+
+  const gatingReason = deriveUsCandidateGatingReason({
+    sheetsAnchorOk,
+    usMarketSummaryStatus,
+    usMarketAvailable: input.usMarketSummary.available,
+    usSignalCount: input.usMarketSummary.signals?.length ?? 0,
+    selectedUsCount: selectedUs.length,
+    poolUsCount: poolUs.length,
+    quoteMissingCount: quoteMissing,
+    fetchFailed: Boolean(diag?.fetchFailed),
+  });
+
+  const effectiveGatingReason =
+    input.googleFinanceAnchorSummary &&
+    normalizedAnchor.isAnchorOk &&
+    gatingReason === 'sheets_anchor_zero'
+      ? 'gating_not_connected'
+      : gatingReason;
+
+  const remediationSteps: UsCandidateDiagnostics['remediationSteps'] =
+    normalizedAnchor.isAnchorOk && effectiveGatingReason === 'us_signal_mapping_empty'
+      ? [
+          {
+            key: 'us_mapping_diagnosis',
+            label: 'US mapping 진단 보기',
+            description:
+              '미국장 신호는 있으나 한국/관심 후보로 연결되지 않았습니다. Google Finance 문제가 아닙니다.',
+            href: '/sector-radar',
+            actionType: 'navigate',
+          },
+          {
+            key: 'watchlist_theme_check',
+            label: '관심종목 섹터/테마 점검',
+            description: 'US→KR 테마 매핑 규칙 또는 관심종목 sector/theme 태그를 점검하세요.',
+            href: '/watchlist',
+            actionType: 'navigate',
+          },
+          {
+            key: 'quote_quality_check',
+            label: '시세 품질 다시 확인',
+            description: '시세 품질이 낮으면 후보 우선순위에서 밀릴 수 있습니다.',
+            href: '/portfolio',
+            actionType: 'refresh_quotes',
+          },
+        ]
+      : [
     {
       key: 'check_anchor',
       label: '미국 anchor 시세 상태 확인',
-      description: `요청 anchor ${anchorRequested}건 · 수신 ${anchorOk}건. SPY/QQQ/SMH 등 시트·시세 탭을 확인하세요.`,
+      description: `요청 anchor ${anchorRequested}건 · 확인 ${anchorOk}건. SPY/QQQ/SMH 등 시트·시세 탭을 확인하세요.`,
       href: '/system-status',
       actionType: 'navigate',
     },
@@ -172,28 +226,6 @@ export function buildUsCandidateDiagnostics(input: {
       actionType: 'navigate',
     },
   ];
-
-  const sheetsAnchorOk =
-    input.googleFinanceAnchorSummary?.sheetsAnchorOk ??
-    (diag?.yahooQuoteResultCount && !diag.fetchFailed ? diag.yahooQuoteResultCount : 0);
-
-  const gatingReason = deriveUsCandidateGatingReason({
-    sheetsAnchorOk,
-    usMarketSummaryStatus,
-    usMarketAvailable: input.usMarketSummary.available,
-    usSignalCount: input.usMarketSummary.signals?.length ?? 0,
-    selectedUsCount: selectedUs.length,
-    poolUsCount: poolUs.length,
-    quoteMissingCount: quoteMissing,
-    fetchFailed: Boolean(diag?.fetchFailed),
-  });
-
-  const effectiveGatingReason =
-    input.googleFinanceAnchorSummary &&
-    input.googleFinanceAnchorSummary.sheetsAnchorOk > 0 &&
-    gatingReason === 'sheets_anchor_zero'
-      ? 'gating_not_connected'
-      : gatingReason;
 
   const base: UsCandidateDiagnostics = {
     status,
@@ -236,14 +268,19 @@ export function buildUsCandidateDiagnostics(input: {
 
   if (
     input.googleFinanceAnchorSummary &&
-    input.googleFinanceAnchorSummary.sheetsAnchorOk > 0 &&
+    normalizedAnchor.isAnchorOk &&
     effectiveGatingReason === 'gating_not_connected'
   ) {
     base.actionHint =
       'Google Finance read-back은 확인됐지만 Today Candidate gating이 최신 상태를 사용하지 못하고 있을 수 있습니다. 시세 refresh 후 Today Brief를 다시 실행하세요.';
   }
 
-  if (status !== 'ok' || anchorOk < anchorRequested) {
+  if (normalizedAnchor.isAnchorOk && effectiveGatingReason === 'us_signal_mapping_empty') {
+    base.actionHint =
+      'Google Finance anchor는 정상입니다. 미국 후보 풀은 있으나 한국/관심 후보로 연결되지 않았습니다. US→KR 테마 매핑과 관심종목 sector/theme 태그를 점검하세요.';
+  }
+
+  if (status !== 'ok' || (!normalizedAnchor.isAnchorOk && anchorOk < anchorRequested)) {
     base.setupDiagnosis = buildUsSetupDiagnosis({
       usMarketSummary: input.usMarketSummary,
       diagnostics: base,

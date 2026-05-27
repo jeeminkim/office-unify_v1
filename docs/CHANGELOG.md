@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### 2026-05-27 EVO-042 Today Brief US Diagnostics Consistency
+
+- **Anchor normalization:** Today Brief US diagnostics now normalizes `anchorOk`, `sheetsAnchorOk`, `anchorMatched`, missing anchors, and legacy received counts before building copy. Current read-back wins over stale `received=0`, so anchor OK states no longer show zero-anchor remediation.
+- **Diagnostic card consistency:** US diagnostic cards and `usMarketAnchorCoverageLabel` use the normalized Google Finance anchor state, so live `anchorOk=16` does not render stale `0/18` quote-provider copy.
+- **Mapping diagnosis:** `us_signal_mapping_empty` is presented as a US signal/mapping/gating issue, not a Google Finance repair issue. The UI surfaces pool/selected/suppressed counts and explains `deck_rank_lowered`, `low_confidence_mapping`, and `quote_quality_low`.
+- **Empty-state guard:** Dashboard Today Brief no longer shows the global “data is insufficient” empty state when a deck or diagnostic cards exist.
+- **Disclosure truth follow-up:** href-less `check_disclosure`/external-hint actions are shown as a non-clickable/manual “공시 확인 방법” path instead of being promoted to a Research or disclosure button.
+- **Guardrails:** no spreadsheet repair/write, no SQL, no API field removal, no GET write, no automatic trading/order/rebalancing behavior, and no commit in this round.
+
 ### 2026-05-23 EVO-039 Mobile Trust Repair + Disclosure Truth Contract
 
 - **Mobile IA:** mobile navigation keeps the desktop top nav hidden, shortens long drawer labels, and applies nowrap/keep-all guards so narrow routes do not collapse into vertical letter stacks at 390px widths.

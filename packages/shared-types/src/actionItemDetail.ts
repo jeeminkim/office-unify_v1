@@ -67,6 +67,12 @@ export type GoogleFinanceReadbackSummary = {
   recommendedNextStep?: string;
 };
 
+export type UsDiagnosticsActionItemSummary = {
+  googleFinanceAnchorOk?: boolean;
+  gatingReason?: string;
+  suggestedNextChecks?: string[];
+};
+
 export type ActionItemDetailJson = {
   notTradeInstruction?: boolean;
   actionCategory?: 'check_now' | 'monitor' | 'research_needed' | 'retrospective_needed' | 'risk_review';
@@ -87,6 +93,8 @@ export type ActionItemDetailJson = {
   name?: string;
   market?: string;
   googleFinanceReadback?: GoogleFinanceReadbackSummary;
+  /** additive: Today Brief US diagnostics context */
+  usDiagnostics?: UsDiagnosticsActionItemSummary;
 };
 
 export function parseActionItemDetailJson(raw: Record<string, unknown> | undefined): ActionItemDetailJson {
@@ -135,6 +143,10 @@ export function parseActionItemDetailJson(raw: Record<string, unknown> | undefin
     googleFinanceReadback:
       d.googleFinanceReadback && typeof d.googleFinanceReadback === 'object'
         ? (d.googleFinanceReadback as GoogleFinanceReadbackSummary)
+        : undefined,
+    usDiagnostics:
+      d.usDiagnostics && typeof d.usDiagnostics === 'object'
+        ? (d.usDiagnostics as UsDiagnosticsActionItemSummary)
         : undefined,
   };
 }

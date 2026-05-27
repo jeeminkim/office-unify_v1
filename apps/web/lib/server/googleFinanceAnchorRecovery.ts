@@ -63,7 +63,25 @@ export function buildGoogleFinanceAnchorRecovery(input: BuildAnchorRecoveryInput
   let diagnosis = 'Google Finance Setup 점검 결과를 확인하세요.';
   let nextStep = '상태 다시 확인을 눌러 최신 read-back을 확인하세요.';
 
-  if (!repairPlan.writeAvailable) {
+  if (anchorOk > 0) {
+    status = repairPlan.status === 'not_needed' ? 'not_needed' : 'readback_ok';
+    diagnosis = `Google Sheets read-back이 ${anchorOk}개 anchor에서 확인됐습니다.`;
+    nextStep = 'Today Brief를 다시 실행해 US 후보·gating이 반영됐는지 확인하세요.';
+    if (
+      todayBriefUsDegraded &&
+      todayBriefSheetsAnchorOk != null &&
+      todayBriefSheetsAnchorOk === 0
+    ) {
+      status = 'gating_not_connected';
+      diagnosis =
+        'Setup 점검에서는 Sheets anchor OK가 확인됐지만, Today Brief diagnostics가 아직 sheets_anchor_zero로 보일 수 있습니다.';
+      nextStep = '시세 새로고침 → 상태 다시 확인 → Today Brief 재실행 순서로 진행하세요.';
+    } else if (todayBriefUsDegraded) {
+      status = 'gating_not_connected';
+      diagnosis = 'Google Finance anchor는 정상입니다. 미국 후보 미노출은 US signal/mapping/gating을 점검하세요.';
+      nextStep = 'Today Brief의 US mapping 진단과 관심종목 sector/theme 태그를 확인하세요.';
+    }
+  } else if (!repairPlan.writeAvailable) {
     status = 'write_unavailable';
     diagnosis = 'service account에 Sheets 편집 권한이 없어 자동 보강을 할 수 없습니다.';
     nextStep = 'Google Sheet에 service account를 편집자로 공유한 뒤 수정 미리보기를 새로고침하세요.';
@@ -71,25 +89,6 @@ export function buildGoogleFinanceAnchorRecovery(input: BuildAnchorRecoveryInput
     status = 'unsafe';
     diagnosis = '기존 데이터가 있어 전체 덮어쓰기는 차단되었습니다. 누락 anchor append만 가능합니다.';
     nextStep = '안전 보강 적용으로 누락 anchor 행만 추가하세요 (overwrite=false).';
-  } else if (anchorOk > 0) {
-    status = 'readback_ok';
-    diagnosis = `Google Sheets read-back이 ${anchorOk}개 anchor에서 확인됐습니다.`;
-    nextStep = 'Today Brief를 다시 실행해 US 후보·gating이 반영됐는지 확인하세요.';
-    if (
-      todayBriefUsDegraded &&
-      todayBriefSheetsAnchorOk != null &&
-      todayBriefSheetsAnchorOk === 0 &&
-      anchorOk > 0
-    ) {
-      status = 'gating_not_connected';
-      diagnosis =
-        'Setup 점검에서는 Sheets anchor OK가 확인됐지만, Today Brief diagnostics가 아직 sheets_anchor_zero로 보일 수 있습니다.';
-      nextStep = '시세 새로고침 → 상태 다시 확인 → Today Brief 재실행 순서로 진행하세요.';
-    } else if (todayBriefUsDegraded && anchorOk > 0) {
-      status = 'gating_not_connected';
-      diagnosis = 'read-back은 확인됐지만 Today Candidate가 최신 quote/gating을 쓰지 못하고 있을 수 있습니다.';
-      nextStep = '시세 refresh 후 Today Brief를 다시 실행하세요.';
-    }
   } else if (parsedRowsOk > 0 && anchorMatched === 0) {
     status = 'anchor_match_failed';
     diagnosis = 'portfolio_quotes 행은 읽혔지만 US anchor registry와 symbol/google_ticker 매칭에 실패했습니다.';
