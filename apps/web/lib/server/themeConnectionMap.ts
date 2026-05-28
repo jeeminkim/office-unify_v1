@@ -7,6 +7,7 @@ import type {
   ThemeLinkedInstrument,
   ThemeLinkConfidence,
   ThemeLinkSource,
+  UsMappingBridgeDiagnostics,
 } from '@office-unify/shared-types';
 import type { SectorRadarEtfThemeBucket, SectorRadarSummarySector } from '@/lib/sectorRadarContract';
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
@@ -484,4 +485,141 @@ export function buildUsKrEmptyThemeBridgeHint(input: {
     .slice(0, 2);
   const tail = labels.length ? ` (${labels.join(', ')} 등 국내 연결 후보가 부족할 수 있습니다.)` : '';
   return `미국 신호는 일부 확인됐으나 한국 종목 연결 맵이 아직 얇습니다. 후보를 억지로 만들지 않으며, 테마 매핑 품질 점검이 필요합니다.${tail}`;
+}
+
+function isKrInstrument(x: ThemeLinkedInstrument): boolean {
+  return x.market === 'KR' || x.symbol.toUpperCase().startsWith('KR:');
+}
+
+function compactUnique(values: Array<string | undefined>, limit: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const text = value?.trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text.slice(0, 80));
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+export function buildUsMappingBridgeDiagnostics(input: {
+  map: ThemeConnectionMapItem[];
+  buildInput: ThemeConnectionMapBuildInput;
+}): UsMappingBridgeDiagnostics {
+  const interpretedUsThemes = input.map
+    .map((item) => {
+      const usSignals = item.linkedInstruments.filter((x) => x.source === 'us_signal');
+      return {
+        themeKey: item.themeKey,
+        themeLabel: item.themeLabel,
+        confidence: item.confidence,
+        signalLabels: compactUnique(usSignals.map((x) => x.name ?? x.symbol), 4),
+      };
+    })
+    .filter((item) => item.signalLabels.length > 0);
+
+  const watchlistThemeGaps = (input.buildInput.watchlistRows ?? [])
+    .filter((row) => !row.sector?.trim())
+    .slice(0, 12)
+    .map((row) => ({
+      symbol: String(row.symbol).toUpperCase(),
+      market: String(row.market).toUpperCase(),
+      name: row.name ?? undefined,
+      currentSector: row.sector ?? null,
+      suggestedAction: 'Watchlist에서 sector/theme 메모를 승인 보강하세요. 자동 관심종목 등록이나 주문은 없습니다.',
+    }));
+
+  const disconnectedThemes = interpretedUsThemes
+    .map((theme) => {
+      const item = input.map.find((x) => x.themeKey === theme.themeKey);
+      const links = item?.linkedInstruments ?? [];
+      const linkedWatchlistCount = links.filter((x) => x.source === 'watchlist').length;
+      const linkedKrInstrumentCount = links.filter(isKrInstrument).length;
+      const hasSectorRadar = Boolean(item?.representativeEtf) || links.some((x) => x.source === 'sector_radar');
+      const reasonCode: UsMappingBridgeDiagnostics['disconnectedThemes'][number]['reasonCode'] =
+        theme.confidence === 'low' || theme.confidence === 'missing'
+          ? 'low_confidence'
+          : linkedWatchlistCount === 0 && watchlistThemeGaps.length > 0
+            ? 'watchlist_theme_missing'
+            : linkedKrInstrumentCount === 0
+              ? hasSectorRadar
+                ? 'sector_radar_bridge_only'
+                : 'kr_link_missing'
+              : 'unknown';
+      const explanation =
+        reasonCode === 'watchlist_theme_missing'
+          ? '미국 신호 테마는 해석됐지만 관심종목 sector/theme 태그가 비어 있어 내 관심 목록과 직접 연결되지 않습니다.'
+          : reasonCode === 'sector_radar_bridge_only'
+            ? 'Sector Radar 대표 ETF 연결은 있으나 내 관심종목/국내 후보 연결이 아직 없습니다.'
+            : reasonCode === 'kr_link_missing'
+              ? '미국 신호 테마와 연결되는 한국/관심 후보가 없습니다. registry 또는 관심종목 메모 보강이 필요합니다.'
+              : reasonCode === 'low_confidence'
+                ? '부분 문자열 수준의 약한 연결입니다. 후보 생성에는 쓰지 않고 점검용으로만 표시합니다.'
+                : '연결은 일부 있으나 다음 Today Brief에서 gatingReason이 해소되는지 확인해야 합니다.';
+      return {
+        themeKey: theme.themeKey,
+        themeLabel: theme.themeLabel,
+        reasonCode,
+        explanation,
+        linkedWatchlistCount,
+        linkedKrInstrumentCount,
+      };
+    })
+    .filter((item) => item.reasonCode !== 'unknown')
+    .slice(0, 8);
+
+  const sectorRadarBridgeCandidates = input.map
+    .filter((item) => {
+      const watchlistCount = item.linkedInstruments.filter((x) => x.source === 'watchlist').length;
+      return item.representativeEtf && watchlistCount === 0;
+    })
+    .slice(0, 8)
+    .map((item) => ({
+      themeKey: item.themeKey,
+      themeLabel: item.themeLabel,
+      representativeSymbol: item.representativeEtf?.symbol,
+      representativeName: item.representativeEtf?.name,
+      reason: 'Sector Radar에는 대표 ETF/테마가 있으나 관심종목 sector/theme 태그와 아직 연결되지 않았습니다.',
+    }));
+
+  const status: UsMappingBridgeDiagnostics['status'] =
+    interpretedUsThemes.length === 0
+      ? 'no_us_signal'
+      : watchlistThemeGaps.length > 0
+        ? 'needs_watchlist_theme'
+        : disconnectedThemes.length > 0 || sectorRadarBridgeCandidates.length > 0
+          ? 'needs_registry_or_sector_bridge'
+          : 'ok';
+
+  return {
+    readOnly: true,
+    status,
+    interpretedUsThemes,
+    disconnectedThemes,
+    watchlistThemeGaps,
+    sectorRadarBridgeCandidates,
+    nextChecks: [
+      '미국 신호가 어떤 registry theme으로 해석됐는지 확인',
+      '관심종목 sector/theme 빈 항목 보강 후보 확인',
+      'Sector Radar 대표 ETF와 registry theme 연결 확인',
+      '승인한 항목만 Watchlist sector/theme 메모로 저장',
+      '다음 Today Brief에서 usCoverage/gatingReason 재확인',
+    ],
+    guardrails: [
+      'Google Finance anchor가 정상인 상태에서 repair를 반복하지 않습니다.',
+      '미국 신호만으로 관심종목을 자동 등록하지 않습니다.',
+      '매수·매도·자동 주문·자동 리밸런싱을 실행하지 않습니다.',
+      '낮은 신뢰도 연결은 후보 생성에 사용하지 않고 진단용으로만 표시합니다.',
+    ],
+    approvedWritePath: {
+      label: '승인한 watchlist sector/theme만 보강',
+      method: 'POST',
+      href: '/api/portfolio/watchlist/sector-match',
+      bodyHint: '{ "mode": "apply", "onlyUnmatched": true }',
+    },
+  };
 }

@@ -5,6 +5,7 @@ import {
   buildThemeConnectionMap,
   buildThemeConnectionSummary,
   buildThemeLinkSourceHistogram,
+  buildUsMappingBridgeDiagnostics,
   THEME_CONNECTION_DETAIL_MAX_LINKED_PER_THEME,
   truncateThemeConnectionMap,
 } from '@/lib/server/themeConnectionMap';
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest) {
     const summary = buildThemeConnectionSummary(full);
     const { map, truncated } = truncateThemeConnectionMap(full, full.length, THEME_CONNECTION_DETAIL_MAX_LINKED_PER_THEME);
     const sourceCounts = buildThemeLinkSourceHistogram(full);
+    const usMappingBridgeDiagnostics = buildUsMappingBridgeDiagnostics({ map: full, buildInput: input });
 
     return NextResponse.json({
       ok: true,
@@ -42,6 +44,7 @@ export async function GET(req: NextRequest) {
       generatedAt: new Date().toISOString(),
       themeConnectionMap: map,
       summary,
+      usMappingBridgeDiagnostics,
       qualityMeta: {
         readOnly: true,
         sourceCounts,

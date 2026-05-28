@@ -50,3 +50,49 @@ export type ThemeConnectionSummary = {
   /** 관심종목 원천 행을 맵 입력으로 사용했는지(0건이면 false). */
   watchlistSourceAvailable?: boolean;
 };
+
+export type UsMappingBridgeDiagnostics = {
+  readOnly: true;
+  status: 'ok' | 'needs_watchlist_theme' | 'needs_registry_or_sector_bridge' | 'no_us_signal';
+  interpretedUsThemes: Array<{
+    themeKey: string;
+    themeLabel: string;
+    confidence: ThemeLinkConfidence;
+    signalLabels: string[];
+  }>;
+  disconnectedThemes: Array<{
+    themeKey: string;
+    themeLabel: string;
+    reasonCode:
+      | 'watchlist_theme_missing'
+      | 'kr_link_missing'
+      | 'sector_radar_bridge_only'
+      | 'low_confidence'
+      | 'unknown';
+    explanation: string;
+    linkedWatchlistCount: number;
+    linkedKrInstrumentCount: number;
+  }>;
+  watchlistThemeGaps: Array<{
+    symbol: string;
+    market: string;
+    name?: string;
+    currentSector?: string | null;
+    suggestedAction: string;
+  }>;
+  sectorRadarBridgeCandidates: Array<{
+    themeKey: string;
+    themeLabel: string;
+    representativeSymbol?: string;
+    representativeName?: string;
+    reason: string;
+  }>;
+  nextChecks: string[];
+  guardrails: string[];
+  approvedWritePath?: {
+    label: string;
+    method: 'POST';
+    href: string;
+    bodyHint: string;
+  };
+};

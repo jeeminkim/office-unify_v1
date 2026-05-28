@@ -21,6 +21,7 @@ import {
 } from '@/lib/server/concentrationRisk';
 import {
   buildUsKrEmptyThemeBridgeHint,
+  buildUsMappingBridgeDiagnostics,
   enrichPrimaryDeckWithThemeConnections,
 } from '@/lib/server/themeConnectionMap';
 import { loadThemeConnectionMapInput } from '@/lib/server/themeConnectionMapLoader';
@@ -469,6 +470,10 @@ export async function GET(req?: Request) {
       diagnostics: usKrSignalDiagnostics,
       themeConnectionSummary,
       themeConnectionMap: themeConnectionMapFull,
+    });
+    const usMappingBridgeDiagnostics = buildUsMappingBridgeDiagnostics({
+      map: themeConnectionMapFull,
+      buildInput: themeConnectionInput,
     });
 
     primaryCandidateDeck = enrichPrimaryCandidateDeckScoreExplanations(primaryCandidateDeck, {
@@ -971,6 +976,7 @@ export async function GET(req?: Request) {
           themeConnectionSummary,
           themeConnectionMap,
           ...(usKrEmptyThemeBridgeHint ? { usKrEmptyThemeBridgeHint } : {}),
+          usMappingBridgeDiagnostics,
           usCoverage,
           scoreBreakdownSummary,
           decisionTraceSummary: tracePack.summary,

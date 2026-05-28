@@ -392,6 +392,7 @@ export type {
   ThemeLinkedInstrument,
   ThemeLinkConfidence,
   ThemeLinkSource,
+  UsMappingBridgeDiagnostics,
 } from './themeConnectionMap';
 export type {
   ResearchFollowupCategory,

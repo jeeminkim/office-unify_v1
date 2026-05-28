@@ -204,6 +204,16 @@ describe("GET /api/dashboard/today-brief contract (additive)", () => {
             truncated: false,
             watchlistSourceAvailable: false,
           },
+          usMappingBridgeDiagnostics: {
+            readOnly: true,
+            status: "no_us_signal",
+            interpretedUsThemes: [],
+            disconnectedThemes: [],
+            watchlistThemeGaps: [],
+            sectorRadarBridgeCandidates: [],
+            nextChecks: ["다음 Today Brief에서 usCoverage/gatingReason 재확인"],
+            guardrails: ["자동 주문 없음"],
+          },
         },
       },
     };
@@ -220,6 +230,7 @@ describe("GET /api/dashboard/today-brief contract (additive)", () => {
     expect(sample.qualityMeta?.todayCandidates.feedbackSummary).toBeDefined();
     expect(sample.qualityMeta?.todayCandidates.concentrationRiskSummary).toBeDefined();
     expect(sample.qualityMeta?.todayCandidates.themeConnectionSummary).toBeDefined();
+    expect(sample.qualityMeta?.todayCandidates.usMappingBridgeDiagnostics?.readOnly).toBe(true);
     expect(JSON.stringify(sample)).not.toMatch(/자동매매|자동 주문 실행|자동 리밸런싱|즉시\s*매수|즉시\s*매도/);
   });
 });

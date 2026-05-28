@@ -7,6 +7,7 @@ import {
   buildThemeConnectionSummary,
   buildThemeLinkSourceHistogram,
   buildUsKrEmptyThemeBridgeHint,
+  buildUsMappingBridgeDiagnostics,
   classifyThemeLinkConfidence,
   enrichPrimaryDeckWithThemeConnections,
   explainThemeLink,
@@ -63,6 +64,41 @@ describe("themeConnectionMap EVO-007", () => {
         partialKeywordMatch: false,
       }),
     ).toBe("missing");
+  });
+
+  it("EVO-044: diagnoses US signal themes, watchlist theme gaps, and read-only write boundary", () => {
+    const input = {
+      sectorRadarSectors: [
+        {
+          key: "ai_power_infra",
+          name: "AI infrastructure",
+          anchors: [
+            {
+              symbol: "SMH",
+              name: "VanEck Semiconductor ETF",
+              etfDisplayGroup: "scored",
+            },
+          ],
+        },
+      ] as unknown as SectorRadarSummarySector[],
+      holdingRows: [],
+      userContextCandidates: [],
+      usMarketKrCandidates: [],
+      usSignals: [{ label: "AI data center power signal", signalKey: "ai-power" }],
+      watchlistRows: [{ symbol: "000660", market: "KR", name: "SK hynix", sector: null }],
+      watchlistSourceAvailable: true,
+    };
+    const map = buildThemeConnectionMap(input);
+    const diagnostics = buildUsMappingBridgeDiagnostics({ map, buildInput: input });
+
+    expect(diagnostics.readOnly).toBe(true);
+    expect(diagnostics.status).toBe("needs_watchlist_theme");
+    expect(diagnostics.interpretedUsThemes.some((theme) => theme.themeKey === "ai_power_infra")).toBe(true);
+    expect(diagnostics.watchlistThemeGaps[0]?.symbol).toBe("000660");
+    expect(diagnostics.disconnectedThemes.some((theme) => theme.reasonCode === "watchlist_theme_missing")).toBe(true);
+    expect(diagnostics.sectorRadarBridgeCandidates.some((theme) => theme.representativeSymbol === "US:SMH")).toBe(true);
+    expect(diagnostics.approvedWritePath?.href).toBe("/api/portfolio/watchlist/sector-match");
+    expect(diagnostics.guardrails.join(" ")).toMatch(/자동 주문|repair/);
   });
 
   it("explainThemeLink returns Korean guidance", () => {

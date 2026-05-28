@@ -1224,6 +1224,52 @@ export function DashboardClient() {
                     {todayBrief.qualityMeta.todayCandidates.usKrEmptyThemeBridgeHint}
                   </p>
                 ) : null}
+                {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics ? (
+                  <div className="mt-2 rounded border border-sky-200 bg-white/70 p-2">
+                    <p className="font-medium text-sky-950">
+                      US Mapping Bridge · {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.status}
+                    </p>
+                    <p className="mt-1 text-[10px] text-sky-900">
+                      미국 신호 해석 테마{" "}
+                      {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.interpretedUsThemes.length}개 ·
+                      연결 끊김{" "}
+                      {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.disconnectedThemes.length}개 ·
+                      sector/theme 빈 관심종목{" "}
+                      {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.watchlistThemeGaps.length}개
+                    </p>
+                    {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.interpretedUsThemes.length > 0 ? (
+                      <ul className="mt-1 list-inside list-disc text-[10px] text-sky-900">
+                        {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.interpretedUsThemes.slice(0, 3).map((theme) => (
+                          <li key={theme.themeKey}>
+                            {theme.themeLabel} · {theme.confidence}
+                            {theme.signalLabels.length ? ` · ${theme.signalLabels.join(", ")}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.disconnectedThemes.length > 0 ? (
+                      <ul className="mt-1 list-inside list-disc text-[10px] text-amber-950">
+                        {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.disconnectedThemes.slice(0, 3).map((theme) => (
+                          <li key={`${theme.themeKey}-${theme.reasonCode}`}>
+                            {theme.themeLabel}: {theme.explanation}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.watchlistThemeGaps.length > 0 ? (
+                      <p className="mt-1 text-[10px] text-slate-700">
+                        빈 태그 예:{" "}
+                        {todayBrief.qualityMeta.todayCandidates.usMappingBridgeDiagnostics.watchlistThemeGaps
+                          .slice(0, 4)
+                          .map((row) => `${row.market}:${row.symbol}${row.name ? ` ${row.name}` : ""}`)
+                          .join(" · ")}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      승인 저장은 Watchlist/Sector Radar의 명시 버튼에서만 수행합니다. Google Finance repair 반복, 관심종목 자동 등록, 자동 주문은 없습니다.
+                    </p>
+                  </div>
+                ) : null}
                 <ul className="mt-1.5 space-y-1 border-t border-sky-200/80 pt-1.5">
                   {(todayBrief.qualityMeta.todayCandidates.themeConnectionMap ?? []).map((it) => (
                     <li key={it.themeKey} className="text-[10px] text-sky-900">

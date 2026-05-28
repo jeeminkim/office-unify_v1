@@ -16,6 +16,7 @@ import type {
   TodayCandidateFeedbackSummary,
   TodayCandidatesDecisionTraceSummary,
   TodayCandidatesJudgmentQualitySummary,
+  UsMappingBridgeDiagnostics,
   UsKrSignalEmptyReasonCode,
 } from '@office-unify/shared-types';
 
@@ -305,6 +306,8 @@ export interface TodayBriefWithCandidatesResponse {
       themeConnectionMap?: ThemeConnectionMapItem[];
       /** Additive: EVO-007 + EVO-006 — usToKrMappingEmpty일 때 테마 맵 얇음 안내. */
       usKrEmptyThemeBridgeHint?: string;
+      /** Additive: EVO-044 — 미국 신호→관심종목/테마 연결 진단(read-only). */
+      usMappingBridgeDiagnostics?: UsMappingBridgeDiagnostics;
       /** Additive: 미국 시세·매핑 커버리지(조용한 실패 방지). */
       usCoverage?: {
         status: 'ok' | 'degraded';

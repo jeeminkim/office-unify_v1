@@ -14,6 +14,16 @@ describe("GET /api/dashboard/theme-connections contract (additive)", () => {
         confidenceCounts: { high: 0, medium: 0, low: 0, missing: 0 },
         missingThemeCount: 0,
       },
+      usMappingBridgeDiagnostics: {
+        readOnly: true,
+        status: "no_us_signal",
+        interpretedUsThemes: [],
+        disconnectedThemes: [],
+        watchlistThemeGaps: [],
+        sectorRadarBridgeCandidates: [],
+        nextChecks: [],
+        guardrails: [],
+      },
       qualityMeta: {
         readOnly: true,
         sourceCounts: {} as Record<string, number>,
@@ -23,6 +33,7 @@ describe("GET /api/dashboard/theme-connections contract (additive)", () => {
       },
     };
     expect(sample.qualityMeta.readOnly).toBe(true);
+    expect(sample.usMappingBridgeDiagnostics.readOnly).toBe(true);
     expect(sample.themeConnectionMap).toEqual([]);
   });
 });
