@@ -623,3 +623,42 @@ export function buildUsMappingBridgeDiagnostics(input: {
     },
   };
 }
+
+export function buildDegradedUsMappingBridgeDiagnostics(): UsMappingBridgeDiagnostics {
+  return {
+    readOnly: true,
+    status: 'degraded',
+    reason: 'us_mapping_bridge_failed',
+    actionHint: 'US Mapping Bridge 진단만 실패했습니다. 기존 테마 연결 결과는 유지됩니다.',
+    warnings: ['us_mapping_bridge_failed'],
+    interpretedUsThemes: [],
+    disconnectedThemes: [],
+    watchlistThemeGaps: [],
+    sectorRadarBridgeCandidates: [],
+    nextChecks: [
+      'Watchlist sector/theme 비어 있는 항목을 확인합니다.',
+      'Sector Radar mapping을 확인합니다.',
+      'US→KR theme registry를 확인합니다.',
+      '다음 Today Brief에서 usCoverage/gatingReason을 재확인합니다.',
+    ],
+    guardrails: [
+      'Google Finance anchor가 정상인 상태에서 repair를 반복하지 않습니다.',
+      '관심종목을 자동 등록하지 않습니다.',
+      '매수·매도·자동 주문·자동 리밸런싱을 실행하지 않습니다.',
+    ],
+  };
+}
+
+export function buildUsMappingBridgeDiagnosticsOrDegraded(
+  input: {
+    map: ThemeConnectionMapItem[];
+    buildInput: ThemeConnectionMapBuildInput;
+  },
+  builder: typeof buildUsMappingBridgeDiagnostics = buildUsMappingBridgeDiagnostics,
+): UsMappingBridgeDiagnostics {
+  try {
+    return builder(input);
+  } catch {
+    return buildDegradedUsMappingBridgeDiagnostics();
+  }
+}

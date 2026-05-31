@@ -87,3 +87,9 @@
 - raw JSON 기본 노출 금지와 parser fallback 개선을 포함한다.
 - “이 발언으로 교체” remains client-only; Action Inbox save remains explicit-only.
 - No SQL, no GET write, no API field removal, no automatic trading/order/rebalancing.
+
+## EVO-044 US Mapping Bridge
+
+- US Mapping Bridge diagnostics links Google Finance anchor healthy US signal / mapping / gating gaps to Sector Radar, Watchlist sector/theme, and the US→KR registry.
+- Exact scope: after Google Finance is healthy, US Mapping Bridge diagnostics checks Sector Radar, Watchlist sector/theme, and the US→KR registry.
+- Read-only diagnosis only: 신규 SQL 없음, 관심종목 자동 등록 없음, 매수/매도 지시 아님, 자동매매/자동주문/자동 리밸런싱 없음. Theme-connections bridge failures degrade as warnings without removing the core theme map.

@@ -142,3 +142,9 @@
 - Line regeneration is preview-only, returns a short card or deterministic fallback, and does not save unless the user explicitly clicks an Action Inbox save button.
 - parser fallback keeps raw JSON out of the default body, and “이 발언으로 교체” is client-only.
 - No automatic trading, order placement, or automatic rebalancing exists in the committee flow.
+
+## EVO-044 US Mapping Bridge Baseline
+
+- US Mapping Bridge diagnostics explains post-Google Finance-anchor US signal / mapping / gating gaps using Sector Radar, Watchlist sector/theme, and the US→KR registry.
+- Exact scope: US Mapping Bridge diagnostics checks Sector Radar, Watchlist sector/theme, and the US→KR registry.
+- It is read-only diagnosis with 신규 SQL 없음, 관심종목 자동 등록 없음, 매수/매도 지시 아님, and 자동매매/자동주문/자동 리밸런싱 없음. Theme-connections isolates US Mapping Bridge diagnostic failure as degraded/warning while preserving the existing theme map.

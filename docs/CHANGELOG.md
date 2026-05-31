@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### 2026-05-31 EVO-044 US Mapping Bridge Hardening
+
+- **US Mapping Bridge diagnostics:** theme-connections now isolates US Mapping Bridge diagnostic failures as degraded/warning while preserving the existing theme connection response.
+- **Mapping scope:** after a healthy Google Finance anchor, remaining gaps are treated as US signal / mapping / gating checks across Sector Radar, Watchlist sector/theme, and the US→KR registry.
+- **Guardrails:** 신규 SQL 없음, read-only diagnosis only, 관심종목 자동 등록 없음, 매수/매도 지시 아님, and 자동매매/자동주문/자동 리밸런싱 없음.
+
 ### 2026-05-29 EVO-045 Committee Output Reliability
 
 - **Compact persona line contract:** Committee persona lines now resolve to a short Korean card with conclusion, key reasons, risks, missing evidence, guardrails, and next checks instead of showing raw structured JSON as the primary body.

@@ -222,3 +222,10 @@ npm run pre-live-smoke --workspace=apps/web
 - [ ] Raw/debug and structured fields are collapsed by default.
 - [ ] Action Item save still requires an explicit button click.
 - [ ] No buy/sell directive, automatic order, or automatic rebalancing copy appears.
+
+## EVO-044 US Mapping Bridge
+
+- [ ] US Mapping Bridge diagnostics appears as read-only US signal / mapping / gating diagnosis after Google Finance anchors are healthy.
+- [ ] Exact scope is Sector Radar, Watchlist sector/theme, and the US→KR registry.
+- [ ] It points to Sector Radar, Watchlist sector/theme, and the US→KR registry; 신규 SQL 없음, 관심종목 자동 등록 없음, 매수/매도 지시 아님, and 자동매매/자동주문/자동 리밸런싱 없음.
+- [ ] Theme-connections isolates US Mapping Bridge diagnostic failure as degraded/warning while preserving the existing theme map.

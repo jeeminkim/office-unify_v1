@@ -21,7 +21,7 @@ import {
 } from '@/lib/server/concentrationRisk';
 import {
   buildUsKrEmptyThemeBridgeHint,
-  buildUsMappingBridgeDiagnostics,
+  buildUsMappingBridgeDiagnosticsOrDegraded,
   enrichPrimaryDeckWithThemeConnections,
 } from '@/lib/server/themeConnectionMap';
 import { loadThemeConnectionMapInput } from '@/lib/server/themeConnectionMapLoader';
@@ -471,7 +471,7 @@ export async function GET(req?: Request) {
       themeConnectionSummary,
       themeConnectionMap: themeConnectionMapFull,
     });
-    const usMappingBridgeDiagnostics = buildUsMappingBridgeDiagnostics({
+    const usMappingBridgeDiagnostics = buildUsMappingBridgeDiagnosticsOrDegraded({
       map: themeConnectionMapFull,
       buildInput: themeConnectionInput,
     });

@@ -53,7 +53,10 @@ export type ThemeConnectionSummary = {
 
 export type UsMappingBridgeDiagnostics = {
   readOnly: true;
-  status: 'ok' | 'needs_watchlist_theme' | 'needs_registry_or_sector_bridge' | 'no_us_signal';
+  status: 'ok' | 'needs_watchlist_theme' | 'needs_registry_or_sector_bridge' | 'no_us_signal' | 'degraded';
+  reason?: 'us_mapping_bridge_failed';
+  actionHint?: string;
+  warnings?: string[];
   interpretedUsThemes: Array<{
     themeKey: string;
     themeLabel: string;

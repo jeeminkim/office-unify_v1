@@ -354,3 +354,8 @@ where user_key = :user_key
 - `watch_only`에는 quote `missing`뿐 아니라 `stale`/`invalid`/`unknown`도 포함될 수 있습니다.
 - today-brief reasonDetails는 `missing`/`stale`/`invalid`/`unknown`을 구분해 점수 미반영 사유를 안내합니다.
 - `diagnostic_only` 섹터는 ETF 테마 진단은 수행하지만 후보 점수 제한은 강제하지 않습니다.
+## EVO-044 US Mapping Bridge
+
+- US Mapping Bridge diagnostics treats post-Google Finance-anchor gaps as US signal / mapping / gating diagnosis, not quote repair. It checks Sector Radar, Watchlist sector/theme, and the US→KR registry as read-only guidance.
+- Exact scope: US Mapping Bridge diagnostics checks Sector Radar, Watchlist sector/theme, and the US→KR registry.
+- 신규 SQL 없음, 관심종목 자동 등록 없음, 매수/매도 지시 아님, and 자동매매/자동주문/자동 리밸런싱 없음. Any Action Item or sector-match apply path remains user-confirmed only.

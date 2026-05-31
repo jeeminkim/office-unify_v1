@@ -8,6 +8,7 @@ import {
   buildThemeLinkSourceHistogram,
   buildUsKrEmptyThemeBridgeHint,
   buildUsMappingBridgeDiagnostics,
+  buildUsMappingBridgeDiagnosticsOrDegraded,
   classifyThemeLinkConfidence,
   enrichPrimaryDeckWithThemeConnections,
   explainThemeLink,
@@ -99,6 +100,32 @@ describe("themeConnectionMap EVO-007", () => {
     expect(diagnostics.sectorRadarBridgeCandidates.some((theme) => theme.representativeSymbol === "US:SMH")).toBe(true);
     expect(diagnostics.approvedWritePath?.href).toBe("/api/portfolio/watchlist/sector-match");
     expect(diagnostics.guardrails.join(" ")).toMatch(/자동 주문|repair/);
+  });
+
+  it("buildUsMappingBridgeDiagnosticsOrDegraded isolates bridge-only failures", () => {
+    const diagnostics = buildUsMappingBridgeDiagnosticsOrDegraded(
+      {
+        map: [],
+        buildInput: {
+          sectorRadarSectors: [],
+          holdingRows: [],
+          userContextCandidates: [],
+          usMarketKrCandidates: [],
+          usSignals: [],
+        },
+      },
+      () => {
+        throw new Error("boom");
+      },
+    );
+
+    expect(diagnostics.readOnly).toBe(true);
+    expect(diagnostics.status).toBe("degraded");
+    expect(diagnostics.reason).toBe("us_mapping_bridge_failed");
+    expect(diagnostics.actionHint).toContain("US Mapping Bridge 진단만 실패");
+    expect(diagnostics.interpretedUsThemes).toEqual([]);
+    expect(diagnostics.disconnectedThemes).toEqual([]);
+    expect(diagnostics.guardrails.join(" ")).not.toMatch(/지금 매수|주문 실행|자동 리밸런싱 실행/);
   });
 
   it("explainThemeLink returns Korean guidance", () => {

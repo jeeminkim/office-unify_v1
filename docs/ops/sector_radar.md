@@ -30,3 +30,8 @@
 ## 후속(선택)
 
 - `sector_radar_item_feedback` 테이블·POST feedback API
+## EVO-044 US Mapping Bridge
+
+- US Mapping Bridge diagnostics uses Sector Radar representatives, Watchlist sector/theme, and the US→KR registry to explain US signal / mapping / gating gaps after Google Finance anchors are healthy.
+- Exact scope: US Mapping Bridge diagnostics checks Sector Radar, Watchlist sector/theme, and the US→KR registry.
+- This is read-only diagnosis: 신규 SQL 없음, 관심종목 자동 등록 없음, 매수/매도 지시 아님, and 자동매매/자동주문/자동 리밸런싱 없음. If the bridge diagnostic fails in theme-connections, it is isolated as degraded/warning while the core theme map remains available.

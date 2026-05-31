@@ -319,3 +319,9 @@
 - Regenerate requests are read-heavy preview operations: they call the provider, return a compact card, and keep replacement as client-only state until a separate explicit save action is used.
 - Parser fallback extracts partial structured fields from truncated JSON, then falls back to deterministic summary copy. Raw/debug JSON is only available behind an explicit disclosure.
 - Action roadmap and downstream links continue to use structured fields when available; no automatic trading/order/rebalancing path is introduced.
+
+## EVO-044 US Mapping Bridge Architecture
+
+- US Mapping Bridge diagnostics is an additive read-only layer over theme-connections and Today Brief qualityMeta. It checks Sector Radar, Watchlist sector/theme, and the US→KR registry after Google Finance anchors are healthy and the remaining issue is US signal / mapping / gating.
+- Exact scope: US Mapping Bridge diagnostics checks Sector Radar, Watchlist sector/theme, and the US→KR registry.
+- The bridge guardrails are 신규 SQL 없음, 관심종목 자동 등록 없음, 매수/매도 지시 아님, and 자동매매/자동주문/자동 리밸런싱 없음. Theme-connections degrades only the bridge diagnostic if it fails and keeps the existing theme map response.
