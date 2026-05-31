@@ -172,6 +172,37 @@ export function buildDecisionTraceForDeckCandidate(input: {
     dataQualityFlags.push(traceReason('repeat_exposure', '반복 노출'));
   }
 
+  if (c.queueBucket) {
+    selectedReasons.push(traceReason('queue_bucket', `후보 큐 분류: ${c.queueLabel ?? c.queueBucket}`));
+    if (c.queueActionHint) {
+      downgradeReasons.push(traceReason('queue_action_hint', c.queueActionHint));
+    }
+  }
+  for (const r of c.queueReasons ?? []) {
+    const label =
+      r === 'repeat_exposure'
+        ? '최근 7일 내 반복 노출되어 관찰 우선순위가 낮아졌습니다.'
+        : r === 'corporate_event_risk'
+          ? '기업 이벤트 리스크가 있어 리스크 점검으로 분류했습니다.'
+          : r === 'open_action_item_exists'
+            ? '이미 열린 리스크 점검 Action Item이 있어 메인 큐 반복 노출을 낮췄습니다.'
+            : r === 'insufficient_alternatives'
+              ? '대체 후보가 부족해 반복 노출 사유를 표시한 상태로 유지합니다.'
+              : r === 'quote_quality_low'
+                ? '시세 품질이 낮아 데이터 점검 카드로 분류했습니다.'
+                : r === 'user_mark_reviewed'
+                  ? '사용자가 리스크 점검 완료로 표시했습니다.'
+                  : r === 'user_hidden_7d'
+                    ? '사용자가 7일간 낮은 우선순위로 표시했습니다.'
+                    : r === 'keep_observing'
+                      ? '사용자가 계속 관찰로 표시했습니다.'
+                      : `큐 정책 사유: ${r}`;
+    if (c.queueBucket === 'suppressed') suppressedReasons.push(traceReason(r, label));
+    else if (c.queueBucket === 'data_check') dataQualityFlags.push(traceReason(r, label));
+    else if (c.queueBucket === 'risk_review') riskFlags.push(traceReason(r, label));
+    else downgradeReasons.push(traceReason(r, label));
+  }
+
   return {
     candidateId: c.candidateId,
     symbol: c.symbol ?? (c.stockCode ? `KR:${c.stockCode}` : undefined),

@@ -1,5 +1,11 @@
 # System Architecture (Personal Investment Console)
 
+## EVO-047 Candidate Queue Quality
+
+- `todayCandidateQueuePolicy` is a pure server policy layer between scoring/feedback/repeat exposure and final Today Brief deck display. It adds queueBucket/queueReasons/queueLabel/queueActionHint without deleting existing fields.
+- Queue buckets separate observation, risk_review, data_check, monitoring, suppressed, reviewed, and insufficient_alternative. The route keeps `primaryCandidateDeck` and `diagnosticCandidateCards` while adding `qualityMeta.todayCandidates.queueDiagnostics`.
+- The policy is read-only: no SQL, no GET write, no Google Sheets repair/write, no forced candidates, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ## 목적
 
 `office-unify_v1`를 단일 사용자 개인 투자 콘솔로 운영할 때의 핵심 경로를 정리한다.

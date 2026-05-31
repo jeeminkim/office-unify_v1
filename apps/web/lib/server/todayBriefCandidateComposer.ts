@@ -8,6 +8,10 @@ import { buildTodayCandidateDisplayMetrics } from '@/lib/server/todayBriefCandid
 import type { TodayCandidateRepeatStat } from '@/lib/server/todayCandidateRepeatExposure';
 import { repeatExposurePenaltyFromStat } from '@/lib/server/todayCandidateScoring';
 import { attachUsMarketDiagnosticsToBrief } from '@/lib/server/todayCandidateUsGating';
+import {
+  applyQueuePolicyToCandidate,
+  classifyTodayCandidateQueue,
+} from '@/lib/server/todayCandidateQueuePolicy';
 
 function anchorQuoteAcceptable(a: SectorRadarSummaryAnchor): boolean {
   const q = a.etfQuoteQualityStatus;
@@ -131,13 +135,9 @@ function deckRank(c: TodayStockCandidate, repeatMap?: Map<string, TodayCandidate
   return r;
 }
 
-function repeatCount(c: TodayStockCandidate, repeatMap?: Map<string, TodayCandidateRepeatStat>): number {
-  return repeatMap?.get(c.candidateId)?.candidateRepeatCount7d ?? 0;
-}
-
 function shouldMoveToMonitoring(c: TodayStockCandidate, repeatMap?: Map<string, TodayCandidateRepeatStat>): boolean {
-  if (c.briefDeckSlot === 'risk_review' || c.corporateActionRisk?.active) return false;
-  return repeatCount(c, repeatMap) >= 5;
+  const policy = classifyTodayCandidateQueue({ candidate: c, repeatStat: repeatMap?.get(c.candidateId) });
+  return !policy.shouldIncludeInPrimaryDeck && policy.shouldIncludeInMonitoring;
 }
 
 function pickPrimaryRiskCandidate(userCtx: TodayStockCandidate[], usKr: TodayStockCandidate[]): TodayStockCandidate | null {
@@ -243,19 +243,28 @@ export function composeTodayBriefCandidates(input: {
   const riskSlot = pickPrimaryRiskCandidate(input.userContextCandidates, input.usMarketKrCandidates);
   if (riskSlot) droppedReasons.push('corporate_action_risk_slot_reserved');
   const repeatedMonitoringCandidates = [...input.userContextCandidates, ...input.usMarketKrCandidates]
-    .filter((c) => shouldMoveToMonitoring(c, input.repeatByCandidateId))
-    .map((c) => ({
-      ...c,
-      briefDeckSlot: 'interest_stock' as TodayStockCandidate['briefDeckSlot'],
-      reasonDetails: [
-        '최근 7일 반복 노출로 메인 덱 대신 모니터링으로 이동했습니다.',
-        ...(c.reasonDetails ?? []).slice(0, 3),
-      ],
-      cautionNotes: [
-        '반복 노출 감점 적용',
-        ...(c.cautionNotes ?? []).slice(0, 3),
-      ],
-    }));
+    .map((c) => {
+      const policy = classifyTodayCandidateQueue({ candidate: c, repeatStat: input.repeatByCandidateId?.get(c.candidateId) });
+      return { c, policy };
+    })
+    .filter(({ policy }) => !policy.shouldIncludeInPrimaryDeck && policy.shouldIncludeInMonitoring)
+    .map(({ c, policy }) =>
+      applyQueuePolicyToCandidate(
+        {
+          ...c,
+          briefDeckSlot: 'interest_stock' as TodayStockCandidate['briefDeckSlot'],
+          reasonDetails: [
+            policy.monitoringReason ?? '최근 7일 반복 노출로 메인 큐 대신 모니터링으로 이동했습니다.',
+            ...(c.reasonDetails ?? []).slice(0, 3),
+          ],
+          cautionNotes: [
+            '반복 노출 감점 적용',
+            ...(c.cautionNotes ?? []).slice(0, 3),
+          ],
+        },
+        policy,
+      ),
+    );
   if (repeatedMonitoringCandidates.length > 0) droppedReasons.push('repeat_exposure_moved_to_monitoring');
 
   const interestSlots = pickInterestSlots({

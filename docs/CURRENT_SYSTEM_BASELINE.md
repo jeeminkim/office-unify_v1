@@ -1,5 +1,11 @@
 # Current System Baseline
 
+## EVO-047 Candidate Queue Quality
+
+- Today Candidate is operated as an observation/check queue with additive buckets: observation, risk_review, data_check, monitoring, suppressed, reviewed, and insufficient_alternative.
+- Corporate-event risk remains risk_review; repeated 7-day non-risk exposure moves to monitoring unless alternatives are insufficient; mark_reviewed, hide_7d, keep_observing, and open Action Item symbols are reflected before final deck display.
+- `qualityMeta.todayCandidates.queueDiagnostics` and candidate `decisionTrace` explain queue bucket, queue reasons, repeat exposure, feedback, data quality, and open Action Item duplicate suppression. No SQL, no GET write, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ## 핵심 원칙
 
 - **제품 정체성:** 종목을 맞히는 추천 시스템이 아니라, 후보 **관찰**·리스크 **확인**·판단 **복기**·반복 실수 **감소**를 위한 개인 투자 운영체제다.

@@ -103,6 +103,30 @@ export type CorporateActionRiskSnapshot = {
 
 export type TodayCandidateCandidateAction = 'observe_only' | 'review_required' | 'reviewed_risk' | 'risk_review_completed';
 
+export type CandidateQueueBucket =
+  | 'observation'
+  | 'risk_review'
+  | 'data_check'
+  | 'monitoring'
+  | 'suppressed'
+  | 'reviewed'
+  | 'insufficient_alternative';
+
+export type CandidateQueueReason =
+  | 'normal_observation'
+  | 'corporate_event_risk'
+  | 'data_quality_degraded'
+  | 'repeat_exposure'
+  | 'user_mark_reviewed'
+  | 'user_hidden_7d'
+  | 'keep_observing'
+  | 'open_action_item_exists'
+  | 'sector_concentration'
+  | 'theme_concentration'
+  | 'insufficient_alternatives'
+  | 'us_mapping_empty'
+  | 'quote_quality_low';
+
 export interface TodayCandidateDataQuality {
   overall: 'high' | 'medium' | 'low' | 'very_low';
   badges: string[];
@@ -170,6 +194,16 @@ export interface TodayStockCandidate {
   riskReviewActions?: TodayCandidateRiskReviewAction[];
   /** additive: 사용자 명시 피드백 상태(confirm 후 저장) */
   userFeedbackState?: TodayCandidateUserFeedbackState;
+  /** additive: EVO-047 후보 운영 큐 분류(매수 추천 아님). */
+  queueBucket?: CandidateQueueBucket;
+  queueReasons?: CandidateQueueReason[];
+  queueLabel?: string;
+  queueActionHint?: string;
+  monitoringReason?: string;
+  suppressionReason?: string;
+  exposurePenaltyApplied?: boolean;
+  feedbackApplied?: boolean;
+  openActionItemLinked?: boolean;
 }
 
 export interface UsMarketMorningSummary {
@@ -340,6 +374,15 @@ export interface TodayBriefWithCandidatesResponse {
       recommendationCandidates?: import('@office-unify/shared-types').RecommendationCandidatesQualityMeta;
       /** additive: 사용자 피드백 요약 */
       feedbackSummary?: TodayCandidateFeedbackSummary;
+      /** additive: EVO-047 후보 큐 분류 요약. */
+      queueDiagnostics?: {
+        bucketCounts: Partial<Record<CandidateQueueBucket, number>>;
+        reasonCounts: Partial<Record<CandidateQueueReason, number>>;
+        monitoringCount: number;
+        suppressedCount: number;
+        primarySuppressedCount: number;
+        policyVersion: string;
+      };
       /** additive: read-only 개인화 맥락 요약(점수·추천 강도 변경 없음) */
       personalization?: import('@office-unify/shared-types').PersonalizationContextSummary;
     };

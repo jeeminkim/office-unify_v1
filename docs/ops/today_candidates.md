@@ -8,6 +8,13 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 
 # Today Candidates (아침 관찰 후보)
 
+## EVO-047 Candidate Queue Quality
+
+- Today Candidate is an institutional-style observation queue, not a recommendation list. Additive `queueBucket` values are `observation`, `risk_review`, `data_check`, `monitoring`, `suppressed`, `reviewed`, and `insufficient_alternative`.
+- Queue reasons include repeat exposure, user feedback, open Action Item duplicate suppression, corporate event risk, quote quality, US mapping gaps, concentration, and insufficient alternatives. `qualityMeta.todayCandidates.queueDiagnostics` summarizes the policy without adding SQL or GET writes.
+- Active corporate-event risk stays `risk_review`; reviewed risk and open risk Action Items move to monitoring; `hide_7d` suppresses; `keep_observing` keeps monitoring context without forcing primary deck inclusion.
+- Score copy remains observation priority, not buy score. No buy/sell directive, no automatic trading/order/rebalancing, no forced candidate generation, and no watchlist auto-registration.
+
 ## EVO-042 US diagnostics consistency
 
 - Google Finance anchor 판단은 `anchorOk`, `sheetsAnchorOk`, `anchorMatched`, missing anchors, fallback-only, and legacy received counts를 정규화한 뒤 수행한다. `sheetsAnchorOk > 0` 또는 `anchorOk > 0`이면 과거 `receivedAnchorCount=0` 값이 남아 있어도 zero-anchor copy를 만들지 않는다.

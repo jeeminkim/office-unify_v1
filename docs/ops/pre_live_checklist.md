@@ -2,6 +2,14 @@
 
 배포·실사용 전에 아래를 순서에 맞게 확인합니다. 이 앱은 **관찰·복기·데이터 점검**용이며 **자동매매·자동 주문·자동 리밸런싱**은 없습니다.
 
+## EVO-047 Candidate Queue Quality
+
+- [ ] Today Candidate header reads as an observation/check queue, not a recommendation list.
+- [ ] Active corporate-event risk cards stay labeled `리스크 점검` and do not look like normal observation cards.
+- [ ] Repeated 7-day non-risk candidates move to monitoring or show `대체 후보 부족` when kept in the primary deck.
+- [ ] `mark_reviewed`, `hide_7d`, `keep_observing`, and open Action Item symbols change queue bucket/decisionTrace on the next Today Brief without adding GET writes.
+- [ ] `qualityMeta.todayCandidates.queueDiagnostics` is present, no SQL is required, and no buy/sell/auto trading copy is shown.
+
 ## EVO-039 Mobile Trust Repair
 
 - [ ] At a 390px viewport, mobile nav labels do not wrap one character per line and the hidden desktop top nav does not compete with bottom nav/More.

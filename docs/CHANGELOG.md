@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### 2026-06-01 EVO-047 Candidate Queue Quality
+
+- **Queue policy:** Today Candidate now carries additive `queueBucket`, `queueReasons`, `queueLabel`, and `queueDiagnostics` fields for observation, risk_review, data_check, monitoring, suppressed, reviewed, and insufficient_alternative buckets.
+- **Deck quality:** repeated 7-day non-risk exposure moves to monitoring unless alternatives are insufficient; active corporate-event risk stays risk_review; reviewed/hidden/keep-observing feedback and open Action Item symbols are applied before final primary deck display.
+- **Decision trace:** queue bucket, repeat exposure, feedback, data quality, insufficient alternatives, and open Action Item reasons are reflected in readable decision trace copy.
+- **Guardrails:** no SQL, no GET write, no Google Sheets repair/write, explicit save only, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ### 2026-05-31 EVO-046 Trust Repair
 
 - **Korean encoding guard:** `/action-items` user-facing labels, ActionItem tests, and Today Candidate display copy now render readable Korean and block mojibake from the checked paths.

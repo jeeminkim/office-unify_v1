@@ -5,6 +5,7 @@ import {
   getTradeJournalAnalytics,
   listFinancialGoalsForUser,
   listGoalAllocationsForUser,
+  listActionItemsForUser,
   listRealizedProfitEventsForUser,
   listWebPortfolioHoldingsForUser,
 } from '@office-unify/supabase-access';
@@ -52,6 +53,11 @@ import {
 } from '@/lib/server/todayCandidateRules';
 import { applyRepeatExposurePenaltiesToDeck } from '@/lib/server/todayCandidateScoring';
 import { enrichDeckWithDecisionTraces } from '@/lib/server/todayCandidateDecisionTrace';
+import {
+  applyQueuePolicyToCandidate,
+  classifyTodayCandidateQueue,
+  summarizeQueueDiagnostics,
+} from '@/lib/server/todayCandidateQueuePolicy';
 import { buildUsCandidateDiagnostics } from '@/lib/server/todayCandidateUsDiagnostics';
 import { isGoogleFinanceQuoteConfigured } from '@/lib/server/googleFinanceSheetQuoteService';
 import { runGoogleFinanceSetupCheck } from '@/lib/server/googleFinanceSetupCheck';
@@ -93,6 +99,32 @@ import {
 } from '@/lib/server/opsAggregateWarnings';
 import type { InvestorProfile } from '@office-unify/shared-types';
 import type { TodayBriefWithCandidatesResponse, TodayStockCandidate } from '@/lib/todayCandidatesContract';
+
+function queueSymbolKey(c: Pick<TodayStockCandidate, 'stockCode' | 'symbol'>): string | null {
+  const raw = (c.stockCode ?? c.symbol ?? '').trim();
+  if (!raw) return null;
+  return raw.replace(/^KR:/i, '').replace(/^US:/i, '').toUpperCase();
+}
+
+async function fetchOpenActionItemSymbolsForQueue(
+  supabase: NonNullable<ReturnType<typeof getServiceSupabase>>,
+  userKey: string,
+): Promise<Set<string>> {
+  try {
+    const [open, inProgress] = await Promise.all([
+      listActionItemsForUser(supabase, userKey, { status: 'open', limit: 200 }),
+      listActionItemsForUser(supabase, userKey, { status: 'in_progress', limit: 200 }),
+    ]);
+    const out = new Set<string>();
+    for (const row of [...open, ...inProgress]) {
+      const sym = typeof row.symbol === 'string' ? row.symbol.trim() : '';
+      if (sym) out.add(sym.replace(/^KR:/i, '').replace(/^US:/i, '').toUpperCase());
+    }
+    return out;
+  } catch {
+    return new Set<string>();
+  }
+}
 
 function withTodayCandidateDisplayMetrics(c: TodayStockCandidate): TodayStockCandidate {
   if (c.displayMetrics) return c;
@@ -433,19 +465,60 @@ export async function GET(req?: Request) {
     const feedbackApplied = applyTodayCandidateFeedbackToDeck(primaryCandidateDeck, feedbackByKey);
     primaryCandidateDeck = feedbackApplied.deck;
     const feedbackSuppressedTraces = feedbackApplied.suppressedTraces;
+    const openActionItemSymbols = await fetchOpenActionItemSymbolsForQueue(supabase, String(auth.userKey));
+    const queueMovedToDiagnostics: TodayStockCandidate[] = [];
+    let queuePrimarySuppressedCount = 0;
+    const insufficientAlternatives =
+      primaryCandidateDeck.length < 3 ||
+      composedDeck.qualityMeta.fallbackReason === 'insufficient_alternatives_after_repeat_exposure_filter';
+    primaryCandidateDeck = primaryCandidateDeck.flatMap((c) => {
+      const key = queueSymbolKey(c);
+      const policy = classifyTodayCandidateQueue({
+        candidate: c,
+        repeatStat: repeatByCandidateIdPool.get(c.candidateId),
+        openActionItemExists: key ? openActionItemSymbols.has(key) : false,
+        insufficientAlternatives,
+        usMappingEmpty:
+          c.source === 'us_market_morning' &&
+          todayCandidates.usMarketKrCandidates.length === 0 &&
+          todayCandidates.usMarketSummary.signals.length > 0,
+      });
+      const withPolicy = applyQueuePolicyToCandidate(c, policy);
+      if (policy.shouldIncludeInPrimaryDeck) return [withPolicy];
+      if (policy.shouldIncludeInMonitoring || policy.shouldIncludeInDiagnostics) {
+        queueMovedToDiagnostics.push({
+          ...withPolicy,
+          briefDeckSlot: withPolicy.briefDeckSlot === 'risk_review' ? 'risk_review' : withPolicy.briefDeckSlot,
+        });
+      } else {
+        queuePrimarySuppressedCount += 1;
+      }
+      return [];
+    });
     if (feedbackApplied.reviewedRiskCandidates.length > 0) {
       diagnosticCandidateCards = [
-        ...feedbackApplied.reviewedRiskCandidates.map((c) => ({
-          ...c,
-          displayMetrics: c.displayMetrics
-            ? {
-                ...c.displayMetrics,
-                candidateCardKind: 'risk_review' as const,
-              }
-            : c.displayMetrics,
-        })),
+        ...feedbackApplied.reviewedRiskCandidates.map((c) => {
+          const policy = classifyTodayCandidateQueue({
+            candidate: c,
+            repeatStat: repeatByCandidateIdPool.get(c.candidateId),
+            openActionItemExists: false,
+          });
+          const withPolicy = applyQueuePolicyToCandidate(c, policy);
+          return {
+            ...withPolicy,
+            displayMetrics: withPolicy.displayMetrics
+              ? {
+                  ...withPolicy.displayMetrics,
+                  candidateCardKind: 'risk_review' as const,
+                }
+              : withPolicy.displayMetrics,
+          };
+        }),
         ...diagnosticCandidateCards,
       ];
+    }
+    if (queueMovedToDiagnostics.length > 0) {
+      diagnosticCandidateCards = [...queueMovedToDiagnostics, ...diagnosticCandidateCards];
     }
     const feedbackSummaryEarly = buildTodayCandidateFeedbackSummary(
       [...primaryCandidateDeck, ...feedbackApplied.reviewedRiskCandidates],
@@ -923,6 +996,11 @@ export async function GET(req?: Request) {
         .length,
       corporateRiskGatedCount: primaryCandidateDeck.filter((c) => c.corporateActionRisk?.active).length,
     };
+    const queueDiagnostics = summarizeQueueDiagnostics(
+      primaryCandidateDeck,
+      diagnosticCandidateCards,
+      queuePrimarySuppressedCount,
+    );
 
     const personalizationBundle = await loadUserPersonalizationBundle(supabase, auth.userKey as string).catch(
       () => null,
@@ -990,6 +1068,7 @@ export async function GET(req?: Request) {
           sectorRadarSnapshot,
           recommendationCandidates,
           feedbackSummary: feedbackSummaryEarly,
+          queueDiagnostics,
           personalization: personalizationBundle?.summary,
         },
       },

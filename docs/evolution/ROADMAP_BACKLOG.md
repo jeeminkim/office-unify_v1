@@ -1,5 +1,11 @@
 # 로드맵 백로그 (scratchpad)
 
+## EVO-047 Candidate Queue Quality
+
+- Shipped candidate queue buckets for Today Candidate: observation, risk_review, data_check, monitoring, suppressed, reviewed, and insufficient_alternative.
+- Repeat exposure, feedback gates, open Action Item duplicate suppression, corporate risk, and data quality now feed queue labels and decisionTrace before final deck display.
+- No SQL, no GET write, no Google Sheets repair/write, no buy/sell directive, no forced candidate generation, and no automatic trading/order/rebalancing.
+
 날짜순 또는 우선순위순으로 유지한다. 상세는 `IDEA_TEMPLATE.md` 블록을 여기에 붙이거나 별도 파일로 두고 링크만 남긴다.
 
 ## Personal Investment OS Cohesion (2026-05-19 audit)

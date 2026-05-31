@@ -1302,6 +1302,11 @@ export function DashboardClient() {
                       <>{c.name} · {c.sector ?? "NO_DATA"}</>
                     )}
                   </p>
+                  {c.queueLabel ? (
+                    <p className="mt-1 w-fit rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-950">
+                      {c.queueLabel}
+                    </p>
+                  ) : null}
                   {isRiskReviewCandidateClient(c) ? (
                     <>
                       <p className="mt-1 w-fit rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-950">
@@ -1330,9 +1335,12 @@ export function DashboardClient() {
                     </>
                   )}
                   <p className="mt-1 text-[11px] text-slate-800">
-                    관찰 점수 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
+                    관찰 우선순위 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
                     {c.judgmentQuality ? <> · 판단 품질: {judgmentQualityLevelLabel(c.judgmentQuality.level)}</> : null}
                   </p>
+                  {c.queueActionHint ? (
+                    <p className="mt-0.5 text-[10px] leading-snug text-slate-700">{c.queueActionHint}</p>
+                  ) : null}
                   {c.displayMetrics?.candidateCardKind ? (
                     <p className="mt-0.5 text-[10px] text-slate-600">
                       유형: {candidateCardKindLabel(c.displayMetrics.candidateCardKind)} · 데이터 상태:{" "}
@@ -1378,7 +1386,7 @@ export function DashboardClient() {
                   ) : null}
                   {c.judgmentQuality ? (
                     <p className="mt-0.5 text-[10px] text-slate-600">
-                      관찰 점수와 별개로, 판단에 사용된 근거 충분성을 나타냅니다.
+                      관찰 우선순위와 별개로, 판단에 사용된 근거 충분성을 나타냅니다.
                       {c.judgmentQuality.level === "low" || c.judgmentQuality.level === "unknown"
                         ? " 데이터 일부가 부족해 판단 품질이 낮을 수 있습니다."
                         : null}
@@ -1616,12 +1624,17 @@ export function DashboardClient() {
             {(todayBrief?.diagnosticCandidateCards?.length ?? 0) > 0 ? (
               <details className="mt-2 rounded border border-slate-200 bg-slate-50/80 p-2">
                 <summary className="cursor-pointer select-none text-[10px] font-medium text-slate-800">
-                  미국 점검 카드 {todayBrief?.diagnosticCandidateCards?.length ?? 0}건 (요약은 위 카드 참고)
+                  점검·모니터링 카드 {todayBrief?.diagnosticCandidateCards?.length ?? 0}건
                 </summary>
                 <ul className="mt-2 grid gap-2 md:grid-cols-2">
                   {(todayBrief?.diagnosticCandidateCards ?? []).slice(0, 6).map((c) => (
                     <li key={c.candidateId} className="rounded border border-slate-200 bg-white p-2 text-[10px]">
                       <p className="font-medium">{c.name}</p>
+                      {c.queueLabel ? (
+                        <p className="mt-0.5 w-fit rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-800">
+                          {c.queueLabel}
+                        </p>
+                      ) : null}
                       {c.candidateAction === "reviewed_risk" || c.candidateAction === "risk_review_completed" ? (
                         <p className="mt-0.5 w-fit rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-900">
                           점검 완료 · 관찰 모니터링
@@ -1828,8 +1841,8 @@ export function DashboardClient() {
                     <p className="text-xs font-medium text-slate-900">{c.name} · {c.sector ?? "NO_DATA"}</p>
                     <p className="mt-0.5 text-[11px] text-slate-700">
                       {c.displayMetrics
-                        ? <>관찰 점수 {c.displayMetrics.observationScore}/100 · 신뢰도 {c.displayMetrics.confidenceLabel}</>
-                        : <>내부 정렬 점수 {c.score} (표시용 관찰 점수는 상단 덱 참고)</>}
+                        ? <>관찰 우선순위 {c.displayMetrics.observationScore}/100 · 신뢰도 {c.displayMetrics.confidenceLabel}</>
+                        : <>내부 정렬 점수 {c.score} (표시용 관찰 우선순위는 상단 덱 참고)</>}
                     </p>
                     <p className="mt-1 text-[11px] text-slate-700">{c.reasonSummary}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
@@ -1874,7 +1887,7 @@ export function DashboardClient() {
                   <li key={c.candidateId} className="rounded border border-violet-100 p-2">
                     <p className="text-xs font-medium text-slate-900">{c.name} · {c.sector ?? "NO_DATA"}</p>
                     <p className="mt-0.5 text-[11px] text-slate-700">
-                      관찰 점수 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
+                      관찰 우선순위 {c.displayMetrics?.observationScore ?? c.score}/100 · 신뢰도 {c.displayMetrics?.confidenceLabel ?? "—"}
                     </p>
                     <p className="mt-1 text-[11px] text-slate-700">{c.reasonSummary}</p>
                     <div className="mt-1 flex flex-wrap gap-1">
@@ -1914,7 +1927,7 @@ export function DashboardClient() {
           <div className="mt-3 rounded border border-violet-200 bg-violet-50 p-3 text-xs">
             <p className="font-semibold text-violet-950">선정 사유</p>
             <p className="mt-1 text-[11px] text-violet-900">
-              관찰 점수는 매수 추천이 아니라 후보 정렬용 판단 보조 지표입니다. 오늘 확인할 맥락을 정리한 것입니다.
+              관찰 우선순위는 매수 추천이 아니라 후보 정렬용 판단 보조 지표입니다. 오늘 확인할 맥락을 정리한 것입니다.
             </p>
             <ul className="mt-1 list-inside list-disc space-y-1 text-violet-950">
               {(allTodayCandidates.find((c) => c.candidateId === openedCandidateId)?.reasonDetails ?? []).map((d, i) => <li key={`${openedCandidateId}-${i}`}>{d}</li>)}
