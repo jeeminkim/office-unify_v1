@@ -82,3 +82,10 @@ npm run google-finance-repair --workspace=apps/web -- --confirm --wait
 - The minimum US anchor universe includes SPY, QQQ, DIA, IWM, SMH, SOXX, XLK, XLF, XLE, XLI, XLY, AAPL, MSFT, NVDA, TSLA, and NFLX.
 - After repair, check `/ops/google-finance-setup`, refresh quotes, rerun Today Brief, and inspect `qualityMeta.todayCandidates.usCandidateDiagnostics.gatingReason`.
 - This flow is unrelated to automatic trading, automatic orders, or automatic rebalancing.
+
+## EVO-048 quote usability diagnostics
+
+- Anchor OK does not guarantee all portfolio/watchlist quote rows are usable. Check `/api/portfolio/quotes/status` for `quoteDiagnostics.quoteUsabilityStatus`, failed symbols, formula pending rows, invalid KR symbols, and missing `google_ticker`.
+- KR ticker diagnostics are read-only: 6-digit KOSPI uses `KRX:xxxxxx`, KOSDAQ uses `KOSDAQ:xxxxxx`, and malformed symbols such as `0123G0` are reported as `invalid_symbol`.
+- `/api/portfolio/quotes/refresh` is the explicit refresh POST path. It returns requestId and lifecycle steps; formula pending means wait 30-60 seconds and recheck status rather than repeating repair.
+- Confirmed repair/write remains limited to existing confirm paths. No SQL, no GET write, no automatic trading/order/rebalancing, and no forced candidate generation.

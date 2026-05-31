@@ -10,6 +10,11 @@ import {
   PORTFOLIO_QUOTES_FX_PRICE_RESULT_FORMULA_EXPECTED,
   readGoogleFinanceQuoteSheetRows,
 } from '@/lib/server/googleFinanceSheetQuoteService';
+import {
+  buildPortfolioQuoteReadbackDiagnostics,
+  normalizeKoreanGoogleTicker,
+  normalizeUsGoogleTicker,
+} from '@/lib/server/quotePipelineDiagnostics';
 import { logOpsEvent } from '@/lib/server/opsEventLogger';
 
 export async function GET() {
@@ -60,6 +65,7 @@ export async function GET() {
         parseFailedRows: 0,
         tickerMismatchRows: 0,
       },
+      quoteDiagnostics: buildPortfolioQuoteReadbackDiagnostics({ holdings, rows: [] }),
       warnings: ['googlefinance_not_configured'],
     });
   }
@@ -76,12 +82,17 @@ export async function GET() {
         quoteSymbol: holding.quote_symbol ?? undefined,
         googleTicker: holding.google_ticker ?? undefined,
       })[0] ?? holding.symbol.toUpperCase();
+      const mappingDiagnosis =
+        holding.market === 'KR'
+          ? normalizeKoreanGoogleTicker(holding.symbol, holding.market)
+          : normalizeUsGoogleTicker(holding.symbol);
       return {
         market: holding.market,
         symbol: holding.market === 'KR' ? holding.symbol.toUpperCase().padStart(6, '0') : holding.symbol.toUpperCase(),
         name: holding.name,
         googleTicker,
         quoteSymbol: holding.quote_symbol ?? undefined,
+        mappingDiagnosis,
         priceFormulaText: row?.priceFormulaText,
         currencyFormulaText: row?.currencyFormulaText,
         tradetimeFormulaText: row?.tradetimeFormulaText,
@@ -95,7 +106,26 @@ export async function GET() {
         rawDelay: row?.rawDelay,
         delayMinutes: row?.datadelay,
         rowStatus: row?.rowStatus ?? 'missing_row',
-        message: row?.message ?? 'portfolio_quotes 행 없음',
+        message: row?.message ?? 'portfolio_quotes 시트에서 해당 종목 행을 찾지 못했습니다.',
+      };
+    });
+    const quoteDiagnostics = buildPortfolioQuoteReadbackDiagnostics({ holdings, rows: data.rows });
+    const rowsWithReasons = rows.map((row) => {
+      const failedReasons = quoteDiagnostics.failedReasonsBySymbol[normalizeQuoteKey(row.market, row.symbol)];
+      return {
+        ...row,
+        failedReasons,
+        message:
+          row.message ||
+          (failedReasons?.includes('missing_google_ticker')
+            ? 'google_ticker가 없어 portfolio_quotes 행을 안정적으로 만들 수 없습니다.'
+            : failedReasons?.includes('invalid_symbol')
+              ? '종목 코드 형식이 올바르지 않습니다.'
+              : failedReasons?.includes('formula_pending')
+                ? 'Google Finance 계산 대기 상태입니다.'
+                : failedReasons?.includes('quote_quality_low')
+                  ? '시세 품질이 낮아 확인이 필요합니다.'
+                  : undefined),
       };
     });
     const okRows = rows.filter((row) => row.rowStatus === 'ok').length;
@@ -147,14 +177,21 @@ export async function GET() {
         expectedPriceResultFormula: PORTFOLIO_QUOTES_FX_PRICE_RESULT_FORMULA_EXPECTED,
         candidates: ['CURRENCY:USDKRW', 'USDKRW', '"CURRENCY:USDKRW"'],
       },
-      rows,
+      rows: rowsWithReasons,
       summary: {
         totalRows: rows.length,
         okRows,
         emptyRows,
         parseFailedRows,
         tickerMismatchRows,
+        rowsWithPrice: quoteDiagnostics.rowsWithPrice,
+        rowsFormulaPending: quoteDiagnostics.rowsFormulaPending,
+        rowsInvalidTicker: quoteDiagnostics.rowsInvalidTicker,
+        rowsMissingGoogleTicker: quoteDiagnostics.rowsMissingGoogleTicker,
+        rowsMissingPrice: quoteDiagnostics.rowsMissingPrice,
+        quoteUsabilityStatus: quoteDiagnostics.quoteUsabilityStatus,
       },
+      quoteDiagnostics,
       warnings: [
         ...(rows.some((row) => row.rowStatus === 'formula_pending') ? ['googlefinance_formula_pending'] : []),
         ...(rows.some((row) => row.rowStatus === 'missing_row') ? ['googlefinance_missing_rows'] : []),
@@ -176,4 +213,3 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
-

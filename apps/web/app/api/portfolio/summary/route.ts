@@ -62,6 +62,10 @@ type EnhancedPortfolioSummaryResponse = {
     quoteFallbackUsed?: boolean;
     readBackSucceeded?: boolean;
     refreshRequested?: boolean;
+    quoteCoverageRatio?: number;
+    missingQuoteCount?: number;
+    invalidTickerCount?: number;
+    summaryDegradedReason?: 'quote_coverage_partial' | 'quote_coverage_failed' | 'invalid_ticker' | 'none';
     /** 수량·평단 미입력 등으로 평가·비중 집계에서 제외된 보유 행 수 */
     incompleteHoldingCount?: number;
   };
@@ -196,6 +200,20 @@ export async function GET(req: Request) {
         thesisConfidence: thesis.confidence,
       };
     });
+    const quotedHoldingCount = topPositionsRaw.filter((row) => row.currentPrice != null && Number.isFinite(row.currentPrice)).length;
+    const quoteCoverageRatio = valuationHoldings.length > 0 ? quotedHoldingCount / valuationHoldings.length : 1;
+    const missingQuoteCount = Math.max(0, valuationHoldings.length - quotedHoldingCount);
+    const invalidTickerCount = valuationHoldings.filter(
+      (row) => row.market === 'KR' && !/^\d{6}$/.test(row.symbol.trim().toUpperCase()),
+    ).length;
+    const summaryDegradedReason =
+      invalidTickerCount > 0
+        ? 'invalid_ticker'
+        : quoteCoverageRatio === 0 && valuationHoldings.length > 0
+          ? 'quote_coverage_failed'
+          : quoteCoverageRatio < 0.5
+            ? 'quote_coverage_partial'
+            : 'none';
     const hasAnyCost = topPositionsRaw.some((row) => row.totalCostKrw != null);
     const totalCostKrw = hasAnyCost
       ? topPositionsRaw.reduce((acc, row) => acc + (row.totalCostKrw ?? 0), 0)
@@ -204,11 +222,16 @@ export async function GET(req: Request) {
     const totalValueKrw = hasAnyValuation
       ? topPositionsRaw.reduce((acc, row) => acc + (row.valueKrw ?? 0), 0)
       : undefined;
-    const totalPnlKrw = totalValueKrw != null && totalCostKrw != null ? totalValueKrw - totalCostKrw : undefined;
-    const totalPnlRate =
-      totalValueKrw != null && totalCostKrw != null && totalCostKrw > 0 && totalPnlKrw != null
-        ? (totalPnlKrw / totalCostKrw) * 100
+    const totalPnlKrwRaw = totalValueKrw != null && totalCostKrw != null ? totalValueKrw - totalCostKrw : undefined;
+    const totalPnlRateRaw =
+      totalValueKrw != null && totalCostKrw != null && totalCostKrw > 0 && totalPnlKrwRaw != null
+        ? (totalPnlKrwRaw / totalCostKrw) * 100
         : undefined;
+    const suppressMisleadingPnl =
+      summaryDegradedReason !== 'none' &&
+      (totalPnlRateRaw == null || totalPnlRateRaw <= -95 || quoteCoverageRatio < 0.5);
+    const totalPnlKrw = suppressMisleadingPnl ? undefined : totalPnlKrwRaw;
+    const totalPnlRate = suppressMisleadingPnl ? undefined : totalPnlRateRaw;
     const weightBaseKrw = hasAnyValuation
       ? totalValueKrw
       : hasAnyCost
@@ -252,12 +275,22 @@ export async function GET(req: Request) {
       warnings.push({
         code: 'quote_unavailable',
         severity: 'warn',
-        message: '시세 조회 실패로 평가손익을 계산하지 않았습니다.',
+        message: '시세 확인이 필요해 평가손익을 안전하게 표시하지 않습니다.',
       });
       warnings.push({
         code: 'weight_fallback_cost_basis',
         severity: 'info',
         message: '현재 비중은 매입금액 기준입니다.',
+      });
+    }
+    if (summaryDegradedReason !== 'none') {
+      warnings.push({
+        code: summaryDegradedReason,
+        severity: 'warn',
+        message:
+          summaryDegradedReason === 'invalid_ticker'
+            ? '숫자 6자리가 아닌 국내 종목 코드가 있어 ticker mapping 확인이 필요합니다.'
+            : '시세 coverage가 낮아 총 수익률은 “시세 확인 필요” 상태로 처리합니다.',
       });
     }
     if (quoteWarnings.includes('usdkrw_rate_unavailable') && holdings.some((row) => row.market === 'US')) {
@@ -349,6 +382,10 @@ export async function GET(req: Request) {
         quoteFallbackUsed: quoteBundle.providerMeta.quoteFallbackUsed,
         readBackSucceeded: quoteBundle.providerMeta.readBackSucceeded,
         refreshRequested: quoteBundle.providerMeta.refreshRequested,
+        quoteCoverageRatio,
+        missingQuoteCount,
+        invalidTickerCount,
+        summaryDegradedReason,
         incompleteHoldingCount,
       },
     };

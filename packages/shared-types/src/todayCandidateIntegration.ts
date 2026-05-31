@@ -41,6 +41,13 @@ export type UsCandidateDiagnostics = {
   googleFinanceAnchorSummary?: import('./googleFinanceSetup').GoogleFinanceAnchorSummaryForGating;
   /** additive: US degraded 원인 구분 */
   gatingReason?: import('./googleFinanceSetup').UsCandidateGoogleFinanceGatingReason;
+  /** additive: EVO-048 separates anchor setup from actual quote usability */
+  googleFinanceAnchorOk?: boolean;
+  actualUsQuoteRowsOk?: number;
+  actualKrQuoteRowsOk?: number;
+  quoteUsabilityStatus?: 'ok' | 'partial' | 'failed' | 'formula_pending' | 'mapping_required' | 'cache_stale';
+  suppressReasons?: string[];
+  nextFix?: Array<'ticker_mapping' | 'quote_refresh' | 'watchlist_theme_mapping' | 'sector_radar_mapping' | 'candidate_queue_policy'>;
 };
 
 export type UsCandidateSetupRootCause =

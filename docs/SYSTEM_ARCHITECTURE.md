@@ -1,5 +1,12 @@
 # System Architecture (Personal Investment Console)
 
+## EVO-048 Quote Pipeline
+
+- Google Finance pipeline is tracked as: Sheets `portfolio_quotes` read-back -> app quote diagnostics/cache -> portfolio summary guard -> Today Brief US diagnostics and candidate queue.
+- `/api/portfolio/quotes/status` is read-only and returns additive quote usability diagnostics. `/api/portfolio/quotes/refresh` is the explicit refresh POST path and returns requestId/lifecycle/formula-pending guidance.
+- Ticker mapping diagnostics are read-only; KR malformed symbols are invalid, KOSPI/KOSDAQ prefixes are surfaced for user confirmation, and US anchors use registry aliases.
+- Portfolio summary suppresses misleading P&L display when quote coverage is low. No SQL, no GET write, no repair/write outside confirmed paths, no forced candidates, and no automatic trading/order/rebalancing.
+
 ## EVO-047 Candidate Queue Quality
 
 - `todayCandidateQueuePolicy` is a pure server policy layer between scoring/feedback/repeat exposure and final Today Brief deck display. It adds queueBucket/queueReasons/queueLabel/queueActionHint without deleting existing fields.

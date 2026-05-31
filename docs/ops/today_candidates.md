@@ -15,6 +15,13 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 - Active corporate-event risk stays `risk_review`; reviewed risk and open risk Action Items move to monitoring; `hide_7d` suppresses; `keep_observing` keeps monitoring context without forcing primary deck inclusion.
 - Score copy remains observation priority, not buy score. No buy/sell directive, no automatic trading/order/rebalancing, no forced candidate generation, and no watchlist auto-registration.
 
+## EVO-048 Quote usability and US candidate refresh
+
+- US candidate absence is no longer treated as only a Google Finance setup issue. `usCandidateDiagnostics` separates `googleFinanceAnchorOk` from actual US/KR quote rows, `quoteUsabilityStatus`, suppress reasons, and next fixes.
+- If anchor is OK but candidates are still absent, check ticker mapping, quote refresh/read-back, Watchlist sector/theme, Sector Radar mapping, and candidate queue policy before considering repair.
+- Quote refresh/status remain explicit: GET status is read-only, POST refresh is the existing user-triggered path, and repair/write stays on confirmed repair/apply paths only.
+- No forced US candidate generation, no buy/sell directive, and no automatic trading/order/rebalancing.
+
 ## EVO-042 US diagnostics consistency
 
 - Google Finance anchor 판단은 `anchorOk`, `sheetsAnchorOk`, `anchorMatched`, missing anchors, fallback-only, and legacy received counts를 정규화한 뒤 수행한다. `sheetsAnchorOk > 0` 또는 `anchorOk > 0`이면 과거 `receivedAnchorCount=0` 값이 남아 있어도 zero-anchor copy를 만들지 않는다.

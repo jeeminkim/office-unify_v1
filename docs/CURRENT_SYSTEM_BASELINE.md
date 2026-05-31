@@ -1,5 +1,12 @@
 # Current System Baseline
 
+## EVO-048 Google Finance Quote Pipeline Reliability
+
+- Google Finance anchor OK and actual portfolio quote usability are separate. `/api/portfolio/quotes/status` reports `quoteDiagnostics` with failed symbols, failed reasons, formula pending, invalid KR ticker, missing `google_ticker`, domestic/US row OK counts, and `quoteUsabilityStatus`.
+- Quote refresh is an explicit POST path and returns requestId plus lifecycle steps (`requested`, `sheets_recalculation_wait`, `readback_*`, `cache_*`). GET status remains read-only.
+- Portfolio summary guards misleading P&L displays when quote coverage is too low, showing “시세 확인 필요” or “데이터 확인 필요” instead of false -99.99-style totals.
+- Today Brief US diagnostics separate `googleFinanceAnchorOk` from actual US/KR quote rows, quote usability, suppress reasons, and next fixes such as ticker mapping, quote refresh, mapping registry, or queue policy. No SQL, no GET write, no forced candidate generation, and no automatic trading/order/rebalancing.
+
 ## EVO-047 Candidate Queue Quality
 
 - Today Candidate is operated as an observation/check queue with additive buckets: observation, risk_review, data_check, monitoring, suppressed, reviewed, and insufficient_alternative.

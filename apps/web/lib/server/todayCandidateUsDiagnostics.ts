@@ -253,6 +253,23 @@ export function buildUsCandidateDiagnostics(input: {
       maxUsCandidateTarget: 1,
     },
     actionHint,
+    googleFinanceAnchorOk: normalizedAnchor.isAnchorOk,
+    actualUsQuoteRowsOk: quoteOk,
+    actualKrQuoteRowsOk: input.pool.filter((c) => c.country === 'KR' && c.dataQuality?.quoteReady !== false).length,
+    quoteUsabilityStatus:
+      quoteMissing > 0 && quoteOk === 0
+        ? 'failed'
+        : quoteMissing > 0
+          ? 'partial'
+          : 'ok',
+    suppressReasons: topSuppressReasons,
+    nextFix: [
+      ...(quoteMissing > 0 ? (['quote_refresh', 'ticker_mapping'] as const) : []),
+      ...(effectiveGatingReason === 'us_signal_mapping_empty'
+        ? (['watchlist_theme_mapping', 'sector_radar_mapping'] as const)
+        : []),
+      ...(suppressedUs > 0 ? (['candidate_queue_policy'] as const) : []),
+    ],
     googleFinanceAnchorSummary: input.googleFinanceAnchorSummary
       ? { ...input.googleFinanceAnchorSummary, gatingReason: effectiveGatingReason }
       : effectiveGatingReason
@@ -272,12 +289,12 @@ export function buildUsCandidateDiagnostics(input: {
     effectiveGatingReason === 'gating_not_connected'
   ) {
     base.actionHint =
-      'Google Finance read-back은 확인됐지만 Today Candidate gating이 최신 상태를 사용하지 못하고 있을 수 있습니다. 시세 refresh 후 Today Brief를 다시 실행하세요.';
+      'Google Finance anchor는 정상입니다. Today Candidate에는 실제 종목 quote quality, mapping, queue policy가 추가로 반영됩니다. 시세 상태 확인 후 Today Brief를 다시 실행하세요.';
   }
 
   if (normalizedAnchor.isAnchorOk && effectiveGatingReason === 'us_signal_mapping_empty') {
     base.actionHint =
-      'Google Finance anchor는 정상입니다. 미국 후보 풀은 있으나 한국/관심 후보로 연결되지 않았습니다. US→KR 테마 매핑과 관심종목 sector/theme 태그를 점검하세요.';
+      'Google Finance anchor는 정상입니다. 미국 신호가 국내/관심 후보로 연결되지 않았으므로 US→KR theme mapping, Watchlist sector/theme, quote quality를 확인하세요.';
   }
 
   if (status !== 'ok' || (!normalizedAnchor.isAnchorOk && anchorOk < anchorRequested)) {

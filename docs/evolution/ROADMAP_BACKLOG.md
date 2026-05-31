@@ -1,5 +1,10 @@
 # 로드맵 백로그 (scratchpad)
 
+## EVO-048 Google Finance Quote Pipeline Reliability
+
+- Completed reliability pass for quote usability diagnostics, KR/US ticker mapping diagnosis, refresh lifecycle copy, portfolio summary P&L guard, and US candidate suppression diagnostics.
+- Follow-up only if needed: richer market inference for ambiguous KR tickers, but no SQL/write was added in this round.
+
 ## EVO-047 Candidate Queue Quality
 
 - Shipped candidate queue buckets for Today Candidate: observation, risk_review, data_check, monitoring, suppressed, reviewed, and insufficient_alternative.

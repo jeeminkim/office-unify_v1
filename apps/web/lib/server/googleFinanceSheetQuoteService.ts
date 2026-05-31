@@ -8,6 +8,7 @@ import {
   parseGoogleFinanceSheetNumber,
   type FxReadbackStatus,
 } from '@/lib/server/quoteReadbackUtils';
+import { normalizeKoreanGoogleTicker, normalizeUsGoogleTicker } from '@/lib/server/quotePipelineDiagnostics';
 
 type HoldingInput = {
   market: string;
@@ -80,13 +81,18 @@ export function buildGoogleFinanceTickerCandidates(input: HoldingInput): string[
   if (input.googleTicker?.trim()) candidates.add(input.googleTicker.trim().toUpperCase());
   if (input.quoteSymbol?.trim()) candidates.add(input.quoteSymbol.trim().toUpperCase());
   if (market === 'KR') {
-    const pad = symbol.padStart(6, '0');
-    candidates.add(`KRX:${symbol}`);
-    candidates.add(`KRX:${pad}`);
-    candidates.add(`KOSDAQ:${pad}`);
-    candidates.add(`KOSPI:${pad}`);
+    const normalized = normalizeKoreanGoogleTicker(symbol, market);
+    if (normalized.googleTicker) candidates.add(normalized.googleTicker);
+    if (normalized.quoteSymbol) candidates.add(normalized.quoteSymbol);
+    const pad = symbol.replace(/\D/g, '').padStart(6, '0');
+    if (/^\d{6}$/.test(pad)) {
+      candidates.add(`KRX:${pad}`);
+      candidates.add(`KOSDAQ:${pad}`);
+    }
     candidates.add(symbol);
   } else {
+    const normalized = normalizeUsGoogleTicker(symbol);
+    if (normalized.googleTicker) candidates.add(normalized.googleTicker);
     candidates.add(symbol);
   }
   return Array.from(candidates);

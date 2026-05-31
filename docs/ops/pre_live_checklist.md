@@ -2,6 +2,14 @@
 
 배포·실사용 전에 아래를 순서에 맞게 확인합니다. 이 앱은 **관찰·복기·데이터 점검**용이며 **자동매매·자동 주문·자동 리밸런싱**은 없습니다.
 
+## EVO-048 Google Finance quote pipeline
+
+- [ ] `/api/portfolio/quotes/status` shows `quoteDiagnostics.quoteUsabilityStatus`, failed symbols, and failed reasons without writing data.
+- [ ] `/api/portfolio/quotes/refresh` returns requestId and lifecycle; formula pending copy tells the user to recheck after 30-60 seconds.
+- [ ] Portfolio summary does not show misleading -99.99-style total return when quote coverage is partial/failed; it shows “시세 확인 필요” or “데이터 확인 필요”.
+- [ ] Today Brief US diagnostics distinguish anchor OK from actual quote quality, mapping, and queue suppression. No forced US candidate generation.
+- [ ] No SQL, no GET write, no Google Sheets repair/write except existing confirmed paths, no automatic trading/order/rebalancing.
+
 ## EVO-047 Candidate Queue Quality
 
 - [ ] Today Candidate header reads as an observation/check queue, not a recommendation list.

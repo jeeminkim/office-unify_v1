@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### 2026-06-01 EVO-048 Google Finance Quote Pipeline Reliability
+
+- **Quote usability diagnostics:** `/api/portfolio/quotes/status` now separates Google Finance anchor readiness from actual portfolio quote usability, including failed symbols, per-symbol reasons, formula pending, invalid ticker, missing `google_ticker`, and partial read-back counts.
+- **Ticker mapping:** added read-only KR/US ticker normalization diagnostics (`KRX`, `KOSDAQ`, `NYSEARCA`, `NASDAQ`) so invalid symbols such as non-6-digit KR codes are reported as mapping issues, not silently treated as quote failures.
+- **Refresh lifecycle:** quote refresh responses include requestId, lifecycle steps, read-back status, and formula-pending guidance instead of immediately implying success.
+- **Portfolio guard:** low quote coverage suppresses misleading total P&L/rate displays and surfaces “시세 확인 필요”/“데이터 확인 필요” copy.
+- **US diagnostics:** Today Brief US diagnostics now separates anchor OK from actual quote quality, mapping, and queue suppression next fixes.
+- **Guardrails:** no SQL, no GET write, no Google Sheets repair/write outside the existing confirmed refresh/repair paths, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ### 2026-06-01 EVO-047 Candidate Queue Quality
 
 - **Queue policy:** Today Candidate now carries additive `queueBucket`, `queueReasons`, `queueLabel`, and `queueDiagnostics` fields for observation, risk_review, data_check, monitoring, suppressed, reviewed, and insufficient_alternative buckets.

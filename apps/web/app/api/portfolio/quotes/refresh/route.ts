@@ -5,8 +5,13 @@ import { listWebPortfolioHoldingsForUser } from '@office-unify/supabase-access';
 import { normalizeSheetsApiError } from '@/lib/server/google-sheets-api';
 import {
   isGoogleFinanceQuoteConfigured,
+  readGoogleFinanceQuoteSheetRows,
   syncGoogleFinanceQuoteSheetRows,
 } from '@/lib/server/googleFinanceSheetQuoteService';
+import {
+  buildPortfolioQuoteReadbackDiagnostics,
+  refreshLifecycleFromDiagnostics,
+} from '@/lib/server/quotePipelineDiagnostics';
 import { logOpsEvent } from '@/lib/server/opsEventLogger';
 
 export async function POST() {
@@ -26,6 +31,7 @@ export async function POST() {
     );
   }
   try {
+    const requestId = `quote_refresh_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     const holdings = await listWebPortfolioHoldingsForUser(supabase, auth.userKey);
     const holdingsTotal = holdings.length;
     const holdingsWithGoogleTicker = holdings.filter((h) => Boolean(h.google_ticker?.trim())).length;
@@ -43,16 +49,39 @@ export async function POST() {
       })),
     );
     const refreshedCount = Math.max(0, holdings.length - missingTickerSymbols.length);
+    let quoteDiagnostics:
+      | ReturnType<typeof buildPortfolioQuoteReadbackDiagnostics>
+      | undefined;
+    try {
+      const readback = await readGoogleFinanceQuoteSheetRows();
+      quoteDiagnostics = buildPortfolioQuoteReadbackDiagnostics({ holdings, rows: readback.rows });
+    } catch {
+      quoteDiagnostics = undefined;
+    }
+    const lifecycle = refreshLifecycleFromDiagnostics({ refreshedCount, diagnostics: quoteDiagnostics });
+    const hasFormulaPending = Boolean(quoteDiagnostics && quoteDiagnostics.rowsFormulaPending > 0);
     return NextResponse.json({
       ok: true,
+      requestId,
       refreshRequested: true,
+      lifecycle,
+      refreshStatus: hasFormulaPending
+        ? 'sheets_recalculation_wait'
+        : quoteDiagnostics?.quoteUsabilityStatus === 'ok'
+          ? 'readback_ok'
+          : quoteDiagnostics
+            ? 'readback_partial'
+            : 'readback_started',
       holdingsTotal,
       holdingsWithGoogleTicker,
       holdingsMissingGoogleTicker,
       refreshedCount,
       missingTickerSymbols,
+      quoteDiagnostics,
       fxRefreshIncluded: true,
-      message: 'Google Sheets 시세 수식을 갱신했습니다. 30~90초 뒤 다시 조회하세요.',
+      message: hasFormulaPending
+        ? '시세 새로고침을 요청했습니다. Google Finance 계산 대기 중일 수 있으니 30~60초 뒤 상태를 다시 확인하세요.'
+        : 'Google Sheets 시세 수식 갱신을 요청했습니다. 상태 확인으로 read-back 결과를 확인하세요.',
       nextRecommendedPollSeconds: 60,
     });
   } catch (e: unknown) {
@@ -79,7 +108,9 @@ export async function POST() {
     return NextResponse.json(
       {
         ok: false,
+        requestId: `quote_refresh_failed_${Date.now().toString(36)}`,
         refreshRequested: false,
+        lifecycle: [{ step: 'failed', status: 'failed', message: actionHint }],
         warningCode: normalized.code,
         message: actionHint,
         warning: actionHint,
@@ -90,4 +121,3 @@ export async function POST() {
     );
   }
 }
-

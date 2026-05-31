@@ -47,6 +47,10 @@ type SummaryResponse = {
     quoteFallbackUsed?: boolean;
     readBackSucceeded?: boolean;
     refreshRequested?: boolean;
+    quoteCoverageRatio?: number;
+    missingQuoteCount?: number;
+    invalidTickerCount?: number;
+    summaryDegradedReason?: "quote_coverage_partial" | "quote_coverage_failed" | "invalid_ticker" | "none";
   };
 };
 
@@ -156,8 +160,27 @@ export function PortfolioDashboardClient() {
       parsedPrice?: number;
       rowStatus: string;
       message?: string;
+      failedReasons?: string[];
     }>;
-    summary?: { totalRows: number; okRows: number; emptyRows: number; parseFailedRows: number; tickerMismatchRows: number };
+    summary?: {
+      totalRows: number;
+      okRows: number;
+      emptyRows: number;
+      parseFailedRows: number;
+      tickerMismatchRows: number;
+      rowsWithPrice?: number;
+      rowsFormulaPending?: number;
+      rowsInvalidTicker?: number;
+      rowsMissingGoogleTicker?: number;
+      rowsMissingPrice?: number;
+      quoteUsabilityStatus?: string;
+    };
+    quoteDiagnostics?: {
+      failedSymbols?: string[];
+      failedReasonsBySymbol?: Record<string, string[]>;
+      quoteUsabilityStatus?: string;
+      actionHint?: string;
+    };
     warnings?: string[];
     fx?: {
       ticker?: string;
@@ -239,6 +262,9 @@ export function PortfolioDashboardClient() {
         holdingsWithGoogleTicker?: number;
         holdingsMissingGoogleTicker?: number;
         refreshedCount?: number;
+        requestId?: string;
+        refreshStatus?: string;
+        lifecycle?: Array<{ step: string; status: string; message: string }>;
       };
       if (!refresh.ok) throw new Error(r.error ?? `HTTP ${refresh.status}`);
       if (r.ok === false) {
@@ -248,6 +274,8 @@ export function PortfolioDashboardClient() {
       setQuoteRefreshRequested(true);
       let msg =
         r.message ?? "Google Sheets 계산 반영까지 시간이 걸릴 수 있습니다. 1분 뒤 다시 조회하세요.";
+      if (r.requestId) msg += ` requestId: ${r.requestId}.`;
+      if (r.refreshStatus) msg += ` 상태: ${r.refreshStatus}.`;
       if (r.holdingsTotal != null && r.holdingsWithGoogleTicker === 0) {
         msg +=
           " DB에 google_ticker가 없어 portfolio_quotes 행을 만들 수 없습니다. ticker 적용 후 다시 시세 새로고침하세요.";
@@ -279,8 +307,27 @@ export function PortfolioDashboardClient() {
           parsedPrice?: number;
           rowStatus: string;
           message?: string;
+          failedReasons?: string[];
         }>;
-        summary?: { totalRows: number; okRows: number; emptyRows: number; parseFailedRows: number; tickerMismatchRows: number };
+        summary?: {
+          totalRows: number;
+          okRows: number;
+          emptyRows: number;
+          parseFailedRows: number;
+          tickerMismatchRows: number;
+          rowsWithPrice?: number;
+          rowsFormulaPending?: number;
+          rowsInvalidTicker?: number;
+          rowsMissingGoogleTicker?: number;
+          rowsMissingPrice?: number;
+          quoteUsabilityStatus?: string;
+        };
+        quoteDiagnostics?: {
+          failedSymbols?: string[];
+          failedReasonsBySymbol?: Record<string, string[]>;
+          quoteUsabilityStatus?: string;
+          actionHint?: string;
+        };
         warnings?: string[];
         fx?: {
           ticker?: string;
@@ -521,6 +568,9 @@ export function PortfolioDashboardClient() {
     );
     return { tickerSavedButMissingRow };
   }, [quoteStatus]);
+  const summaryNeedsQuoteCheck = Boolean(
+    summary?.dataQuality.summaryDegradedReason && summary.dataQuality.summaryDegradedReason !== "none",
+  );
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-slate-900">
@@ -690,6 +740,16 @@ export function PortfolioDashboardClient() {
           <p className="mt-1 text-slate-600">
             total {quoteStatus.summary?.totalRows ?? 0} · ok {quoteStatus.summary?.okRows ?? 0} · empty {quoteStatus.summary?.emptyRows ?? 0} · parse_failed {quoteStatus.summary?.parseFailedRows ?? 0} · ticker_mismatch {quoteStatus.summary?.tickerMismatchRows ?? 0}
           </p>
+          <p className="mt-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700">
+            quote usable: <span className="font-semibold">{quoteStatus.summary?.quoteUsabilityStatus ?? quoteStatus.quoteDiagnostics?.quoteUsabilityStatus ?? "unknown"}</span>
+            {" "}· price rows {quoteStatus.summary?.rowsWithPrice ?? quoteStatus.summary?.okRows ?? 0}
+            {" "}· formula pending {quoteStatus.summary?.rowsFormulaPending ?? 0}
+            {" "}· missing google_ticker {quoteStatus.summary?.rowsMissingGoogleTicker ?? 0}
+            {" "}· invalid ticker {quoteStatus.summary?.rowsInvalidTicker ?? 0}
+          </p>
+          {quoteStatus.quoteDiagnostics?.actionHint ? (
+            <p className="mt-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-blue-950">{quoteStatus.quoteDiagnostics.actionHint}</p>
+          ) : null}
           <p className="mt-1 text-slate-600">
             FX {quoteStatus.fx?.ticker ?? "CURRENCY:USDKRW"} · status {quoteStatus.fx?.status ?? "missing"} · raw {quoteStatus.fx?.rawPrice ?? "-"} · parsed{" "}
             {quoteStatus.fx?.parsedPrice == null ? "NO_DATA" : fmt(quoteStatus.fx.parsedPrice)}
@@ -732,6 +792,7 @@ export function PortfolioDashboardClient() {
                   <th className="px-2 py-1 text-right">rawPrice</th>
                   <th className="px-2 py-1 text-right">parsedPrice</th>
                   <th className="px-2 py-1 text-left">rowStatus</th>
+                  <th className="px-2 py-1 text-left">reason</th>
                   <th className="px-2 py-1 text-left">message</th>
                   <th className="px-2 py-1 text-left">수정</th>
                 </tr>
@@ -761,6 +822,7 @@ export function PortfolioDashboardClient() {
                     <td className="px-2 py-1 text-right">{row.rawPrice ?? "-"}</td>
                     <td className="px-2 py-1 text-right">{row.parsedPrice == null ? "NO_DATA" : fmt(row.parsedPrice)}</td>
                     <td className="px-2 py-1">{row.rowStatus}</td>
+                    <td className="px-2 py-1">{(row.failedReasons ?? []).join(", ") || "-"}</td>
                     <td className="px-2 py-1">{row.message ?? "-"}</td>
                     <td className="px-2 py-1">
                       {tickerEditDraft?.key === `${row.market}:${row.symbol}` ? (
@@ -998,10 +1060,10 @@ export function PortfolioDashboardClient() {
       <section className="mb-4 grid gap-3 md:grid-cols-3 lg:grid-cols-6">
         <div className="rounded border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">총 평가금액</p><p className="mt-1 font-semibold">{fmt(summary?.totalValueKrw)}</p></div>
         <div className="rounded border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">총 매입금액</p><p className="mt-1 font-semibold">{fmt(summary?.totalCostKrw)}</p></div>
-        <div className="rounded border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">총 손익</p><p className="mt-1 font-semibold">{fmt(summary?.totalPnlKrw)}</p></div>
-        <div className="rounded border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">총 손익률</p><p className="mt-1 font-semibold">{summary?.totalPnlRate == null ? "NO_DATA" : `${summary.totalPnlRate.toFixed(2)}%`}</p></div>
+        <div className="rounded border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">총 손익</p><p className="mt-1 font-semibold">{summaryNeedsQuoteCheck ? "시세 확인 필요" : fmt(summary?.totalPnlKrw)}</p></div>
+        <div className="rounded border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">총 손익률</p><p className="mt-1 font-semibold">{summaryNeedsQuoteCheck || summary?.totalPnlRate == null ? "시세 확인 필요" : `${summary.totalPnlRate.toFixed(2)}%`}</p></div>
         <div className="rounded border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">보유 종목 수</p><p className="mt-1 font-semibold">{summary?.totalPositions ?? 0}</p></div>
-        <div className="rounded border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">현금 비중</p><p className="mt-1 font-semibold">{summary?.cashWeight == null ? "NO_DATA" : `${summary.cashWeight.toFixed(1)}%`}</p></div>
+        <div className="rounded border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">현금 비중</p><p className="mt-1 font-semibold">{summaryNeedsQuoteCheck || summary?.cashWeight == null ? "데이터 확인 필요" : `${summary.cashWeight.toFixed(1)}%`}</p></div>
       </section>
       <section className="mb-4 grid gap-3 md:grid-cols-2">
         <div className="rounded border border-slate-200 bg-white p-3">
@@ -1160,4 +1222,3 @@ export function PortfolioDashboardClient() {
     </div>
   );
 }
-
