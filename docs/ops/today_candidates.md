@@ -8,6 +8,13 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 
 # Today Candidates (아침 관찰 후보)
 
+## EVO-050 Candidate Deck Contract
+
+- Primary deck target is KR 2 + US 1. This is a display/composition contract, not forced candidate generation.
+- If no US candidate can be selected, the deck must include a US diagnostic slot with a reason such as `quote_quality_low`, `low_confidence_mapping`, `us_signal_mapping_empty`, `queue_policy_suppressed`, or `no_us_pool`.
+- If fewer than two KR candidates are available, `qualityMeta.todayCandidates.deckContract` reports the partial/degraded status and `insufficient_kr_candidates`.
+- The UI should explain "미국 후보 대신 진단 카드 표시" when the US slot is diagnostic. No buy/sell directive, no automatic trading/order/rebalancing, and no forced candidate.
+
 ## EVO-047 Candidate Queue Quality
 
 - Today Candidate is an institutional-style observation queue, not a recommendation list. Additive `queueBucket` values are `observation`, `risk_review`, `data_check`, `monitoring`, `suppressed`, `reviewed`, and `insufficient_alternative`.

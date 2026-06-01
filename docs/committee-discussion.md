@@ -1,5 +1,13 @@
 # 투자위원회 턴제 토론 (committee-discussion)
 
+## EVO-050 Core Usability Contract Repair
+
+- Committee primary output is a human-readable investment meeting report, not a model artifact.
+- Persona cards use six sections: 결론, 기회 요인, 리스크 요인, 조건부 관찰 기준, 지금 확인할 것, 하지 말 것.
+- Missed-opportunity learning should explain what signals could have been observed, what risks still mattered, and what checklist to use next time without saying that the user should have bought or should buy now.
+- Snake_case/internal keys and raw JSON stay out of the primary UI; debug remains collapsed.
+- Action Item, Research, Journal, and Retrospective links remain explicit user actions only. No automatic trading/order/rebalancing and no buy/sell directive.
+
 ## 목적
 
 Hindenburg → James Simons → CIO → Peter Drucker 순으로 **한 라운드씩** 발언하고, 선택적으로 라운드를 이어 가거나 종료 시 CIO·Drucker **정리 발언**을 생성한다.  

@@ -102,7 +102,7 @@ export async function POST(req: Request) {
       pdfFile: bodyRecord.pdfFile instanceof File ? bodyRecord.pdfFile : undefined,
     });
     const response: InfographicExtractSourceTextResponseBody = {
-      ok: true,
+      ok: sourceResolved.sourceExtractionStatus === 'usable',
       rawText: sourceResolved.rawText,
       cleanedText: sourceResolved.cleanedText,
       warnings: sourceResolved.extractionWarnings,
@@ -116,6 +116,9 @@ export async function POST(req: Request) {
         sourceUrl: sourceResolved.sourceUrl,
         sourceTitle: sourceResolved.sourceTitle,
         extractionWarnings: sourceResolved.extractionWarnings,
+        sourceExtractionQuality: sourceResolved.sourceExtractionQuality,
+        sourceExtractionStatus: sourceResolved.sourceExtractionStatus,
+        sourceQualityReason: sourceResolved.sourceQualityReason,
         extractedTextLength: sourceResolved.cleanedTextLength,
         rawExtractedTextLength: sourceResolved.rawExtractedTextLength,
         cleanedTextLength: sourceResolved.cleanedTextLength,
@@ -123,7 +126,18 @@ export async function POST(req: Request) {
         cleanupNotes: sourceResolved.cleanupNotes,
       },
     };
-    return NextResponse.json(response);
+    return NextResponse.json(
+      sourceResolved.sourceExtractionStatus === 'usable'
+        ? response
+        : {
+            ...response,
+            code: 'insufficient_source',
+            requestId: id,
+            error: '본문을 충분히 읽지 못했습니다.',
+            actionHint:
+              '현재 추출된 내용은 제목/출처 수준입니다. 블로그 본문을 직접 붙여넣으면 요약과 인포그래픽 초안을 계속 만들 수 있습니다.',
+          },
+    );
   } catch (error: unknown) {
     return NextResponse.json(friendlyInfographicError(error, id), { status: 500 });
   }

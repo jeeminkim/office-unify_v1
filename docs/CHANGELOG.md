@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### 2026-06-02 EVO-050 Core Usability Contract Repair
+
+- **Source extraction quality gate:** URL/blog extraction is not treated as successful when the result is only title/source/URL metadata. Such cases return `insufficient_source` with paste fallback guidance instead of pretending an infographic draft can proceed.
+- **Summary-first infographic contract:** usable source text must preserve a readable summary even if structured analysis or infographic draft generation degrades; insufficient source text shows "본문을 충분히 읽지 못했습니다" and asks for pasted body text.
+- **Committee report contract:** committee lines render as a six-section Korean report: conclusion, opportunity factors, risk factors, conditional observation criteria, checks, and do-not-do items. Raw JSON/debug remains collapsed.
+- **Candidate deck contract:** Today Candidate quality meta now reports the target KR 2 + US 1 composition, filled slots, US diagnostic fallback reason, and deck contract status without forcing candidates.
+- **Guardrails:** no SQL, no GET write, no automatic save, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
+### 2026-06-02 EVO-050 Watchlist Smart Resolve
+
+- **Name-to-code/ticker resolve:** `/api/portfolio/watchlist/resolve` now returns read-only registration candidates for KR names/codes and US names/tickers, including symbol, exchange, Google Finance ticker, quote symbol, confidence, source refs, warnings, and `writeAction: false`.
+- **Known registry coverage:** added high-confidence cases for Samsung Electronics, SK Hynix, Hanwha Ocean, HLB, Lotte Chemical, Korea Zinc, Iljin Electric, LS, PharmaResearch, Mezzion, Alteogen, Tesla, NVIDIA, Apple, Microsoft, Netflix, ServiceNow, Coinbase, SPY, QQQ, and SMH.
+- **Portfolio Ledger UX:** watchlist candidate resolution can show selectable registration candidates and fills only local form state. Actual watchlist insertion remains the existing explicit `관심종목 추가` POST flow.
+- **Guardrails:** no SQL, no GET write, no Google Sheets repair/write, no automatic watchlist registration, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ### 2026-06-02 EVO-049 Trust Usability Repair
 
 - **Infographic readable fallback:** URL/PDF source extraction success now preserves a human-readable summary even when structured analysis or infographic draft generation degrades. The primary UI shows title, five-line summary, claims, evidence, implications, questions, and safe Research Center continuation instead of only a failure state.

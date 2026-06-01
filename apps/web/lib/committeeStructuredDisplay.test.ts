@@ -12,7 +12,7 @@ const sampleStructured: PersonaStructuredOutput = {
   confidence: 'medium',
   keyReasons: ['데이터 집중'],
   riskFlags: ['변동성'],
-  opportunityDrivers: [],
+  opportunityDrivers: ['수주가 확인되면 관찰 가치가 생김'],
   missingEvidence: ['수급'],
   contradictions: [],
   doNotDo: ['추격 매수'],
@@ -25,7 +25,7 @@ describe('committeeStructuredDisplay', () => {
     expect(contentLooksLikeRawJson('{"displaySummary":"x","keyReasons":[]}')).toBe(true);
   });
 
-  it('prefers structured summary over raw JSON', () => {
+  it('prefers six-section structured report over raw JSON', () => {
     const { readable, rawForDebug } = resolveLineDisplayContent({
       slug: 'hindenburg',
       displayName: 'H',
@@ -33,7 +33,10 @@ describe('committeeStructuredDisplay', () => {
       structuredOutput: sampleStructured,
     });
     expect(readable).toContain('요약 본문');
-    expect(buildReadableSummaryFromStructured(sampleStructured)).toContain('[핵심 근거]');
+    const card = buildReadableSummaryFromStructured(sampleStructured);
+    for (const label of ['[결론]', '[기회 요인]', '[리스크 요인]', '[조건부 관찰 기준]', '[지금 확인할 것]', '[하지 말 것]']) {
+      expect(card).toContain(label);
+    }
     expect(rawForDebug).toBeTruthy();
   });
 

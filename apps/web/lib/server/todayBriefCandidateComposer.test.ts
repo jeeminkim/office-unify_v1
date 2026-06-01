@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { SectorRadarSummaryResponse } from "@/lib/sectorRadarContract";
 import type { TodayStockCandidate, UsMarketMorningSummary } from "@/lib/todayCandidatesContract";
-import { composeTodayBriefCandidates, buildSectorRadarEtfCandidate } from "./todayBriefCandidateComposer";
+import {
+  buildCandidateDeckContractDiagnostics,
+  composeTodayBriefCandidates,
+  buildSectorRadarEtfCandidate,
+} from "./todayBriefCandidateComposer";
 import type { TodayStockCandidate } from "@/lib/todayCandidatesContract";
 import { buildTodayCandidateDisplayMetrics } from "./todayBriefCandidateDisplay";
 import { enrichPrimaryDeckWithThemeConnections } from "./themeConnectionMap";
@@ -37,7 +41,70 @@ function interest(id: string, score: number): TodayStockCandidate {
   };
 }
 
+function usCandidate(id: string): TodayStockCandidate {
+  return {
+    candidateId: id,
+    name: "Tesla",
+    market: "US",
+    country: "US",
+    symbol: "TSLA",
+    source: "us_market",
+    score: 55,
+    confidence: "medium",
+    riskLevel: "medium",
+    reasonSummary: "US signal",
+    reasonDetails: [],
+    positiveSignals: [],
+    cautionNotes: [],
+    relatedUserContext: [],
+    relatedWatchlistSymbols: [],
+    isBuyRecommendation: false,
+    briefDeckSlot: "us_market_check",
+  };
+}
+
 describe("composeTodayBriefCandidates", () => {
+  it("reports deck contract ok when 2 KR plus 1 US are filled", () => {
+    const contract = buildCandidateDeckContractDiagnostics({
+      primaryDeck: [interest("kr1", 80), interest("kr2", 70), usCandidate("us1")],
+      diagnosticCandidateCards: [],
+      usPoolCount: 1,
+      usSignalCandidateCount: 0,
+    });
+    expect(contract.deckContractStatus).toBe("ok");
+    expect(contract.filledKrSlots).toBe(2);
+    expect(contract.filledUsSlots).toBe(1);
+  });
+
+  it("uses a US diagnostic slot instead of forcing a US candidate", () => {
+    const diagnostic = {
+      ...usCandidate("us-diagnostic"),
+      reasonDetails: ["us_signal_mapping_empty"],
+      displayMetrics: { candidateCardKind: "us_data_check" },
+    } as TodayStockCandidate;
+    const contract = buildCandidateDeckContractDiagnostics({
+      primaryDeck: [interest("kr1", 80), interest("kr2", 70)],
+      diagnosticCandidateCards: [diagnostic],
+      usPoolCount: 0,
+      usSignalCandidateCount: 0,
+    });
+    expect(contract.deckContractStatus).toBe("partial");
+    expect(contract.usDiagnosticSlotPresent).toBe(true);
+    expect(contract.usSlotFallbackReason).toBe("us_signal_mapping_empty");
+    expect(contract.actionHint).toContain("강제로 만들지 않고");
+  });
+
+  it("marks KR slot shortage as partial/degraded with reason", () => {
+    const contract = buildCandidateDeckContractDiagnostics({
+      primaryDeck: [interest("kr1", 80)],
+      diagnosticCandidateCards: [],
+      usPoolCount: 0,
+      usSignalCandidateCount: 0,
+    });
+    expect(contract.krSlotFallbackReason).toBe("insufficient_kr_candidates");
+    expect(contract.deckContractStatus).toBe("degraded");
+  });
+
   it("picks top2 interest and one sector ETF with display metrics", () => {
     const radar: SectorRadarSummaryResponse = {
       ok: true,

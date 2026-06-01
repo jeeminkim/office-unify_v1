@@ -1,5 +1,19 @@
 # 로드맵 백로그 (scratchpad)
 
+## EVO-050 Core Usability Contract Repair
+
+- Shipped source extraction quality gate: title/source/URL-only URL results are insufficient and must show paste fallback.
+- Shipped summary-first infographic contract: usable source text keeps readable summary even when later draft generation degrades.
+- Shipped committee report display contract: six-section Korean report with opportunity/risk/conditional checks and missed-opportunity learning, with raw/debug collapsed.
+- Shipped candidate deck contract: KR 2 + US 1 target or diagnostic fallback reason, with no forced candidate generation.
+- Guardrails: no SQL, no GET write, explicit save only, no automatic trading/order/rebalancing, and no buy/sell directive.
+
+## EVO-050 Watchlist Smart Resolve
+
+- Shipped read-only registration candidate resolve for KR name/code and US name/ticker inputs. It proposes stock code/ticker, exchange, Google Finance ticker, quote symbol, confidence, and source refs without inserting watchlist rows.
+- Portfolio Ledger can fill a candidate into the local form, while final registration remains the explicit existing watchlist add POST. No SQL, no GET write, no Google Sheets repair/write, no automatic watchlist registration, and no automatic trading/order/rebalancing.
+- Follow-up backlog: broaden the maintained registry or introduce a confirmed external symbol search provider if full-market coverage becomes necessary.
+
 ## EVO-049 Trust Usability Repair
 
 - Shipped readable fallback for Infographic URL/PDF flows: source extraction success must still produce a usable summary even when structured analysis or draft generation degrades.

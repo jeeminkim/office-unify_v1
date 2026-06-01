@@ -1,5 +1,13 @@
 # Infographic Generator (MVP)
 
+## EVO-050 Core Usability Contract Repair
+
+- Source extraction has a quality gate. Title/source/URL-only extraction is `insufficient_source`, not success.
+- If the source body is usable, the system must keep a readable summary even when structured analysis or infographic draft generation degrades.
+- If the source body is insufficient, the UI should say "본문을 충분히 읽지 못했습니다" and show manual paste fallback instead of creating a fake summary.
+- Visible buttons must perform the named action or explain why they are disabled. Long raw source text must not be sent through URL query strings.
+- No automatic save/write, no SQL, no buy/sell directive, and no automatic trading/order/rebalancing.
+
 ## EVO-049 readable summary fallback
 
 - Pipeline stages are source extraction, readable summary, structured analysis, and infographic draft.

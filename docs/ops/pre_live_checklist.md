@@ -2,6 +2,22 @@
 
 배포·실사용 전에 아래를 순서에 맞게 확인합니다. 이 앱은 **관찰·복기·데이터 점검**용이며 **자동매매·자동 주문·자동 리밸런싱**은 없습니다.
 
+## EVO-050 Core Usability Contract Repair
+
+- [ ] URL/blog title-only extraction is `insufficient_source`, not a successful extraction.
+- [ ] Usable source text leaves a readable summary even when structured analysis or infographic draft generation degrades.
+- [ ] Committee cards show the six-section report: 결론, 기회 요인, 리스크 요인, 조건부 관찰 기준, 지금 확인할 것, 하지 말 것.
+- [ ] Today Candidate reports KR 2 + US 1 deck contract status or a diagnostic fallback reason without forcing a candidate.
+- [ ] No SQL, no GET write, explicit save only, no automatic trading/order/rebalancing, and no buy/sell directive.
+
+## EVO-050 Watchlist Smart Resolve
+
+- [ ] `/api/portfolio/watchlist/resolve` returns registration candidates with `writeAction: false` and does not insert/update watchlist rows.
+- [ ] KR name/code cases resolve to 6-digit stock codes plus Google Finance tickers (`KRX:xxxxxx` or `KOSDAQ:xxxxxx`); malformed KR-like symbols return `invalid_symbol`.
+- [ ] US name/ticker cases resolve to uppercase tickers plus Google Finance aliases such as `NASDAQ:TSLA`, `NYSE:NOW`, and `NYSEARCA:SPY`.
+- [ ] Portfolio Ledger candidate fill changes local form state only; final registration requires the explicit existing watchlist add button.
+- [ ] No SQL, no GET write, no Google Sheets repair/write, no automatic watchlist registration, no forced candidate generation, and no automatic trading/order/rebalancing.
+
 ## EVO-049 Trust Usability Repair
 
 - [ ] Infographic URL/PDF source extraction success still leaves a readable summary when structured analysis or infographic draft generation degrades.

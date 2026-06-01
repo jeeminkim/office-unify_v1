@@ -4,10 +4,7 @@ import { useState } from "react";
 import type { CommitteeDiscussionLineDto, LongResponseFallback } from "@office-unify/shared-types";
 import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
 import { CommitteePartialRecoveryPanel } from "@/components/committee/CommitteePartialRecoveryPanel";
-import {
-  resolveLineDisplayContent,
-  STRUCTURED_SECTION_LABELS,
-} from "@/lib/committeeStructuredDisplay";
+import { resolveLineDisplayContent, STRUCTURED_SECTION_LABELS } from "@/lib/committeeStructuredDisplay";
 import { humanizeCommitteeItems } from "@/lib/committeeHumanReadable";
 
 type Props = {
@@ -75,7 +72,7 @@ export function CommitteeLineCard({
         </span>
         {line.outputQuality?.status === "partial" ? (
           <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-950">
-            일부 발언 복구 필요
+            일부 항목을 읽기 쉽게 보정했습니다
           </span>
         ) : line.outputQuality?.status === "format_warning" ? (
           <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">

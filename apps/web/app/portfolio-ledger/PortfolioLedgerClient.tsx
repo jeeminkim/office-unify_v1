@@ -100,6 +100,20 @@ type WatchlistRow = {
   sector_match_source?: string | null;
   sector_match_reason?: string | null;
 };
+type WatchlistResolveCandidateView = {
+  resolvedName?: string;
+  name?: string;
+  symbol: string;
+  market?: string;
+  exchange?: string;
+  googleTicker?: string;
+  quoteSymbol?: string;
+  sector?: string;
+  confidence?: string;
+  warnings?: string[];
+  actionHint?: string;
+  sourceRefs?: Array<{ source: string; label: string }>;
+};
 type GoalRow = {
   id: string;
   goalName: string;
@@ -268,6 +282,7 @@ export function PortfolioLedgerClient() {
     quoteSymbol: "",
     krQuoteMarket: "KOSPI" as "KOSPI" | "KOSDAQ",
   });
+  const [watchResolveCandidates, setWatchResolveCandidates] = useState<WatchlistResolveCandidateView[]>([]);
   const [createBusy, setCreateBusy] = useState<null | "holding" | "watchlist">(null);
   const [eventsByKey, setEventsByKey] = useState<Record<string, TradeEventRow[]>>({});
   const [eventsOpenKey, setEventsOpenKey] = useState<string | null>(null);
@@ -721,6 +736,7 @@ export function PortfolioLedgerClient() {
     setSuggestFillWatchBusy(true);
     setError(null);
     setSuggestFormBanner(null);
+    setWatchResolveCandidates([]);
     setHoldingDupNavKey(null);
     setWatchDupNavKey(null);
     try {
@@ -746,10 +762,11 @@ export function PortfolioLedgerClient() {
         };
         failureCode?: string;
         actionHint?: string;
-        candidates?: Array<{ resolvedName: string; symbol: string; googleTicker: string; quoteSymbol: string }>;
+        candidates?: WatchlistResolveCandidateView[];
       };
       if (resolved.ok && resolved.resolved) {
         const r = resolved.resolved;
+        setWatchResolveCandidates([r]);
         setWatchCreateDraft((prev) => ({
           ...prev,
           symbol: r.symbol,
@@ -761,14 +778,15 @@ export function PortfolioLedgerClient() {
         }));
         setSuggestFormBanner({
           kind: r.confidence === "low" ? "partial" : "success",
-          message: `1단계 resolve: 종목명으로 자동 채움했으며 적용 전 확인이 필요합니다. (${r.symbol} · ${r.googleTicker})`,
+          message: `1단계 resolve: 등록 후보로 폼을 채웠습니다. 저장 전 코드와 Google ticker를 확인하세요. (${r.symbol} · ${r.googleTicker})`,
         });
         return;
       }
       if (!resolved.ok && resolved.failureCode === "ambiguous_name" && (resolved.candidates?.length ?? 0) > 0) {
+        setWatchResolveCandidates(resolved.candidates ?? []);
         const lines = (resolved.candidates ?? [])
           .slice(0, 6)
-          .map((c) => `${c.resolvedName} ${c.symbol}`)
+          .map((c) => `${c.resolvedName ?? c.name ?? c.symbol} ${c.symbol}`)
           .join(" / ");
         setSuggestFormBanner({
           kind: "partial",
@@ -812,14 +830,36 @@ export function PortfolioLedgerClient() {
         kind: partial ? "partial" : "success",
         message: partial
           ? "2단계 suggest: 일부만 반영했습니다. ticker/섹터를 확인하세요."
-          : "2단계 suggest: 추천 정보를 채웠습니다. 저장 전 ticker/섹터를 확인하세요.",
+          : "2단계 suggest: 후보 정보를 폼에 채웠습니다. 저장 전 ticker/섹터를 확인하세요.",
       });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "자동 채움 실패");
+      setError(e instanceof Error ? e.message : "등록 후보 찾기에 실패했습니다.");
     } finally {
       setSuggestFillWatchBusy(false);
     }
   }, [watchCreateDraft.market, watchCreateDraft.symbol, watchCreateDraft.name]);
+
+  const applyWatchResolveCandidate = useCallback((candidate: WatchlistResolveCandidateView) => {
+    setWatchCreateDraft((prev) => ({
+      ...prev,
+      market: candidate.market === "US" ? "US" : "KR",
+      symbol: candidate.symbol,
+      name: candidate.resolvedName ?? candidate.name ?? prev.name,
+      sector: candidate.sector?.trim() ? candidate.sector : prev.sector,
+      googleTicker: candidate.googleTicker?.trim() ? candidate.googleTicker : prev.googleTicker,
+      quoteSymbol: candidate.quoteSymbol?.trim() ? candidate.quoteSymbol : prev.quoteSymbol,
+      krQuoteMarket:
+        candidate.exchange === "KOSDAQ" || candidate.quoteSymbol?.endsWith(".KQ")
+          ? "KOSDAQ"
+          : candidate.exchange === "KOSPI" || candidate.quoteSymbol?.endsWith(".KS")
+            ? "KOSPI"
+            : prev.krQuoteMarket,
+    }));
+    setSuggestFormBanner({
+      kind: "partial",
+      message: "등록 후보를 폼에 채웠습니다. 관심종목 추가는 별도 버튼을 눌렀을 때만 저장됩니다.",
+    });
+  }, []);
 
   const loadLedgerTickerStatus = useCallback(async () => {
     if (!ledgerTickerReqId) return;
@@ -1669,6 +1709,37 @@ export function PortfolioLedgerClient() {
           <button type="button" className="rounded border border-blue-600 bg-blue-600 px-3 py-1 text-white disabled:opacity-50" disabled={createBusy === "watchlist" || quoteRefreshBusy || quoteStatusBusy} onClick={() => void createWatchlist()}>{createBusy === "watchlist" ? "저장 중…" : "관심종목 추가"}</button>
         </div>
       </div>
+
+      {watchResolveCandidates.length > 0 ? (
+        <div className="rounded-lg border border-teal-100 bg-teal-50/70 p-3 text-xs text-slate-700">
+          <p className="font-semibold text-teal-950">등록 후보</p>
+          <p className="mt-1 text-[11px] text-teal-900">
+            후보 채우기는 화면 상태만 바꾸며, 관심종목 추가 버튼을 누르기 전에는 저장되지 않습니다.
+          </p>
+          <div className="mt-2 space-y-2">
+            {watchResolveCandidates.slice(0, 5).map((candidate) => (
+              <div key={`${candidate.market ?? "AUTO"}:${candidate.symbol}:${candidate.googleTicker ?? ""}`} className="rounded border border-teal-200 bg-white p-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-950">{candidate.resolvedName ?? candidate.name ?? candidate.symbol}</p>
+                    <p className="text-[11px] text-slate-600">
+                      {candidate.symbol} · {candidate.exchange ?? candidate.market ?? "시장 확인"} · {candidate.googleTicker ?? "google_ticker 확인 필요"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded border border-teal-500 bg-teal-600 px-2 py-1 text-white"
+                    onClick={() => applyWatchResolveCandidate(candidate)}
+                  >
+                    이 후보로 채우기
+                  </button>
+                </div>
+                {candidate.warnings?.length ? <p className="mt-1 text-[11px] text-amber-800">{candidate.warnings.join(" / ")}</p> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700">
         <div className="flex items-center justify-between">

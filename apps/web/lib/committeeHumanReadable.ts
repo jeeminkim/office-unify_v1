@@ -10,7 +10,7 @@ const KEYWORD_LABELS: Record<string, string> = {
   risk_diversification: '리스크 분산 확인 필요',
   sector_concentration: '섹터 집중도 점검 필요',
   structured_output_parse_failed: '일부 형식이 손상되어 핵심 요약만 확인 필요',
-  provider_timeout: '응답 시간이 길어 핵심 요약 중심으로 확인 필요',
+  provider_timeout: '응답 시간이 길어져 핵심 요약 중심으로 확인 필요',
   provider_error: '응답 생성 오류가 있어 핵심 요약 중심으로 확인 필요',
 };
 
@@ -41,5 +41,6 @@ export function humanizeCommitteeItems(items: readonly string[]): string[] {
 }
 
 export function containsRawSnakeCase(text: string): boolean {
+  SNAKE_CASE.lastIndex = 0;
   return SNAKE_CASE.test(text);
 }

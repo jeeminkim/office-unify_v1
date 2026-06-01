@@ -5,6 +5,7 @@ import type {
   InfographicSourceTone,
   InfographicStructureDensity,
   InfographicSubjectivityLevel,
+  SourceExtractionQuality,
 } from '@office-unify/shared-types';
 
 const MAX_EXTRACT_TEXT = 22000;
@@ -13,6 +14,109 @@ const FETCH_TIMEOUT_MS = 12000;
 
 function normalizeWhitespace(text: string): string {
   return text.replace(/\r/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function sentenceCount(text: string): number {
+  return text
+    .split(/(?<=[.!?。！？]|[다요죠함음임됨])\s+|\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 18).length;
+}
+
+function koreanBodyRatio(text: string): number {
+  const compact = text.replace(/\s+/g, '');
+  if (!compact) return 0;
+  const ko = compact.match(/[가-힣]/g)?.length ?? 0;
+  return ko / compact.length;
+}
+
+function urlLikeLineRatio(text: string): number {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) return 1;
+  const metaLines = lines.filter((line) => /^https?:\/\//i.test(line) || /^출처[:：]/.test(line) || /^source[:：]/i.test(line));
+  return metaLines.length / lines.length;
+}
+
+export function evaluateSourceExtractionQuality(input: {
+  cleanedText: string;
+  rawText?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  sourceType?: InfographicInputSourceType;
+}): {
+  quality: SourceExtractionQuality;
+  status: 'usable' | 'insufficient_source';
+  reason?: string;
+  warnings: string[];
+} {
+  const text = normalizeWhitespace(input.cleanedText || input.rawText || '');
+  const warnings: string[] = [];
+  if (!text) {
+    return {
+      quality: 'blocked_or_empty',
+      status: 'insufficient_source',
+      reason: 'blocked_or_empty',
+      warnings: ['본문을 충분히 읽지 못했습니다.', '블로그 본문을 직접 붙여넣으면 요약을 계속 만들 수 있습니다.'],
+    };
+  }
+  const len = text.length;
+  const sentences = sentenceCount(text);
+  const koRatio = koreanBodyRatio(text);
+  const metaRatio = urlLikeLineRatio(text);
+  const title = normalizeWhitespace(input.sourceTitle ?? '');
+  const withoutUrl = normalizeWhitespace(text.replace(/https?:\/\/\S+/gi, ''));
+  const titleOnly =
+    Boolean(title) &&
+    withoutUrl.length <= Math.max(120, title.length + 40) &&
+    withoutUrl.toLowerCase().includes(title.toLowerCase().slice(0, Math.min(20, title.length)).toLowerCase());
+
+  if (input.sourceType === 'text' && len >= 180 && koRatio >= 0.15) {
+    return {
+      quality: 'usable_body',
+      status: 'usable',
+      warnings: len < 600 ? ['manual_body_short_but_usable'] : [],
+    };
+  }
+
+  if (titleOnly) {
+    return {
+      quality: 'title_only',
+      status: 'insufficient_source',
+      reason: 'title_only',
+      warnings: ['본문을 충분히 읽지 못했습니다.', '현재 추출된 내용은 제목/출처 수준입니다.'],
+    };
+  }
+  if (metaRatio >= 0.5 && len < 800) {
+    return {
+      quality: 'metadata_only',
+      status: 'insufficient_source',
+      reason: 'metadata_only',
+      warnings: ['현재 추출된 내용은 제목/출처 수준입니다.', 'URL 원문 추출이 제한되어도, 붙여넣은 본문으로 구조화 분석은 가능합니다.'],
+    };
+  }
+  const minLength = input.sourceType === 'text' ? 240 : 600;
+  if (len < minLength || sentences < 4) {
+    return {
+      quality: 'too_short',
+      status: 'insufficient_source',
+      reason: `too_short:${len}:${sentences}`,
+      warnings: ['본문을 충분히 읽지 못했습니다.', '본문을 직접 붙여넣으면 요약과 인포그래픽 초안을 계속 만들 수 있습니다.'],
+    };
+  }
+  if (input.sourceType === 'url' && koRatio > 0 && koRatio < 0.08 && len < 1200) {
+    return {
+      quality: 'needs_manual_paste',
+      status: 'insufficient_source',
+      reason: 'low_body_language_ratio',
+      warnings: ['본문을 충분히 읽지 못했습니다.', '블로그 본문을 직접 붙여넣으면 요약을 계속 만들 수 있습니다.'],
+    };
+  }
+  if (len < 900) warnings.push('extracted_body_short_but_usable');
+  return {
+    quality: 'usable_body',
+    status: 'usable',
+    warnings,
+  };
 }
 
 function classifyArticlePattern(params: {
@@ -221,6 +325,9 @@ export async function resolveInfographicSourceText(params: {
   extractionWarnings: string[];
   cleanupApplied: boolean;
   cleanupNotes: string[];
+  sourceExtractionQuality: SourceExtractionQuality;
+  sourceExtractionStatus: 'usable' | 'insufficient_source';
+  sourceQualityReason?: string;
   articlePattern: InfographicArticlePattern;
   sourceTone: InfographicSourceTone;
   subjectivityLevel: InfographicSubjectivityLevel;
@@ -235,12 +342,20 @@ export async function resolveInfographicSourceText(params: {
     const rawText = text.slice(0, MAX_EXTRACT_TEXT);
     const cleaned = cleanupExtractedText(rawText);
     const classified = classifyArticlePattern({ text: cleaned.cleanedText });
+    const quality = evaluateSourceExtractionQuality({
+      cleanedText: cleaned.cleanedText,
+      rawText,
+      sourceType: params.sourceType,
+    });
     return {
       rawText,
       cleanedText: cleaned.cleanedText,
-      extractionWarnings: warnings,
+      extractionWarnings: [...warnings, ...quality.warnings],
       cleanupApplied: cleaned.cleanupApplied,
       cleanupNotes: cleaned.cleanupNotes,
+      sourceExtractionQuality: quality.quality,
+      sourceExtractionStatus: quality.status,
+      sourceQualityReason: quality.reason,
       articlePattern: classified.articlePattern,
       sourceTone: classified.sourceTone,
       subjectivityLevel: classified.subjectivityLevel,
@@ -267,14 +382,24 @@ export async function resolveInfographicSourceText(params: {
     if (extracted.text.length < 400) warnings.push('url_text_short');
     const cleaned = cleanupExtractedText(extracted.text);
     const classified = classifyArticlePattern({ text: cleaned.cleanedText, title: extracted.title, sourceUrl: url });
+    const quality = evaluateSourceExtractionQuality({
+      cleanedText: cleaned.cleanedText,
+      rawText: extracted.text,
+      sourceTitle: extracted.title,
+      sourceUrl: url,
+      sourceType: params.sourceType,
+    });
     return {
       rawText: extracted.text,
       cleanedText: cleaned.cleanedText,
       sourceUrl: url,
       sourceTitle: extracted.title,
-      extractionWarnings: warnings,
+      extractionWarnings: [...warnings, ...quality.warnings],
       cleanupApplied: cleaned.cleanupApplied,
       cleanupNotes: cleaned.cleanupNotes,
+      sourceExtractionQuality: quality.quality,
+      sourceExtractionStatus: quality.status,
+      sourceQualityReason: quality.reason,
       articlePattern: classified.articlePattern,
       sourceTone: classified.sourceTone,
       subjectivityLevel: classified.subjectivityLevel,
@@ -303,13 +428,22 @@ export async function resolveInfographicSourceText(params: {
     if (text.length < 180) warnings.push('pdf_text_too_short');
     const cleaned = cleanupExtractedText(text);
     const classified = classifyArticlePattern({ text: cleaned.cleanedText, sourceUrl: url });
+    const quality = evaluateSourceExtractionQuality({
+      cleanedText: cleaned.cleanedText,
+      rawText: text,
+      sourceUrl: url,
+      sourceType: params.sourceType,
+    });
     return {
       rawText: text,
       cleanedText: cleaned.cleanedText,
       sourceUrl: url,
-      extractionWarnings: warnings,
+      extractionWarnings: [...warnings, ...quality.warnings],
       cleanupApplied: cleaned.cleanupApplied,
       cleanupNotes: cleaned.cleanupNotes,
+      sourceExtractionQuality: quality.quality,
+      sourceExtractionStatus: quality.status,
+      sourceQualityReason: quality.reason,
       articlePattern: classified.articlePattern,
       sourceTone: classified.sourceTone,
       subjectivityLevel: classified.subjectivityLevel,
@@ -331,13 +465,22 @@ export async function resolveInfographicSourceText(params: {
     if (text.length < 180) warnings.push('pdf_text_too_short');
     const cleaned = cleanupExtractedText(text);
     const classified = classifyArticlePattern({ text: cleaned.cleanedText, title: file.name });
+    const quality = evaluateSourceExtractionQuality({
+      cleanedText: cleaned.cleanedText,
+      rawText: text,
+      sourceTitle: file.name,
+      sourceType: params.sourceType,
+    });
     return {
       rawText: text,
       cleanedText: cleaned.cleanedText,
       sourceTitle: file.name,
-      extractionWarnings: warnings,
+      extractionWarnings: [...warnings, ...quality.warnings],
       cleanupApplied: cleaned.cleanupApplied,
       cleanupNotes: cleaned.cleanupNotes,
+      sourceExtractionQuality: quality.quality,
+      sourceExtractionStatus: quality.status,
+      sourceQualityReason: quality.reason,
       articlePattern: classified.articlePattern,
       sourceTone: classified.sourceTone,
       subjectivityLevel: classified.subjectivityLevel,

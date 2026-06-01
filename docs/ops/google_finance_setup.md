@@ -89,3 +89,9 @@ npm run google-finance-repair --workspace=apps/web -- --confirm --wait
 - KR ticker diagnostics are read-only: 6-digit KOSPI uses `KRX:xxxxxx`, KOSDAQ uses `KOSDAQ:xxxxxx`, and malformed symbols such as `0123G0` are reported as `invalid_symbol`.
 - `/api/portfolio/quotes/refresh` is the explicit refresh POST path. It returns requestId and lifecycle steps; formula pending means wait 30-60 seconds and recheck status rather than repeating repair.
 - Confirmed repair/write remains limited to existing confirm paths. No SQL, no GET write, no automatic trading/order/rebalancing, and no forced candidate generation.
+
+## EVO-050 Watchlist Smart Resolve
+
+- 관심종목 등록 전 resolve는 read-only입니다. KR 종목명/6자리 코드와 US 종목명/ticker를 등록 후보로 제안하고, `googleTicker`/`quoteSymbol`을 폼에 채울 수 있습니다.
+- 후보 채우기는 로컬 폼 상태만 변경합니다. 실제 관심종목 등록은 사용자가 기존 `관심종목 추가` 버튼을 누를 때만 발생합니다.
+- KR Google Finance ticker는 KOSPI `KRX:xxxxxx`, KOSDAQ `KOSDAQ:xxxxxx`로 제안하며, malformed code는 `invalid_symbol`로 차단합니다. 이 흐름은 repair/write가 아니며 저장·주문·리밸런싱을 자동으로 실행하지 않습니다.

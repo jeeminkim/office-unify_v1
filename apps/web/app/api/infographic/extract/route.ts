@@ -117,6 +117,29 @@ export async function POST(req: Request) {
       pdfUrl: parsed.value.pdfUrl,
       pdfFile: bodyRecord.pdfFile instanceof File ? bodyRecord.pdfFile : undefined,
     });
+    if (sourceResolved.sourceExtractionStatus !== 'usable') {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: 'insufficient_source',
+          requestId: id,
+          error: '본문을 충분히 읽지 못했습니다.',
+          actionHint:
+            '현재 추출된 내용은 제목/출처 수준입니다. 블로그 본문을 직접 붙여넣으면 요약과 인포그래픽 초안을 계속 만들 수 있습니다.',
+          sourceMeta: {
+            sourceType: parsed.value.sourceType,
+            sourceUrl: sourceResolved.sourceUrl,
+            sourceTitle: sourceResolved.sourceTitle,
+            extractionWarnings: sourceResolved.extractionWarnings,
+            sourceExtractionQuality: sourceResolved.sourceExtractionQuality,
+            sourceExtractionStatus: sourceResolved.sourceExtractionStatus,
+            sourceQualityReason: sourceResolved.sourceQualityReason,
+            extractedTextLength: sourceResolved.cleanedTextLength,
+          },
+        },
+        { status: 422 },
+      );
+    }
     const extracted = await executeInfographicExtract({
       geminiApiKey: llm.geminiApiKey,
       industryName: parsed.value.industryName,
@@ -138,6 +161,9 @@ export async function POST(req: Request) {
       sourceTitle: sourceResolved.sourceTitle,
       extractionWarnings: sourceResolved.extractionWarnings,
       extractedTextLength: sourceResolved.cleanedText.length || sourceResolved.rawText.length,
+      sourceExtractionQuality: sourceResolved.sourceExtractionQuality,
+      sourceExtractionStatus: sourceResolved.sourceExtractionStatus,
+      sourceQualityReason: sourceResolved.sourceQualityReason,
     };
     const validationErrors = validateInfographicSpec(normalized);
     const warnings = [...(extracted.warnings ?? []), ...validationErrors, ...sourceResolved.extractionWarnings];

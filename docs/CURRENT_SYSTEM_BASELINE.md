@@ -1,5 +1,20 @@
 # Current System Baseline
 
+## EVO-050 Core Usability Contract Repair
+
+- Infographic source extraction now distinguishes usable body text from title/source/URL-only metadata. Insufficient source extraction does not proceed as a successful infographic draft and instead asks for pasted body text.
+- Usable source text follows a summary-first contract: readable summary remains visible even if structured analysis or draft generation degrades.
+- Committee primary UI renders a six-section Korean report with opportunity, risk, conditional observation, checks, and guardrails; raw/debug output stays collapsed.
+- Today Candidate exposes `qualityMeta.todayCandidates.deckContract` for the KR 2 + US 1 target, filled slots, diagnostic fallback reason, and `ok | partial | degraded` status without forcing candidates.
+- No SQL, no GET write, explicit save only, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
+## EVO-050 Watchlist Smart Resolve
+
+- Watchlist registration has a read-only smart resolve step. Users can enter a KR company name or 6-digit code, or a US company name/ticker, and receive registration candidates with symbol, exchange, `googleTicker`, `quoteSymbol`, confidence, source refs, and warnings.
+- Resolve results are proposals only. `writeAction` remains false, filling a candidate changes local form state only, and final watchlist insertion still requires the explicit existing watchlist POST button.
+- KR malformed symbols such as non-6-digit codes are blocked as `invalid_symbol` before they reach quote diagnostics. US ETF/company aliases reuse the Google Finance ticker convention from the quote pipeline.
+- No SQL, no GET write, no Google Sheets repair/write, no automatic watchlist registration, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ## EVO-049 Trust Usability Repair
 
 - Infographic URL/PDF pipeline is explicitly staged as source extraction, readable summary, structured analysis, and infographic draft. If source extraction succeeds, readable summary must remain visible even when later stages degrade.

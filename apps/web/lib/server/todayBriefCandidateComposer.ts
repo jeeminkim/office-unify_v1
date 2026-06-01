@@ -233,6 +233,7 @@ export function composeTodayBriefCandidates(input: {
     riskReviewIncluded?: boolean;
     usMarketCheckDiagnosticCount?: number;
     usMarketSummaryStatus?: string;
+    deckContract: CandidateDeckContractDiagnostics;
   };
 } {
   const droppedReasons: string[] = [];
@@ -328,6 +329,12 @@ export function composeTodayBriefCandidates(input: {
     usMarketSummary: input.usMarketSummary,
     userUsWatchlistCount: input.userUsWatchlistCount ?? 0,
   });
+  const deckContract = buildCandidateDeckContractDiagnostics({
+    primaryDeck: usAttach.primaryDeck,
+    diagnosticCandidateCards: [...repeatedMonitoringCandidates, ...usAttach.diagnosticCandidateCards],
+    usPoolCount: input.usDirectCandidates?.length ?? 0,
+    usSignalCandidateCount: input.usMarketKrCandidates.length,
+  });
 
   return {
     deck: usAttach.primaryDeck,
@@ -351,6 +358,71 @@ export function composeTodayBriefCandidates(input: {
       maxUsSignalMapped: 1,
       riskReviewIncluded: Boolean(riskSlot),
       usMarketCheckDiagnosticCount: usAttach.diagnosticCandidateCards.length,
+      deckContract,
     },
+  };
+}
+
+export type CandidateDeckContractDiagnostics = {
+  targetKrSlots: 2;
+  filledKrSlots: number;
+  targetUsSlots: 1;
+  filledUsSlots: number;
+  usDiagnosticSlotPresent: boolean;
+  usSlotFallbackReason?: 'quote_quality_low' | 'low_confidence_mapping' | 'us_signal_mapping_empty' | 'queue_policy_suppressed' | 'no_us_pool';
+  krSlotFallbackReason?: 'insufficient_kr_candidates';
+  deckContractStatus: 'ok' | 'partial' | 'degraded';
+  actionHint: string;
+};
+
+function inferUsFallbackReason(input: {
+  diagnosticCandidateCards: TodayStockCandidate[];
+  usPoolCount: number;
+  usSignalCandidateCount: number;
+}): CandidateDeckContractDiagnostics['usSlotFallbackReason'] {
+  const joined = input.diagnosticCandidateCards
+    .flatMap((c) => [c.reasonSummary, ...(c.reasonDetails ?? []), ...(c.cautionNotes ?? []), c.queueActionHint ?? ''])
+    .join(' ')
+    .toLowerCase();
+  if (joined.includes('quote_quality_low') || joined.includes('quote quality') || joined.includes('시세')) return 'quote_quality_low';
+  if (joined.includes('low_confidence_mapping') || joined.includes('mapping confidence')) return 'low_confidence_mapping';
+  if (joined.includes('us_signal_mapping_empty') || joined.includes('mapping')) return 'us_signal_mapping_empty';
+  if (joined.includes('queue') || joined.includes('suppressed') || joined.includes('monitoring')) return 'queue_policy_suppressed';
+  if (input.usPoolCount === 0 && input.usSignalCandidateCount === 0) return 'no_us_pool';
+  return input.diagnosticCandidateCards.length > 0 ? 'queue_policy_suppressed' : 'no_us_pool';
+}
+
+export function buildCandidateDeckContractDiagnostics(input: {
+  primaryDeck: TodayStockCandidate[];
+  diagnosticCandidateCards: TodayStockCandidate[];
+  usPoolCount: number;
+  usSignalCandidateCount: number;
+}): CandidateDeckContractDiagnostics {
+  const filledKrSlots = input.primaryDeck.filter((c) => c.country === 'KR').length;
+  const filledUsSlots = input.primaryDeck.filter((c) => c.country === 'US' || c.briefDeckSlot === 'us_market_check').length;
+  const usDiagnosticSlotPresent = input.diagnosticCandidateCards.some(
+    (c) => c.country === 'US' || c.briefDeckSlot === 'us_market_check' || c.displayMetrics?.candidateCardKind === 'us_data_check',
+  );
+  const usSatisfied = filledUsSlots >= 1 || usDiagnosticSlotPresent;
+  const krSatisfied = filledKrSlots >= 2;
+  const usSlotFallbackReason = filledUsSlots >= 1 ? undefined : inferUsFallbackReason(input);
+  const krSlotFallbackReason = krSatisfied ? undefined : 'insufficient_kr_candidates';
+  const deckContractStatus = krSatisfied && filledUsSlots >= 1 ? 'ok' : usSatisfied || krSatisfied ? 'partial' : 'degraded';
+  const actionHint =
+    deckContractStatus === 'ok'
+      ? '국내 2 + 미국 1 관찰 큐 원칙을 충족했습니다.'
+      : usSatisfied
+        ? '미국 후보를 강제로 만들지 않고 진단 슬롯으로 대체했습니다.'
+        : '후보 풀이 부족해 국내 2 + 미국 1 원칙을 부분 충족했습니다.';
+  return {
+    targetKrSlots: 2,
+    filledKrSlots,
+    targetUsSlots: 1,
+    filledUsSlots,
+    usDiagnosticSlotPresent,
+    usSlotFallbackReason,
+    krSlotFallbackReason,
+    deckContractStatus,
+    actionHint,
   };
 }

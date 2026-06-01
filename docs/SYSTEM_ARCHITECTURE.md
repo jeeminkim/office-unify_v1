@@ -1,5 +1,18 @@
 # System Architecture (Personal Investment Console)
 
+## EVO-050 Core Usability Contract Repair
+
+- Infographic extraction is gated by source quality before downstream summary/draft generation. Title-only or metadata-only URL results are treated as `insufficient_source` and stay on paste fallback.
+- Committee rendering normalizes structured persona output into a six-section human report before primary UI display; raw/debug artifacts remain collapsed.
+- Today Candidate composition now has an additive deck contract layer after queue policy: target KR slots, target US slots, filled counts, fallback reason, and status. It can add diagnostic explanation but does not force a US candidate.
+- The contract is read-only: no SQL, no GET write, no automatic save, no automatic trading/order/rebalancing, and no buy/sell directive.
+
+## EVO-050 Watchlist Smart Resolve
+
+- `/api/portfolio/watchlist/resolve` is a read-only candidate resolver in front of the existing watchlist registration POST. It accepts `query`/legacy `name`/`symbol`, supports KR/US/AUTO hints, and returns additive candidate metadata without inserting rows.
+- The resolver combines existing holdings/watchlist rows with a maintained KR/US known registry. KR candidates normalize to 6-digit stock codes and Google Finance prefixes (`KRX`/`KOSDAQ`); US candidates normalize to ticker aliases such as `NASDAQ:TSLA`, `NYSE:NOW`, and `NYSEARCA:SPY`.
+- Portfolio Ledger can display registration candidates and fill the form locally. The persisted write boundary remains the explicit watchlist add button, with no SQL, no GET write, no Google Sheets repair/write, no auto registration, and no automatic trading/order/rebalancing.
+
 ## EVO-049 Trust Usability Repair
 
 - **Infographic pipeline:** `/api/infographic/extract-source-text` handles source extraction; `/api/infographic/extract` returns a normal `InfographicSpec` when possible and a degraded readable-summary spec when source text is available but structured analysis fails. This keeps useful output visible without automatic save/write.

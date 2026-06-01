@@ -56,6 +56,14 @@ export type InfographicDegradedReason =
   | 'weak_zone_signal'
   | 'opinion_structure_unclear';
 
+export type SourceExtractionQuality =
+  | 'usable_body'
+  | 'title_only'
+  | 'metadata_only'
+  | 'too_short'
+  | 'blocked_or_empty'
+  | 'needs_manual_paste';
+
 export type InfographicZoneId = 'input' | 'production' | 'distribution' | 'demand';
 
 export type InfographicZone = {
@@ -137,6 +145,9 @@ export type InfographicSourceMeta = {
   sourceUrl?: string;
   sourceTitle?: string;
   extractionWarnings?: string[];
+  sourceExtractionQuality?: SourceExtractionQuality;
+  sourceExtractionStatus?: 'usable' | 'insufficient_source';
+  sourceQualityReason?: string;
   extractedTextLength?: number;
 };
 
@@ -187,6 +198,9 @@ export type InfographicExtractSourceTextResponseBody = {
     sourceUrl?: string;
     sourceTitle?: string;
     extractionWarnings: string[];
+    sourceExtractionQuality?: SourceExtractionQuality;
+    sourceExtractionStatus?: 'usable' | 'insufficient_source';
+    sourceQualityReason?: string;
     extractedTextLength: number;
     rawExtractedTextLength: number;
     cleanedTextLength: number;

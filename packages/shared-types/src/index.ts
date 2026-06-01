@@ -536,6 +536,7 @@ export type {
   InfographicSourceMeta,
   InfographicSourceType,
   InfographicSpec,
+  SourceExtractionQuality,
   InfographicZone,
   InfographicZoneId,
 } from './infographic';

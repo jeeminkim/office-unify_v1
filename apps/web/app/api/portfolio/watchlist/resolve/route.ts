@@ -6,13 +6,17 @@ import { resolveWatchlistInstrument } from '@/lib/server/watchlistInstrumentReso
 
 type Body = {
   market?: 'KR' | 'US';
+  marketHint?: 'KR' | 'US' | 'AUTO';
+  query?: string;
   symbol?: string;
   name?: string;
+  includeExisting?: boolean;
 };
 
 /**
  * POST /api/portfolio/watchlist/resolve
- * 관심·원장 자동 채움용: 종목명만으로도 KR 시드/원장을 탐색한다(read-only + 정적 시드).
+ * Read-only smart resolve for watchlist registration candidates.
+ * Final watchlist registration remains on the explicit watchlist POST route.
  */
 export async function POST(req: Request) {
   const auth = await requirePersonaChatAuth();
@@ -27,31 +31,46 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ ok: false, error: 'invalid_json' }, { status: 400 });
   }
-  const market = body.market === 'US' ? 'US' : body.market === 'KR' ? 'KR' : null;
-  if (!market) {
-    return NextResponse.json({ ok: false, error: 'market must be KR or US.' }, { status: 400 });
-  }
+
+  const marketHint =
+    body.marketHint === 'US' || body.market === 'US'
+      ? 'US'
+      : body.marketHint === 'KR' || body.market === 'KR'
+        ? 'KR'
+        : 'AUTO';
+
   try {
     const [holdings, watchlist] = await Promise.all([
       listWebPortfolioHoldingsForUser(supabase, auth.userKey),
       listWebPortfolioWatchlistForUser(supabase, auth.userKey),
     ]);
+    const includeExisting = body.includeExisting !== false;
     const result = resolveWatchlistInstrument({
-      market,
+      market: body.market,
+      marketHint,
+      query: body.query,
       symbol: body.symbol,
       name: body.name,
-      holdings: holdings.map((h) => ({
-        market: h.market,
-        symbol: h.symbol,
-        name: h.name,
-        sector: h.sector,
-      })),
-      watchlist: watchlist.map((w) => ({
-        market: w.market,
-        symbol: w.symbol,
-        name: w.name,
-        sector: w.sector,
-      })),
+      holdings: includeExisting
+        ? holdings.map((h) => ({
+            market: h.market,
+            symbol: h.symbol,
+            name: h.name,
+            sector: h.sector,
+            google_ticker: h.google_ticker,
+            quote_symbol: h.quote_symbol,
+          }))
+        : [],
+      watchlist: includeExisting
+        ? watchlist.map((w) => ({
+            market: w.market,
+            symbol: w.symbol,
+            name: w.name,
+            sector: w.sector,
+            google_ticker: w.google_ticker,
+            quote_symbol: w.quote_symbol,
+          }))
+        : [],
     });
     return NextResponse.json(result);
   } catch (e: unknown) {

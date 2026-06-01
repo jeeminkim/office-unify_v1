@@ -141,6 +141,16 @@ export function useInfographicGenerator() {
       setSourcePreviewRawText(data.rawText ?? '');
       setSourcePreviewMeta(data.sourceMeta);
       setWarnings(data.warnings ?? []);
+      if (data.ok === false || data.sourceMeta?.sourceExtractionStatus === 'insufficient_source') {
+        setPipelineStage('cleaned_preview_ready');
+        setError(
+          formatFriendlyInfographicError(
+            data,
+            '본문을 충분히 읽지 못했습니다. 현재 추출된 내용은 제목/출처 수준입니다. 블로그 본문을 직접 붙여넣으면 요약을 계속 만들 수 있습니다.',
+          ),
+        );
+        return data;
+      }
       setPipelineStage('cleaned_preview_ready');
       return data;
     } catch (e: unknown) {
