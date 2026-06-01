@@ -39,10 +39,10 @@ export function buildReadableSummaryFromStructured(so: PersonaStructuredOutput):
   sections.push(`[결론]\n${summary}`);
 
   const opportunity = compactItems(so.opportunityDrivers, 3);
-  sections.push(`[기회 요인]\n${(opportunity.length ? opportunity : ['조건이 확인되면 관찰 가치가 생길 수 있는 요인을 별도로 점검합니다.']).map((x) => `- ${x}`).join('\n')}`);
+  sections.push(`[기회 조건]\n${(opportunity.length ? opportunity : ['기회 조건은 충분히 확인되지 않았습니다. 다음 신호가 확인되면 관찰 가치를 재검토합니다.']).map((x) => `- ${x}`).join('\n')}`);
 
   const risks = compactItems(so.riskFlags, 3);
-  sections.push(`[리스크 요인]\n${(risks.length ? risks : ['리스크 요인이 명확하지 않아 추가 확인이 필요합니다.']).map((x) => `- ${x}`).join('\n')}`);
+  sections.push(`[리스크 조건]\n${(risks.length ? risks : ['리스크 조건이 명확하지 않아 추가 확인이 필요합니다.']).map((x) => `- ${x}`).join('\n')}`);
 
   const conditions = [...compactItems(so.keyReasons, 2), ...compactItems(so.missingEvidence, 2)].slice(0, 3);
   sections.push(`[조건부 관찰 기준]\n${(conditions.length ? conditions : ['어떤 조건이면 관찰을 유지할지 기준을 다시 정리합니다.']).map((x) => `- ${x}`).join('\n')}`);
@@ -53,6 +53,20 @@ export function buildReadableSummaryFromStructured(so: PersonaStructuredOutput):
   const doNotDo = compactItems(so.doNotDo, 2);
   sections.push(`[하지 말 것]\n${(doNotDo.length ? doNotDo : ['확인되지 않은 내용으로 즉시 실행하지 않습니다.']).map((x) => `- ${x}`).join('\n')}`);
 
+  const card = sections.join('\n\n').trim();
+  return card.length <= 1200 ? card : `${card.slice(0, 1199).trimEnd()}...`;
+}
+
+export function buildReadableSummaryFromText(text: string): string {
+  const compact = compactText(text, 260) || '이 발언은 일부 손상되어 핵심 요약만 표시합니다.';
+  const sections = [
+    `[결론]\n${compact}`,
+    '[기회 조건]\n- 기회 조건은 충분히 확인되지 않았습니다. 다음 신호가 확인되면 관찰 가치를 재검토합니다.',
+    '[리스크 조건]\n- 발언이 일부 손상되어 리스크 조건을 원문 기준으로 다시 확인해야 합니다.',
+    '[조건부 관찰 기준]\n- 어떤 조건이면 관찰을 유지할지 기준을 다시 정리합니다.',
+    '[지금 확인할 것]\n- 원문 근거와 현재 포트폴리오 영향을 확인합니다.',
+    '[하지 말 것]\n- 확인되지 않은 내용으로 즉시 실행하지 않습니다.',
+  ];
   const card = sections.join('\n\n').trim();
   return card.length <= 1200 ? card : `${card.slice(0, 1199).trimEnd()}...`;
 }
@@ -72,19 +86,19 @@ export function resolveLineDisplayContent(line: CommitteeDiscussionLineDto): {
   }
   if (contentLooksLikeRawJson(raw)) {
     return {
-      readable: '이 발언은 일부 손상되어 핵심 요약만 표시합니다. 원문은 디버그 보기에서만 확인할 수 있습니다.',
+      readable: buildReadableSummaryFromText('이 발언은 일부 손상되어 핵심 요약만 표시합니다. 원문은 디버그 보기에서만 확인할 수 있습니다.'),
       rawForDebug: raw,
       hasStructured: false,
     };
   }
-  return { readable: humanizeCommitteeText(stripJsonFences(raw)), rawForDebug: null, hasStructured: false };
+  return { readable: buildReadableSummaryFromText(raw), rawForDebug: null, hasStructured: false };
 }
 
 export const STRUCTURED_SECTION_LABELS: Record<string, string> = {
   stance: '입장',
   keyReasons: '핵심 근거',
-  opportunityDrivers: '기회 요인',
-  riskFlags: '리스크 요인',
+  opportunityDrivers: '기회 조건',
+  riskFlags: '리스크 조건',
   missingEvidence: '누락 근거',
   doNotDo: '하지 말 것',
   nextChecks: '지금 확인할 것',

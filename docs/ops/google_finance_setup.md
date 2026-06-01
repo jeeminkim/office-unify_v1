@@ -95,3 +95,8 @@ npm run google-finance-repair --workspace=apps/web -- --confirm --wait
 - 관심종목 등록 전 resolve는 read-only입니다. KR 종목명/6자리 코드와 US 종목명/ticker를 등록 후보로 제안하고, `googleTicker`/`quoteSymbol`을 폼에 채울 수 있습니다.
 - 후보 채우기는 로컬 폼 상태만 변경합니다. 실제 관심종목 등록은 사용자가 기존 `관심종목 추가` 버튼을 누를 때만 발생합니다.
 - KR Google Finance ticker는 KOSPI `KRX:xxxxxx`, KOSDAQ `KOSDAQ:xxxxxx`로 제안하며, malformed code는 `invalid_symbol`로 차단합니다. 이 흐름은 repair/write가 아니며 저장·주문·리밸런싱을 자동으로 실행하지 않습니다.
+# EVO-051 Quote Provider Reality
+
+- Google Sheets `GOOGLEFINANCE` is a formula read-back provider, not a real-time quote API. Calculation delay, empty cells, mapping gaps, and cache staleness are expected failure modes.
+- `/api/portfolio/quotes/status` exposes provider capability separately from quote usability. Anchor OK does not guarantee actual portfolio or Today Candidate quote usability.
+- Repair/write remains limited to existing explicit confirmation paths. Status checks and diagnostics are read-only.

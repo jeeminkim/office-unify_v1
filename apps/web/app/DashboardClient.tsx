@@ -1155,8 +1155,11 @@ export function DashboardClient() {
           onToggleLowConfidence={setShowLowConfidenceCandidates}
           lowConfidenceOnly={lowConfidenceOnly}
         />
-        {(todayBrief?.primaryCandidateDeck?.length ?? 0) > 0 ? (
-          <TodayCandidatesSection>
+        {(todayBrief?.primaryCandidateDeck?.length ?? 0) > 0 ||
+        (todayBrief?.diagnosticCandidateCards?.length ?? 0) > 0 ||
+        Boolean(todayBrief?.qualityMeta?.todayCandidates?.deckContract) ||
+        Boolean(todayBrief?.qualityMeta?.todayCandidates?.usCandidateDiagnostics) ? (
+          <TodayCandidatesSection deckContract={todayBrief?.qualityMeta?.todayCandidates?.deckContract}>
             {todayBrief?.qualityMeta?.todayCandidates?.usCoverage?.status === "degraded" ? (
               <p className="mt-2 rounded border border-amber-200 bg-amber-50/90 p-2 text-[11px] text-amber-950">
                 미국 데이터 없음·부분 확인:{" "}

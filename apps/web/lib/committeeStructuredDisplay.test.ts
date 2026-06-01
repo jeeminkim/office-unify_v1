@@ -34,7 +34,7 @@ describe('committeeStructuredDisplay', () => {
     });
     expect(readable).toContain('요약 본문');
     const card = buildReadableSummaryFromStructured(sampleStructured);
-    for (const label of ['[결론]', '[기회 요인]', '[리스크 요인]', '[조건부 관찰 기준]', '[지금 확인할 것]', '[하지 말 것]']) {
+    for (const label of ['[결론]', '[기회 조건]', '[리스크 조건]', '[조건부 관찰 기준]', '[지금 확인할 것]', '[하지 말 것]']) {
       expect(card).toContain(label);
     }
     expect(rawForDebug).toBeTruthy();
@@ -49,6 +49,18 @@ describe('committeeStructuredDisplay', () => {
     expect(readable).toContain('핵심 요약만 표시');
     expect(readable).not.toContain('"keyReasons"');
     expect(rawForDebug).toContain('"keyReasons"');
+  });
+
+  it('turns partial plain text into the six-section report shell', () => {
+    const { readable } = resolveLineDisplayContent({
+      slug: 'cio',
+      displayName: 'CIO',
+      content: '리스크만 말하고 중간에 끊긴 발언입니다.',
+    });
+    expect(readable).toContain('[기회 조건]');
+    expect(readable).toContain('관찰 가치를 재검토합니다');
+    expect(readable).toContain('[리스크 조건]');
+    expect(readable).toContain('[하지 말 것]');
   });
 
   it('humanizes snake_case artifacts in the primary body', () => {

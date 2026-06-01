@@ -269,6 +269,95 @@ function stripHtmlToText(html: string): { text: string; title?: string } {
   return { text: text.slice(0, MAX_EXTRACT_TEXT), title };
 }
 
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+export function parseNaverBlogUrl(rawUrl: string): { blogId: string; logNo: string } | null {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  if (!host.endsWith('blog.naver.com')) return null;
+  const parts = url.pathname.split('/').filter(Boolean);
+  const queryBlogId = url.searchParams.get('blogId') ?? undefined;
+  const queryLogNo = url.searchParams.get('logNo') ?? undefined;
+  const blogId = queryBlogId ?? (parts.length >= 2 && parts[0] !== 'PostView.naver' ? parts[0] : undefined);
+  const logNo = queryLogNo ?? (parts.length >= 2 && parts[0] !== 'PostView.naver' ? parts[1] : undefined);
+  if (!blogId || !logNo || !/^\d+$/.test(logNo)) return null;
+  return { blogId, logNo };
+}
+
+export function buildNaverBlogFetchCandidates(rawUrl: string): string[] {
+  const parsed = parseNaverBlogUrl(rawUrl);
+  if (!parsed) return [normalizeInfographicSourceUrl(rawUrl)];
+  const candidates = [
+    `https://blog.naver.com/PostView.naver?blogId=${encodeURIComponent(parsed.blogId)}&logNo=${encodeURIComponent(parsed.logNo)}&redirect=Dlog&widgetTypeCall=true&directAccess=false`,
+    `https://m.blog.naver.com/${encodeURIComponent(parsed.blogId)}/${encodeURIComponent(parsed.logNo)}`,
+    normalizeInfographicSourceUrl(rawUrl),
+  ];
+  return Array.from(new Set(candidates));
+}
+
+function resolveMaybeRelativeUrl(baseUrl: string, maybeUrl: string): string | null {
+  try {
+    return new URL(decodeHtmlEntities(maybeUrl), baseUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
+export function findNaverMainFrameUrl(html: string, baseUrl: string): string | null {
+  const iframeMatch = html.match(/<iframe[^>]+id=["']mainFrame["'][^>]*src=["']([^"']+)["'][^>]*>/i);
+  return iframeMatch ? resolveMaybeRelativeUrl(baseUrl, iframeMatch[1]) : null;
+}
+
+function extractClassText(html: string, className: string): string {
+  const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`<[^>]+class=["'][^"']*${escaped}[^"']*["'][^>]*>([\\s\\S]*?)<\\/[^>]+>`, 'gi');
+  const chunks: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) {
+    chunks.push(stripHtmlToText(match[1]).text);
+  }
+  return normalizeWhitespace(chunks.join('\n'));
+}
+
+function extractIdText(html: string, id: string): string {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`<[^>]+id=["']${escaped}["'][^>]*>([\\s\\S]*?)<\\/[^>]+>`, 'i');
+  const match = html.match(re);
+  return match ? normalizeWhitespace(stripHtmlToText(match[1]).text) : '';
+}
+
+export function extractNaverBlogTextFromHtml(html: string, baseUrl: string): { text: string; title?: string; followUrl?: string } {
+  const generic = stripHtmlToText(html);
+  const selectorText = normalizeWhitespace(
+    [
+      extractIdText(html, 'postViewArea'),
+      extractClassText(html, 'se-main-container'),
+      extractClassText(html, 'se-component-content'),
+      extractClassText(html, 'se-text-paragraph'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  );
+  return {
+    text: (selectorText.length >= generic.text.length * 0.4 ? selectorText : generic.text).slice(0, MAX_EXTRACT_TEXT),
+    title: generic.title,
+    followUrl: findNaverMainFrameUrl(html, baseUrl) ?? undefined,
+  };
+}
+
 export function normalizeInfographicSourceUrl(rawUrl: string): string {
   const url = new URL(rawUrl);
   if (url.hostname === 'm.blog.naver.com') {
@@ -375,24 +464,56 @@ export async function resolveInfographicSourceText(params: {
     } catch {
       throw new Error('invalid_url');
     }
-    const res = await fetchWithTimeout(url);
-    if (!res.ok) throw new Error(`url_fetch_failed:${res.status}`);
-    const html = await res.text();
-    const extracted = stripHtmlToText(html);
+    const fetchCandidates = parseNaverBlogUrl(url) ? buildNaverBlogFetchCandidates(url) : [url];
+    let extracted: { text: string; title?: string } | null = null;
+    let selectedUrl = url;
+    let bestQuality: ReturnType<typeof evaluateSourceExtractionQuality> | null = null;
+    for (const candidateUrl of fetchCandidates) {
+      const res = await fetchWithTimeout(candidateUrl);
+      if (!res.ok) {
+        warnings.push(`url_fetch_failed:${res.status}`);
+        continue;
+      }
+      const html = await res.text();
+      const candidateExtract: { text: string; title?: string; followUrl?: string } = parseNaverBlogUrl(candidateUrl)
+        ? extractNaverBlogTextFromHtml(html, candidateUrl)
+        : stripHtmlToText(html);
+      const followUrl = candidateExtract.followUrl;
+      const finalExtract = followUrl
+        ? await fetchWithTimeout(followUrl)
+            .then(async (followRes) => (followRes.ok ? extractNaverBlogTextFromHtml(await followRes.text(), followUrl) : candidateExtract))
+            .catch(() => candidateExtract)
+        : candidateExtract;
+      const cleanedCandidate = cleanupExtractedText(finalExtract.text);
+      const candidateQuality = evaluateSourceExtractionQuality({
+        cleanedText: cleanedCandidate.cleanedText,
+        rawText: finalExtract.text,
+        sourceTitle: finalExtract.title,
+        sourceUrl: candidateUrl,
+        sourceType: params.sourceType,
+      });
+      if (!extracted || candidateQuality.status === 'usable' || finalExtract.text.length > extracted.text.length) {
+        extracted = finalExtract;
+        selectedUrl = candidateUrl;
+        bestQuality = candidateQuality;
+      }
+      if (candidateQuality.status === 'usable') break;
+    }
+    if (!extracted) throw new Error('url_fetch_failed:all_candidates');
     if (extracted.text.length < 400) warnings.push('url_text_short');
     const cleaned = cleanupExtractedText(extracted.text);
-    const classified = classifyArticlePattern({ text: cleaned.cleanedText, title: extracted.title, sourceUrl: url });
-    const quality = evaluateSourceExtractionQuality({
+    const classified = classifyArticlePattern({ text: cleaned.cleanedText, title: extracted.title, sourceUrl: selectedUrl });
+    const quality = bestQuality ?? evaluateSourceExtractionQuality({
       cleanedText: cleaned.cleanedText,
       rawText: extracted.text,
       sourceTitle: extracted.title,
-      sourceUrl: url,
+      sourceUrl: selectedUrl,
       sourceType: params.sourceType,
     });
     return {
       rawText: extracted.text,
       cleanedText: cleaned.cleanedText,
-      sourceUrl: url,
+      sourceUrl: selectedUrl,
       sourceTitle: extracted.title,
       extractionWarnings: [...warnings, ...quality.warnings],
       cleanupApplied: cleaned.cleanupApplied,

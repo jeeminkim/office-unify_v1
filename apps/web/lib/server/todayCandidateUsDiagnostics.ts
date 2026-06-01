@@ -8,6 +8,7 @@ import type {
 import type { TodayStockCandidate, UsMarketMorningSummary } from '@/lib/todayCandidatesContract';
 import { buildUsSetupDiagnosis } from '@/lib/server/usSetupDiagnosis';
 import { normalizeGoogleFinanceAnchorSummary } from '@/lib/server/googleFinanceAnchorSummaryNormalizer';
+import { buildGoogleFinanceProviderCapability } from '@/lib/server/quotePipelineDiagnostics';
 import type { CandidateDecisionTrace } from '@office-unify/shared-types';
 
 function countReasons(traces: CandidateDecisionTrace[], field: 'rejectedReasons' | 'suppressedReasons'): string[] {
@@ -256,6 +257,7 @@ export function buildUsCandidateDiagnostics(input: {
     googleFinanceAnchorOk: normalizedAnchor.isAnchorOk,
     actualUsQuoteRowsOk: quoteOk,
     actualKrQuoteRowsOk: input.pool.filter((c) => c.country === 'KR' && c.dataQuality?.quoteReady !== false).length,
+    providerCapability: buildGoogleFinanceProviderCapability(),
     quoteUsabilityStatus:
       quoteMissing > 0 && quoteOk === 0
         ? 'failed'

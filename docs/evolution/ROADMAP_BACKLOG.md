@@ -1,5 +1,13 @@
 # 로드맵 백로그 (scratchpad)
 
+## EVO-051 Project Reality Recovery
+
+- Shipped quote provider reality layer: Google Sheets `GOOGLEFINANCE` is shown as delayed formula read-back, not a real-time quote API.
+- Shipped visible Today Candidate deck contract: KR 2 + US 1 target, filled slots, and diagnostic fallback reasons without forcing candidates.
+- Shipped Naver Blog extraction hardening: blogId/logNo parsing, PostView/mobile candidates, mainFrame follow, and SE body selectors, with title-only results kept as insufficient source.
+- Shipped committee meeting report fallback: six readable sections with opportunity and risk conditions, conditional observation criteria, checks, and do-not-do items.
+- Guardrails: no SQL, no GET write, no Google Sheets repair/write, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ## EVO-050 Core Usability Contract Repair
 
 - Shipped source extraction quality gate: title/source/URL-only URL results are insufficient and must show paste fallback.

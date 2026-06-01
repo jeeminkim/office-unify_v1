@@ -348,6 +348,7 @@ export type {
 } from './todayCandidateFeedback';
 export type {
   RecommendationCandidatesQualityMeta,
+  QuoteProviderCapability,
   ResearchReportDiffPayload,
   ResearchReportFreshness,
   ResearchReportHistoryMeta,

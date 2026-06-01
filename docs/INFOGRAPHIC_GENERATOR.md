@@ -1,5 +1,13 @@
 # Infographic Generator (MVP)
 
+## EVO-051 Source Extraction Contract
+
+- URL extraction is not successful when the result is only a title, source label, or URL metadata. That state is `insufficient_source` and asks for pasted body text.
+- Naver Blog URLs are parsed through blogId/logNo, PostView/mobile URL candidates, optional `mainFrame` follow, and SE body selectors such as `.se-main-container` and `.se-text-paragraph`.
+- If usable body text exists, the readable summary remains visible even when structured analysis or infographic draft generation degrades.
+- Visible buttons must either work, show a disabled reason, or stay hidden. Long raw body text is not passed through URL query strings.
+- No automatic save/write, no SQL, no buy/sell directive, and no automatic trading/order/rebalancing.
+
 ## EVO-050 Core Usability Contract Repair
 
 - Source extraction has a quality gate. Title/source/URL-only extraction is `insufficient_source`, not success.

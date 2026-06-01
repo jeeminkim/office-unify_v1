@@ -59,7 +59,7 @@ export function UsDiagnosticsCard({ diagnostics, anchorCoverageLabel, diagnostic
   const setup = diagnostics.setupDiagnosis;
   const anchorLabel = anchorCoverageLabel ?? `확인 ${diagnostics.quoteOkCount}/${diagnostics.seedSymbolCount || 18}`;
   const gatingCopy = gatingReasonCopy(diagnostics.gatingReason);
-  const anchorOk = (diagnostics.googleFinanceAnchorSummary?.sheetsAnchorOk ?? 0) > 0;
+  const anchorOk = Boolean(diagnostics.googleFinanceAnchorOk) || (diagnostics.googleFinanceAnchorSummary?.sheetsAnchorOk ?? 0) > 0;
 
   const copySetup = async () => {
     if (!setup) return;
@@ -99,6 +99,11 @@ export function UsDiagnosticsCard({ diagnostics, anchorCoverageLabel, diagnostic
         이 상태에서는 TSLA/NFLX 등 미국 종목을 일반 관찰 후보로 쓰지 않습니다. SQL 문제가 아니라 quote provider·Sheets
         문제일 수 있습니다.
       </p>
+      {diagnostics.providerCapability ? (
+        <p className="mt-2 rounded border border-sky-200 bg-white/80 p-2 text-[10px] text-sky-950">
+          {diagnostics.providerCapability.userMessage} Google Finance anchor 정상은 실제 후보 quote usable을 보장하지 않습니다.
+        </p>
+      ) : null}
 
       {setup?.actionHint ? <p className="mt-1 text-[10px]">{setup.actionHint}</p> : null}
       {diagnostics.actionHint ? <p className="mt-1 text-[10px] text-sky-800">{diagnostics.actionHint}</p> : null}

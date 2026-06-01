@@ -342,6 +342,23 @@ export interface TodayBriefWithCandidatesResponse {
       usKrEmptyThemeBridgeHint?: string;
       /** Additive: EVO-044 — 미국 신호→관심종목/테마 연결 진단(read-only). */
       usMappingBridgeDiagnostics?: UsMappingBridgeDiagnostics;
+      /** Additive: EVO-050/051 — primary deck target KR 2 + US 1, or visible diagnostic fallback. */
+      deckContract?: {
+        targetKrSlots: 2;
+        filledKrSlots: number;
+        targetUsSlots: 1;
+        filledUsSlots: number;
+        usDiagnosticSlotPresent: boolean;
+        usSlotFallbackReason?:
+          | 'quote_quality_low'
+          | 'low_confidence_mapping'
+          | 'us_signal_mapping_empty'
+          | 'queue_policy_suppressed'
+          | 'no_us_pool';
+        krSlotFallbackReason?: 'insufficient_kr_candidates';
+        deckContractStatus: 'ok' | 'partial' | 'degraded';
+        actionHint: string;
+      };
       /** Additive: 미국 시세·매핑 커버리지(조용한 실패 방지). */
       usCoverage?: {
         status: 'ok' | 'degraded';

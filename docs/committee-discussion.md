@@ -1,5 +1,12 @@
 # 투자위원회 턴제 토론 (committee-discussion)
 
+## EVO-051 Investment Meeting Report Contract
+
+- Committee primary output is always a six-section meeting report: conclusion, opportunity conditions, risk conditions, conditional observation criteria, checks, and do-not-do items.
+- Risk-only or partial output must receive an opportunity-condition fallback instead of ending with "do not do" only.
+- Missed-opportunity learning records observable signals, risks that still mattered, conditional observation criteria, and a next-time checklist without buy/sell directives.
+- Raw/debug text and format warnings remain collapsed or secondary.
+
 ## EVO-050 Core Usability Contract Repair
 
 - Committee primary output is a human-readable investment meeting report, not a model artifact.

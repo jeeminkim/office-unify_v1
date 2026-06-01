@@ -64,6 +64,12 @@ describe('quotePipelineDiagnostics', () => {
     expect(out.failedReasonsBySymbol['KR:0123G0']).toContain('invalid_symbol');
     expect(out.failedReasonsBySymbol['US:TSLA']).toContain('formula_pending');
     expect(out.quoteUsabilityStatus).toBe('formula_pending');
+    expect(out.providerCapability).toMatchObject({
+      provider: 'google_sheets_googlefinance',
+      providerType: 'formula_readback',
+      realtime: false,
+    });
+    expect(out.providerCapability.userMessage).toContain('실시간 API가 아니므로');
   });
 
   it('marks lifecycle waiting when formula pending exists', () => {

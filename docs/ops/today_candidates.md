@@ -386,3 +386,8 @@ where user_key = :user_key
 - Today Candidate is framed as `오늘의 관찰 큐`, not a recommendation list. Card types are 관찰 후보, 리스크 점검, 데이터 점검, 모니터링, or 낮은 우선순위.
 - Risk review + `mark_reviewed` leaves the main deck and remains available as reviewed-risk/monitoring context. Repeated 7-day exposure gets a stronger penalty and repeated non-risk items can move to diagnostic monitoring before final deck selection.
 - Decision trace should explain repeat exposure, insufficient alternatives, and risk gate behavior. No SQL, no forced candidate generation, no buy/sell directive, and no automatic trading/order/rebalancing.
+# EVO-051 Deck Contract Visibility
+
+- The Today Candidate UI must show the KR 2 + US 1 target, filled slot counts, and `ok | partial | degraded` deck contract status.
+- If no US candidate is selected, a US diagnostic slot must explain the reason (`quote_quality_low`, `low_confidence_mapping`, `us_signal_mapping_empty`, `queue_policy_suppressed`, or `no_us_pool`) without forcing a candidate.
+- Queue diagnostics are explanation and triage only: no buy/sell directive, no forced candidate generation, no automatic trading/order/rebalancing, and no GET write.

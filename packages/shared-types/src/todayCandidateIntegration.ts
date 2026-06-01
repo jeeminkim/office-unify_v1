@@ -46,8 +46,18 @@ export type UsCandidateDiagnostics = {
   actualUsQuoteRowsOk?: number;
   actualKrQuoteRowsOk?: number;
   quoteUsabilityStatus?: 'ok' | 'partial' | 'failed' | 'formula_pending' | 'mapping_required' | 'cache_stale';
+  providerCapability?: QuoteProviderCapability;
   suppressReasons?: string[];
   nextFix?: Array<'ticker_mapping' | 'quote_refresh' | 'watchlist_theme_mapping' | 'sector_radar_mapping' | 'candidate_queue_policy'>;
+};
+
+export type QuoteProviderCapability = {
+  provider: 'google_sheets_googlefinance';
+  providerType: 'formula_readback';
+  realtime: false;
+  expectedDelay: 'delayed_or_unknown';
+  failureModes: Array<'formula_pending' | 'no_data' | 'mapping_required' | 'cache_stale' | 'provider_delay'>;
+  userMessage: string;
 };
 
 export type UsCandidateSetupRootCause =

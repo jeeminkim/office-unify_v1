@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### 2026-06-02 EVO-051 Project Reality Recovery
+
+- **Quote provider reality:** quote status and US diagnostics now expose Google Sheets GOOGLEFINANCE as formula read-back, not a real-time quote API. Anchor OK is shown separately from actual quote usable status.
+- **Deck contract UI:** Today Candidate surfaces the KR 2 + US 1 target, filled slots, and diagnostic fallback reasons instead of silently showing a short queue.
+- **Naver Blog extractor:** blogId/logNo parsing, PostView/mobile candidates, mainFrame follow, and Naver SE body selectors reduce title-only extraction. Title/source-only extraction remains `insufficient_source`.
+- **Committee report contract:** partial or unstructured committee lines render as a six-section meeting report with conclusion, opportunity conditions, risk conditions, conditional observation criteria, checks, and do-not-do items.
+- **Guardrails:** no SQL, no GET write, no Google Sheets repair/write, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ### 2026-06-02 EVO-050 Core Usability Contract Repair
 
 - **Source extraction quality gate:** URL/blog extraction is not treated as successful when the result is only title/source/URL metadata. Such cases return `insufficient_source` with paste fallback guidance instead of pretending an infographic draft can proceed.

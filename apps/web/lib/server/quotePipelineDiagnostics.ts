@@ -1,5 +1,6 @@
 import type { GoogleFinanceQuoteRow } from '@/lib/server/googleFinanceSheetQuoteService';
 import { normalizeQuoteKey } from '@/lib/server/quoteReadbackUtils';
+import type { QuoteProviderCapability } from '@office-unify/shared-types';
 
 export type QuoteUsabilityStatus =
   | 'ok'
@@ -59,6 +60,7 @@ export type PortfolioQuoteReadbackDiagnostics = {
   failedSymbols: string[];
   failedReasonsBySymbol: Record<string, QuoteFailureReason[]>;
   quoteUsabilityStatus: QuoteUsabilityStatus;
+  providerCapability: QuoteProviderCapability;
   actionHint: string;
 };
 
@@ -80,6 +82,18 @@ const US_GOOGLE_TICKER_ALIASES: Record<string, string> = {
   MSFT: 'NASDAQ:MSFT',
   NFLX: 'NASDAQ:NFLX',
 };
+
+export function buildGoogleFinanceProviderCapability(): QuoteProviderCapability {
+  return {
+    provider: 'google_sheets_googlefinance',
+    providerType: 'formula_readback',
+    realtime: false,
+    expectedDelay: 'delayed_or_unknown',
+    failureModes: ['formula_pending', 'no_data', 'mapping_required', 'cache_stale', 'provider_delay'],
+    userMessage:
+      '현재 시세는 Google Sheets GOOGLEFINANCE 수식 read-back 기반입니다. 실시간 API가 아니므로 계산 지연 또는 빈 값이 발생할 수 있습니다.',
+  };
+}
 
 export function normalizeKoreanGoogleTicker(symbol: string, market?: string | null): TickerMappingDiagnosis {
   const raw = symbol.trim().toUpperCase();
@@ -245,6 +259,7 @@ export function buildPortfolioQuoteReadbackDiagnostics(input: {
     failedSymbols,
     failedReasonsBySymbol,
     quoteUsabilityStatus,
+    providerCapability: buildGoogleFinanceProviderCapability(),
     actionHint,
   };
 }

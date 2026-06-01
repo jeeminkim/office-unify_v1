@@ -11,6 +11,7 @@ import {
   readGoogleFinanceQuoteSheetRows,
 } from '@/lib/server/googleFinanceSheetQuoteService';
 import {
+  buildGoogleFinanceProviderCapability,
   buildPortfolioQuoteReadbackDiagnostics,
   normalizeKoreanGoogleTicker,
   normalizeUsGoogleTicker,
@@ -26,10 +27,12 @@ export async function GET() {
   }
   const configured = isGoogleFinanceQuoteConfigured();
   const holdings = await listWebPortfolioHoldingsForUser(supabase, auth.userKey).catch(() => []);
+  const providerCapability = buildGoogleFinanceProviderCapability();
   if (!configured) {
     return NextResponse.json({
       ok: false,
       generatedAt: new Date().toISOString(),
+      providerCapability,
       sheet: {
         spreadsheetIdConfigured: Boolean(process.env.GOOGLE_SHEETS_SPREADSHEET_ID?.trim()),
         sheetName: process.env.PORTFOLIO_QUOTES_SHEET_NAME?.trim() || 'portfolio_quotes',
@@ -149,6 +152,7 @@ export async function GET() {
         readSucceeded: data.readBackSucceeded,
         writeConfigured: data.writeConfigured,
       },
+      providerCapability: quoteDiagnostics.providerCapability,
       fx: {
         ticker: 'CURRENCY:USDKRW',
         priceFormulaText: data.fxRowDetail?.priceFormulaText,

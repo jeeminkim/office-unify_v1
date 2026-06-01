@@ -1,5 +1,12 @@
 # System Architecture (Personal Investment Console)
 
+## EVO-051 Reality Recovery Contracts
+
+- Quote provider reality is additive: Google Sheets `GOOGLEFINANCE` is represented as a delayed formula read-back capability, while actual quote usability remains separate diagnostics.
+- Today Candidate composition exposes the KR 2 + US 1 deck contract in `qualityMeta.todayCandidates.deckContract` and in the Dashboard UI; missing slots are diagnostic fallbacks, not forced candidates.
+- Infographic source extraction treats Naver title/source-only output as insufficient and uses Naver-specific URL/body extraction before summary-first fallback.
+- Committee display resolves partial/model output into a six-section investment meeting report while keeping raw/debug collapsed.
+
 ## EVO-050 Core Usability Contract Repair
 
 - Infographic extraction is gated by source quality before downstream summary/draft generation. Title-only or metadata-only URL results are treated as `insufficient_source` and stay on paste fallback.

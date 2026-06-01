@@ -1,5 +1,13 @@
 # Current System Baseline
 
+## EVO-051 Project Reality Recovery
+
+- Quote readiness is explicit about provider capability: Google Sheets `GOOGLEFINANCE` is formula read-back, not a real-time quote provider. Anchor OK does not guarantee actual portfolio or candidate quote usability.
+- Today Candidate must show the KR 2 + US 1 deck contract summary. If a US slot cannot be filled, a diagnostic fallback reason is visible and no candidate is forced.
+- Naver Blog extraction uses blogId/logNo parsing, PostView/mobile URL candidates, mainFrame follow, and SE body selectors. Title/source/URL-only output is `insufficient_source`, not success.
+- Committee primary UI is a six-section investment meeting report: conclusion, opportunity conditions, risk conditions, conditional observation criteria, checks, and do-not-do items. Raw/debug stays collapsed.
+- No SQL, no GET write, no Google Sheets repair/write, explicit save only, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ## EVO-050 Core Usability Contract Repair
 
 - Infographic source extraction now distinguishes usable body text from title/source/URL-only metadata. Insufficient source extraction does not proceed as a successful infographic draft and instead asks for pasted body text.

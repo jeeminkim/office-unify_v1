@@ -2,6 +2,15 @@
 
 배포·실사용 전에 아래를 순서에 맞게 확인합니다. 이 앱은 **관찰·복기·데이터 점검**용이며 **자동매매·자동 주문·자동 리밸런싱**은 없습니다.
 
+## EVO-051 Project Reality Recovery
+
+- [ ] Quote status explains Google Sheets `GOOGLEFINANCE` as formula read-back, not a real-time quote API.
+- [ ] Today Candidate shows the KR 2 + US 1 deck contract summary and visible diagnostic fallback when a slot is missing.
+- [ ] Naver Blog title/source-only extraction is `insufficient_source`; usable body extraction still produces a readable summary.
+- [ ] Committee cards show six report sections: 결론, 기회 조건, 리스크 조건, 조건부 관찰 기준, 지금 확인할 것, 하지 말 것.
+- [ ] Visible failure/action buttons work, show disabled reason, or stay hidden.
+- [ ] No SQL, no GET write, no Google Sheets repair/write, no forced candidate generation, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ## EVO-050 Core Usability Contract Repair
 
 - [ ] URL/blog title-only extraction is `insufficient_source`, not a successful extraction.
