@@ -174,12 +174,20 @@ const KNOWN_KR: KnownInstrument[] = [
   kr('고려아연', '010130', 'KOSPI', ['korea zinc'], '비철금속'),
   kr('일진전기', '103590', 'KOSPI', ['iljin electric'], '전력기기'),
   kr('LS', '006260', 'KOSPI', ['ls corp'], '전력기기'),
+  kr('현대차', '005380', 'KOSPI', ['현대자동차', 'hyundai motor', 'hyundai motors'], '자동차'),
+  kr('기아', '000270', 'KOSPI', ['kia', 'kia motors'], '자동차'),
+  kr('NAVER', '035420', 'KOSPI', ['네이버', 'naver corp'], '인터넷/플랫폼'),
+  kr('LG에너지솔루션', '373220', 'KOSPI', ['lg energy solution', 'lg엔솔'], '2차전지'),
+  kr('LG전자', '066570', 'KOSPI', ['lg electronics'], '전자/가전'),
+  kr('고영', '098460', 'KOSDAQ', ['koh young', 'koh young technology'], '반도체/검사장비'),
   kr('리가켐바이오', '141080', 'KOSDAQ', ['legochem biosciences', '레고켐바이오'], '바이오'),
   kr('HL만도', '204320', 'KOSPI', ['에이치엘만도', 'hl mando', 'mando'], '자동차부품'),
   kr('파마리서치', '214450', 'KOSDAQ', ['pharmaresearch'], '바이오'),
   kr('메지온', '140410', 'KOSDAQ', ['mezzion'], '바이오'),
   kr('알테오젠', '196170', 'KOSDAQ', ['alteogen'], '바이오'),
   kr('삼성전기', '009150', 'KOSPI', ['samsung electro-mechanics'], '전자부품'),
+  manualSeed('LG CNS', ['lg cns', '엘지씨엔에스'], 'IT 서비스'),
+  manualSeed('RISE 현대차그룹피지컬AI ETF', ['rise 현대차그룹피지컬ai etf', '현대차그룹피지컬ai', 'physical ai etf'], '자동차/로봇/AI'),
   manualSeed('RISE 현대차고정피지컬AI ETF', ['rise 현대차고정피지컬ai etf', '현대차고정피지컬ai', 'physical ai etf'], '로봇/AI 인프라'),
   manualSeed('TIGER 코리아AI전력기기TOP3플러스', ['tiger 코리아ai전력기기 top3플러스', '코리아ai전력기기', 'ai전력기기 top3'], '전력기기/AI 인프라'),
   manualSeed('KODEX AI반도체핵심장비', ['kodex ai반도체핵심장비', 'ai반도체핵심장비', '반도체핵심장비 etf'], '반도체 장비'),
@@ -191,6 +199,7 @@ const KNOWN_US: KnownInstrument[] = [
   us('Apple', 'AAPL', 'NASDAQ', ['애플'], '빅테크'),
   us('Microsoft', 'MSFT', 'NASDAQ', ['마이크로소프트'], '빅테크/AI 인프라'),
   us('Netflix', 'NFLX', 'NASDAQ', ['넷플릭스'], '콘텐츠/미디어'),
+  us('Amazon', 'AMZN', 'NASDAQ', ['아마존', 'amazon.com'], '빅테크/커머스'),
   us('ServiceNow', 'NOW', 'NYSE', ['서비스나우'], '소프트웨어'),
   us('Palantir', 'PLTR', 'NYSE', ['팔란티어', 'palantir technologies'], 'AI/데이터'),
   us('Coinbase', 'COIN', 'NASDAQ', ['코인베이스'], '디지털자산 인프라'),
@@ -419,7 +428,7 @@ function result(input: {
   const candidates = dedupeCandidates(input.candidates);
   const highConfidence = candidates.filter((candidate) => candidate.confidence === 'high');
   const bestCandidate = highConfidence[0] ?? candidates[0];
-  const singleHigh = highConfidence.length === 1 && candidates.length === 1;
+  const singleHigh = highConfidence.length === 1;
   let ambiguityStatus: WatchlistResolveAmbiguityStatus = 'not_found';
   if (singleHigh) ambiguityStatus = 'single_high_confidence';
   else if (candidates.length > 1) ambiguityStatus = 'multiple_candidates';
@@ -488,7 +497,7 @@ export function resolveWatchlistInstrument(input: {
 
   const candidates = matchKnownInstrument(query, marketHint, input.holdings, input.watchlist);
   const highConfidence = candidates.filter((candidate) => candidate.confidence === 'high');
-  if (highConfidence.length === 1 && candidates.length === 1) {
+  if (highConfidence.length === 1) {
     return result({ ok: true, query, candidates });
   }
   if (candidates.length > 1) {

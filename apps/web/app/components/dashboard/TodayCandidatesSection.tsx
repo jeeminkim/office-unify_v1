@@ -17,6 +17,22 @@ type Props = {
   };
 };
 
+const US_SLOT_REASON_COPY: Record<string, string> = {
+  us_quote_provider_not_configured: "미국 실시간 시세 공급자가 설정되지 않았습니다.",
+  usMarketDataMissing: "미국 시장 feed를 가져오지 못했습니다.",
+  us_symbol_resolve_failed: "미국 종목명/ticker 해석에 실패했습니다.",
+  us_quote_quality_low: "미국 후보 시세 신뢰가 낮습니다.",
+  us_signal_mapping_empty: "미국 신호가 국내/관련 후보로 연결되지 않았습니다.",
+  insufficient_us_candidates: "조건을 만족하는 미국 관찰 후보가 부족합니다.",
+  repeat_suppression: "최근 반복 노출로 우선순위가 낮아졌습니다.",
+  queue_policy_suppressed: "후보 큐 정책에서 진단 카드로 대체됐습니다.",
+};
+
+function usSlotReasonCopy(reason?: string): string | undefined {
+  if (!reason) return undefined;
+  return US_SLOT_REASON_COPY[reason] ?? reason;
+}
+
 /** Dashboard keeps candidate composition; this section only owns the section framing. */
 export function TodayCandidatesSection({ children, deckContract }: Props) {
   const contractStatusLabel =
@@ -32,6 +48,7 @@ export function TodayCandidatesSection({ children, deckContract }: Props) {
   const filledKr = deckContract?.filledKrSlots ?? 0;
   const filledUs = deckContract?.filledUsSlots ?? 0;
   const showContractWarning = deckContract && deckContract.deckContractStatus !== "ok";
+  const usFallbackReason = usSlotReasonCopy(deckContract?.usSlotFallbackReason);
 
   return (
     <div className="today-candidates-section">
@@ -52,7 +69,7 @@ export function TodayCandidatesSection({ children, deckContract }: Props) {
                 <p>
                   미국 후보 슬롯을 채우지 못했습니다.
                   {deckContract.usDiagnosticSlotPresent ? " 미국 진단 카드로 대체했습니다." : ""}
-                  {deckContract.usSlotFallbackReason ? ` 사유: ${deckContract.usSlotFallbackReason}` : ""}
+                  {usFallbackReason ? ` 사유: ${usFallbackReason}` : ""}
                 </p>
               ) : null}
               {filledKr < targetKr ? (

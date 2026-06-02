@@ -5,7 +5,9 @@
 ## EVO-051 Project Reality Recovery
 
 - [ ] Quote Provider Router shows Google Sheets as fallback formula read-back and separates provider_not_configured from mapping/read-back failures.
+- [ ] Quote Provider CTA is root-cause specific: Google Finance setup only for Sheet setup gaps; US feed, ticker mapping, theme mapping, quote status, and formula wait have separate copy.
 - [ ] Smart Ticker Resolve returns read-only candidates with `writeAction: false`; filling a candidate is local-only until explicit watchlist add.
+- [ ] Smart Ticker Resolve covers the maintained KR/US registry expansion and returns manual-review ETF/LG CNS seeds without auto-registering them.
 - [ ] Discovery Universe diagnostics show generated/resolved/unresolved counts and do not auto-register watchlist rows.
 - [ ] Trend Analysis shows long report mode, full report expand, summary copy, and full-copy actions; normal responses are not forced into longResponseFallback.
 - [ ] Quote status explains Google Sheets `GOOGLEFINANCE` as formula read-back, not a real-time quote API.

@@ -7,6 +7,7 @@
 - Today Candidate can use a read-only Discovery Universe based on user interest themes. It is not watchlist registration and reports generated/resolved/unresolved counts.
 - Trend Analysis defaults to long report mode: 6,000-8,000 character body, 2,000 character preview, explicit full-report expand, and separate summary/full-copy actions.
 - Quote readiness is explicit about provider capability: Google Sheets `GOOGLEFINANCE` is formula read-back, not a real-time quote provider. Anchor OK does not guarantee actual portfolio or candidate quote usability.
+- Quote remediation must choose the visible next action by root cause. Google Finance setup is primary only for missing anchors/formulas; otherwise the UI should point to quote status, US market feed, ticker/sector mapping, theme registry, or formula read-back wait.
 - Today Candidate must show the KR 2 + US 1 deck contract summary. If a US slot cannot be filled, a diagnostic fallback reason is visible and no candidate is forced.
 - Naver Blog extraction uses blogId/logNo parsing, PostView/mobile URL candidates, mainFrame follow, and SE body selectors. Title/source/URL-only output is `insufficient_source`, not success.
 - Committee primary UI is a six-section investment meeting report: conclusion, opportunity conditions, risk conditions, conditional observation criteria, checks, and do-not-do items. Raw/debug stays collapsed.

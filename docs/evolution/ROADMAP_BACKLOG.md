@@ -3,6 +3,7 @@
 ## EVO-051 Project Reality Recovery
 
 - Extended recovery with Quote Provider Router, Smart Ticker Resolve output contract, read-only Discovery Universe, and Trend long report mode. Sheets remains fallback/ops read-back; Discovery is not watchlist registration; KR 2 + US 1 is a contract with missing reasons, not forced generation.
+- Shipped root-cause CTA separation for quote/provider failures and expanded the read-only ticker registry for common KR/US names plus manual-review ETF/LG CNS seeds.
 - Shipped quote provider reality layer: Google Sheets `GOOGLEFINANCE` is shown as delayed formula read-back, not a real-time quote API.
 - Shipped visible Today Candidate deck contract: KR 2 + US 1 target, filled slots, and diagnostic fallback reasons without forcing candidates.
 - Shipped Naver Blog extraction hardening: blogId/logNo parsing, PostView/mobile candidates, mainFrame follow, and SE body selectors, with title-only results kept as insufficient source.

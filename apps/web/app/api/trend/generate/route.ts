@@ -128,7 +128,8 @@ export async function POST(req: Request) {
     });
 
     const reportRef = `trend-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const protectiveFallbackNeeded = result.reportMarkdown.length > 12000;
+    const protectiveFallbackNeeded =
+      result.reportMarkdown.length > 12000 || result.qualityMeta?.finalizer?.degraded === true;
     const longResponseFallback = protectiveFallbackNeeded
       ? buildLongResponseFallback(result.reportMarkdown, {
           actionHint:
@@ -141,7 +142,7 @@ export async function POST(req: Request) {
         ...result.qualityMeta,
         ...(longResponseFallback ? { longResponseFallback } : {}),
         reportDisplay: {
-          mode: 'long_report' as const,
+          mode: protectiveFallbackNeeded ? ('protective_fallback' as const) : ('long_report' as const),
           targetChars: 8000,
           previewChars: 2000,
           fullReportAvailable: true,

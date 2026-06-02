@@ -416,7 +416,7 @@ export type TrendAnalysisGenerateResponseBody = {
     longResponseFallback?: import('./longResponseFallback').LongResponseFallback;
     /** additive: normal Trend reports may be long; fallback is only for protective degradation. */
     reportDisplay?: {
-      mode: 'long_report';
+      mode: 'long_report' | 'protective_fallback';
       targetChars: number;
       previewChars: number;
       fullReportAvailable: boolean;

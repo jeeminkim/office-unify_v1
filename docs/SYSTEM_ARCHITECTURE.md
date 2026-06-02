@@ -3,9 +3,11 @@
 ## EVO-051 Reality Recovery Contracts
 
 - Quote Provider Router defines provider priority and failure reasons. Google Sheets `GOOGLEFINANCE` is fallback formula read-back; external KR/US providers are explicit stubs until configured.
+- Quote Provider Router also owns the root-cause CTA contract so non-Sheets failures do not repeatedly route users to Google Finance repair.
 - Smart Ticker Resolve sits before watchlist registration and is read-only. It returns candidate metadata and `writeAction: false`; user confirmation is still required for any watchlist write.
 - Discovery Universe adds interest-based KR/US observation candidates before Today Brief deck composition without mutating watchlist data.
 - Trend Analysis separates long report body display from compact handoff summaries. Normal reports are not reduced to long-response fallback.
+- Trend `reportDisplay.mode` separates `long_report` from `protective_fallback`; full report text remains available unless a protective degradation path is explicitly active.
 - Quote provider reality is additive: Google Sheets `GOOGLEFINANCE` is represented as a delayed formula read-back capability, while actual quote usability remains separate diagnostics.
 - Today Candidate composition exposes the KR 2 + US 1 deck contract in `qualityMeta.todayCandidates.deckContract` and in the Dashboard UI; missing slots are diagnostic fallbacks, not forced candidates.
 - Infographic source extraction treats Naver title/source-only output as insufficient and uses Naver-specific URL/body extraction before summary-first fallback.

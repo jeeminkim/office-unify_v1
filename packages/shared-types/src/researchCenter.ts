@@ -208,7 +208,7 @@ export type ResearchCenterGenerateResponseBody = {
   qualityMeta?: {
     researchCenter?: ResearchCenterQualityMeta;
     reportDisplay?: {
-      mode: 'long_report';
+      mode: 'long_report' | 'protective_fallback';
       targetChars: number;
       previewChars: number;
       fullReportAvailable: boolean;

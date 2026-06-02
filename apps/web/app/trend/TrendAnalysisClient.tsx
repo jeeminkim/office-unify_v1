@@ -191,6 +191,7 @@ export function TrendAnalysisClient() {
       : reportDisplay.markdown;
 
   const trendLongFallback = result?.qualityMeta?.longResponseFallback ?? null;
+  const protectiveFallbackActive = reportDisplayMeta?.mode === "protective_fallback" && trendLongFallback?.exceededLimit;
 
   const sectorPayload = useMemo((): TrendSectorFocus[] => {
     if (sectorSet.has("all")) return ["all"];
@@ -532,7 +533,7 @@ export function TrendAnalysisClient() {
             </div>
           ) : null}
 
-          {trendLongFallback?.exceededLimit ? (
+          {protectiveFallbackActive ? (
             <LongResponseFallbackCard
               fallback={trendLongFallback}
               seedSource="trend_report"

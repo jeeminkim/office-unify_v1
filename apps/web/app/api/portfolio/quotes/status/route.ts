@@ -125,6 +125,7 @@ export async function GET() {
       matchedQuoteCount: quoteDiagnostics.rowsWithPrice,
       missingSymbols: quoteDiagnostics.failedSymbols,
       formulaPendingCount: quoteDiagnostics.rowsFormulaPending,
+      quoteUsabilityStatus: quoteDiagnostics.quoteUsabilityStatus,
     });
     const rowsWithReasons = rows.map((row) => {
       const failedReasons = quoteDiagnostics.failedReasonsBySymbol[normalizeQuoteKey(row.market, row.symbol)];

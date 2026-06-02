@@ -5,10 +5,13 @@
 ### 2026-06-02 EVO-051 Real Usability Recovery
 
 - **Quote Provider Router:** Google Sheets GOOGLEFINANCE is now modeled as a formula read-back fallback/ops layer, not the primary real-time quote provider. Quote diagnostics separate provider-not-configured, formula pending, mapping, and read-back failure reasons.
+- **Quote CTA split:** quote status UI now exposes a primary next action separate from raw failure codes: Google Finance setup, quote status refresh, US market feed check, theme/watchlist mapping, ticker mapping, or formula read-back wait.
 - **Smart Ticker Resolve:** watchlist resolve now exposes `status`, `selectedCandidate`, market, match reason, and read-only candidates for Palantir/PLTR plus degraded manual-review ETF name seeds. Resolve never writes or auto-registers watchlist rows.
+- **Smart Ticker registry:** KR/US coverage includes Hyundai Motor, Kia, NAVER, LG Energy Solution, LG Electronics, KoYoung, Amazon, and manual-review seeds for LG CNS / physical-AI and AI semiconductor equipment ETFs.
 - **Discovery Universe:** Today Candidate can add read-only interest-based KR/US discovery candidates before deck composition. The universe is not a watchlist and reports generated/resolved/unresolved counts with `writeAction: false`.
 - **Deck contract reasons:** KR 2 + US 1 remains a deck contract, not forced candidate generation. Missing US slots can now report provider, resolve, quote-quality, insufficient-candidate, risk, or repeat-suppression reasons.
 - **Trend long report mode:** Trend Analysis keeps a long report body by default, separates summary copy from full report copy, and uses long-response fallback only as a protective degradation path.
+- **Protective fallback mode:** Trend `reportDisplay.mode` can now distinguish normal `long_report` from `protective_fallback` so a 2,000-character safety card does not replace a usable 6,000-8,000 character report.
 - **Guardrails:** no SQL, no GET write, no automatic watchlist registration, no forced candidate, no Google Sheets repair/write automation, no automatic trading/order/rebalancing, and no buy/sell directive.
 
 ### 2026-06-02 EVO-051 Project Reality Recovery

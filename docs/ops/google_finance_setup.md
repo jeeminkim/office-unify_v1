@@ -5,6 +5,7 @@
 - Google Sheets GOOGLEFINANCE is a formula read-back fallback/ops layer, not the primary real-time quote provider.
 - `/api/portfolio/quotes/status` may expose `quoteProviderRouter` so UI can separate `provider_not_configured`, ticker mapping, formula pending, and read-back partial states.
 - If Google Finance anchors are OK but US candidates are missing, the next check is quote provider/router, ticker mapping, US discovery universe, and candidate queue policy, not repeated Sheets repair.
+- `quoteProviderRouter.primaryAction` is the user-facing CTA selector. `google_finance_setup` is used for missing Sheet setup; `us_market_feed_check`, `theme_mapping_check`, `ticker_mapping_check`, `quote_status_check`, and `wait_for_formula_readback` keep non-Sheets problems from looping back to repair.
 
 ## 인증
 

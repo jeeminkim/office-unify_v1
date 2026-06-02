@@ -121,6 +121,32 @@ function fmt(v?: number): string {
   return krw.format(v);
 }
 
+const QUOTE_REASON_COPY: Record<string, string> = {
+  provider_not_configured: "실시간 시세 공급자 미설정",
+  formula_pending: "Google Sheets 계산 대기",
+  readback_partial: "일부 종목 read-back 미완료",
+  mapping_required: "ticker 매핑 확인 필요",
+  mapping_missing: "ticker 매핑 확인 필요",
+  missing_google_ticker: "Google Finance ticker 미입력",
+  invalid_symbol: "종목 코드 형식 확인 필요",
+  quote_quality_low: "시세 신뢰 낮음",
+  us_market_feed_missing: "미국 시장 feed 부족",
+  quote_not_returned: "시세 read-back 없음",
+  missing_row: "시세 행 없음",
+  googlefinance_no_data: "Google Finance 데이터 없음",
+  price_not_numeric: "가격 숫자 변환 실패",
+  row_empty: "시세 값 비어 있음",
+  parse_failed: "시세 파싱 실패",
+};
+
+function quoteReasonLabel(reason: string): string {
+  return QUOTE_REASON_COPY[reason] ?? reason;
+}
+
+function quoteReasonList(reasons?: string[]): string {
+  return (reasons ?? []).map(quoteReasonLabel).join(", ") || "-";
+}
+
 /** 시세 패널에서 ticker 수정 허용 */
 const QUOTE_ROW_TICKER_EDITABLE = new Set([
   "ticker_mismatch",
@@ -185,6 +211,9 @@ export function PortfolioDashboardClient() {
       primaryProvider?: string;
       fallbackProvider?: string;
       googleFinanceIsPrimaryRealtimeProvider?: boolean;
+      primaryAction?: string;
+      primaryActionLabel?: string;
+      userMessage?: string;
       actionHint?: string;
       writeAction?: false;
       results?: Array<{
@@ -779,6 +808,16 @@ export function PortfolioDashboardClient() {
               {quoteStatus.quoteProviderRouter.actionHint ? (
                 <p className="mt-1">{quoteStatus.quoteProviderRouter.actionHint}</p>
               ) : null}
+              {quoteStatus.quoteProviderRouter.primaryActionLabel || quoteStatus.quoteProviderRouter.userMessage ? (
+                <div className="mt-2 rounded border border-indigo-100 bg-white px-2 py-1 text-[11px]">
+                  <p className="font-medium">
+                    다음 확인: {quoteStatus.quoteProviderRouter.primaryActionLabel ?? "Quote Provider 상태 확인"}
+                  </p>
+                  {quoteStatus.quoteProviderRouter.userMessage ? (
+                    <p className="mt-0.5 text-indigo-800">{quoteStatus.quoteProviderRouter.userMessage}</p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="mt-2 grid gap-1 md:grid-cols-2">
                 {(quoteStatus.quoteProviderRouter.results ?? []).map((provider) => (
                   <div key={provider.provider} className="rounded border border-indigo-100 bg-white px-2 py-1">
@@ -790,7 +829,7 @@ export function PortfolioDashboardClient() {
                     </div>
                     <p className="mt-0.5 text-[11px] text-indigo-800">
                       {provider.providerType} · priority {provider.priority}
-                      {(provider.failureReasons ?? []).length > 0 ? ` · ${(provider.failureReasons ?? []).join(", ")}` : ""}
+                      {(provider.failureReasons ?? []).length > 0 ? ` · ${quoteReasonList(provider.failureReasons)}` : ""}
                     </p>
                   </div>
                 ))}
@@ -869,7 +908,7 @@ export function PortfolioDashboardClient() {
                     <td className="px-2 py-1 text-right">{row.rawPrice ?? "-"}</td>
                     <td className="px-2 py-1 text-right">{row.parsedPrice == null ? "NO_DATA" : fmt(row.parsedPrice)}</td>
                     <td className="px-2 py-1">{row.rowStatus}</td>
-                    <td className="px-2 py-1">{(row.failedReasons ?? []).join(", ") || "-"}</td>
+                    <td className="px-2 py-1">{quoteReasonList(row.failedReasons)}</td>
                     <td className="px-2 py-1">{row.message ?? "-"}</td>
                     <td className="px-2 py-1">
                       {tickerEditDraft?.key === `${row.market}:${row.symbol}` ? (

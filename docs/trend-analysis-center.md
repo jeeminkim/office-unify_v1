@@ -168,3 +168,9 @@ Content-Type: application/json
 - **follow-up queue** / `trend_memory_links`
 - 월간 롤업·비교 고도화
 - Files API 업로드 → `file_id` UX
+
+## EVO-051 Display Contract Note
+
+- `qualityMeta.reportDisplay.mode` separates normal `long_report` from `protective_fallback`.
+- Normal Trend reports preserve the full report body and may show an initial 2,000-character preview with an explicit full-report expand action.
+- Protective fallback is reserved for unusually long output or provider-finalizer degradation; it should not replace a usable 6,000-8,000 character report.

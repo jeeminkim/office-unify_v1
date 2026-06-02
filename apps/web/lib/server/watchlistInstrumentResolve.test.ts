@@ -29,6 +29,12 @@ describe('resolveWatchlistInstrument', () => {
     ['파마리서치', '214450', 'KOSDAQ:214450'],
     ['메지온', '140410', 'KOSDAQ:140410'],
     ['알테오젠', '196170', 'KOSDAQ:196170'],
+    ['현대차', '005380', 'KRX:005380'],
+    ['기아', '000270', 'KRX:000270'],
+    ['NAVER', '035420', 'KRX:035420'],
+    ['LG에너지솔루션', '373220', 'KRX:373220'],
+    ['LG전자', '066570', 'KRX:066570'],
+    ['고영', '098460', 'KOSDAQ:098460'],
   ])('resolves KR name %s to code and Google ticker', (query, symbol, googleTicker) => {
     const out = resolve(query, 'KR');
     expect(out.ok).toBe(true);
@@ -56,6 +62,8 @@ describe('resolveWatchlistInstrument', () => {
     ['Apple', 'AAPL', 'NASDAQ:AAPL'],
     ['Microsoft', 'MSFT', 'NASDAQ:MSFT'],
     ['Netflix', 'NFLX', 'NASDAQ:NFLX'],
+    ['Amazon', 'AMZN', 'NASDAQ:AMZN'],
+    ['아마존', 'AMZN', 'NASDAQ:AMZN'],
     ['ServiceNow', 'NOW', 'NYSE:NOW'],
     ['서비스나우', 'NOW', 'NYSE:NOW'],
     ['NOW', 'NOW', 'NYSE:NOW'],
@@ -82,6 +90,8 @@ describe('resolveWatchlistInstrument', () => {
     'RISE 현대차고정피지컬AI ETF',
     'Tiger 코리아AI전력기기 Top3플러스',
     'Kodex AI반도체핵심장비',
+    'RISE 현대차그룹피지컬AI ETF',
+    'LG CNS',
   ])('returns a degraded manual-review candidate for unresolved ETF name seed: %s', (query) => {
     const out = resolve(query, 'AUTO');
     expect(out.ok).toBe(false);
