@@ -4,6 +4,9 @@
 
 ## EVO-051 Project Reality Recovery
 
+- [ ] EVO-051-1: degraded US coverage primary CTA follows root cause and does not default to Google Finance setup.
+- [ ] EVO-051-1: manual-review/UNKNOWN ETF resolve candidates show a disabled reason until a 6-digit code or US ticker is confirmed.
+- [ ] EVO-051-1: normal Trend `long_report` does not show the amber protective fallback card.
 - [ ] Quote Provider Router shows Google Sheets as fallback formula read-back and separates provider_not_configured from mapping/read-back failures.
 - [ ] Quote Provider CTA is root-cause specific: Google Finance setup only for Sheet setup gaps; US feed, ticker mapping, theme mapping, quote status, and formula wait have separate copy.
 - [ ] Smart Ticker Resolve returns read-only candidates with `writeAction: false`; filling a candidate is local-only until explicit watchlist add.

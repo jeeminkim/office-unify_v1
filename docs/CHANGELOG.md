@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### 2026-06-03 EVO-051-1 Minimal Follow-up
+
+- **Quote CTA root-cause split:** Command Center US coverage blockers now choose the primary CTA by likely root cause instead of routing every degraded US state to Google Finance setup.
+- **US candidate missing copy:** Today Candidate deck contract now surfaces a readable KR 2 + US 1 target/current summary and explains US slot state as candidate, diagnostic card, or missing.
+- **Smart Ticker Resolve UX:** Portfolio Ledger blocks local fill for manual-review/UNKNOWN ETF candidates and tells the user to confirm a 6-digit code or US ticker first.
+- **Trend long report guard:** normal `long_report` continues to suppress the protective fallback card; `protective_fallback` remains the only warning-card mode.
+- **Guardrails:** no tests run in this patch, no SQL, no GET write, no Sheets repair/write, no automatic watchlist registration, no forced candidates, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ### 2026-06-02 EVO-051 Real Usability Recovery
 
 - **Quote Provider Router:** Google Sheets GOOGLEFINANCE is now modeled as a formula read-back fallback/ops layer, not the primary real-time quote provider. Quote diagnostics separate provider-not-configured, formula pending, mapping, and read-back failure reasons.

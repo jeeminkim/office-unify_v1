@@ -95,6 +95,53 @@ export type CommandCenterInput = {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+function quoteRootCauseCta(message?: string): {
+  label: string;
+  href: string;
+  reason: string;
+  expectation: string;
+} {
+  const m = (message ?? '').toLowerCase();
+  if (m.includes('sheets_anchor_zero') || m.includes('anchor 0') || m.includes('google finance anchor')) {
+    return {
+      label: 'Google Finance 설정 확인',
+      href: '/ops/google-finance-setup',
+      reason: 'Sheets anchor 또는 formula 설정이 부족합니다.',
+      expectation: 'Google Finance 설정 화면으로 이동합니다. 이동만으로 데이터는 변경되지 않습니다.',
+    };
+  }
+  if (m.includes('usmarketdatamissing') || m.includes('market feed') || m.includes('yahoo') || m.includes('feed')) {
+    return {
+      label: '미국 시장 feed 확인',
+      href: '/system-status',
+      reason: '미국장 신호 feed를 가져오지 못했습니다. Google Finance 설정 문제가 아닐 수 있습니다.',
+      expectation: '시스템 상태 화면에서 외부 feed와 quote 상태를 확인합니다.',
+    };
+  }
+  if (m.includes('mapping') || m.includes('ticker') || m.includes('resolve')) {
+    return {
+      label: 'ticker·테마 매핑 확인',
+      href: '/portfolio-ledger',
+      reason: '종목명, ticker, sector/theme 연결이 불완전합니다.',
+      expectation: 'Portfolio Ledger에서 read-only resolver 후보를 확인합니다. 자동 등록은 하지 않습니다.',
+    };
+  }
+  if (m.includes('provider_not_configured') || m.includes('quote provider')) {
+    return {
+      label: 'Quote Provider 상태 확인',
+      href: '/system-status',
+      reason: '실시간 또는 준실시간 quote provider가 아직 설정되지 않았습니다. Sheets는 지연 read-back입니다.',
+      expectation: '시스템 상태 화면에서 provider 설정과 quote read-back 상태를 확인합니다.',
+    };
+  }
+  return {
+    label: '시세 상태 확인',
+    href: '/portfolio',
+    reason: '미국 후보 부족은 시세, feed, mapping, queue policy 중 하나일 수 있습니다.',
+    expectation: 'Portfolio 시세 상태에서 read-back과 provider 사유를 확인합니다.',
+  };
+}
+
 function staleDays(updatedAt: string): number {
   const t = Date.parse(updatedAt);
   if (Number.isNaN(t)) return 0;
@@ -186,8 +233,28 @@ function pickDataBlocker(input: CommandCenterInput): CommandCenterItem | null {
       afterClickExpectation: '설정 화면으로 이동합니다. 실제 수정은 안전 보강 적용 또는 CLI confirm에서만 실행됩니다.',
     };
   }
+  const usCoverageRootCause = input.todayBrief?.qualityMeta?.todayCandidates?.usCoverage;
+  if (usCoverageRootCause?.status === 'degraded') {
+    const cta = quoteRootCauseCta(usCoverageRootCause.message);
+    return {
+      type: 'data_blocker',
+      title: '미국 시세·데이터 제한',
+      reason: `${cta.reason} ${(usCoverageRootCause.message ?? 'US 커버리지가 degraded입니다.').slice(0, 160)}`,
+      source: 'today_brief',
+      sourceLabel: '데이터 blocker',
+      primaryActionLabel: cta.label,
+      href: cta.href,
+      secondaryActionLabel: cta.label === 'Google Finance 설정 확인' ? '시세 상태 확인' : 'Google Finance 설정 확인',
+      secondaryHref: cta.label === 'Google Finance 설정 확인' ? '/portfolio' : '/ops/google-finance-setup',
+      severity: 'warning',
+      whyNow: '미국 데이터가 부족하면 Google Finance 설정, quote provider, US feed, ticker/theme mapping을 분리해 확인해야 합니다.',
+      actionIntent: 'navigate_only',
+      afterClickExpectation: cta.expectation,
+    };
+  }
   const usCov = input.todayBrief?.qualityMeta?.todayCandidates?.usCoverage;
   if (usCov?.status === 'degraded') {
+    const cta = quoteRootCauseCta(usCov.message);
     return {
       type: 'data_blocker',
       title: '미국 시세·데이터 제한',

@@ -2,6 +2,7 @@
 
 ## EVO-051 Project Reality Recovery
 
+- EVO-051-1 follow-up tightens root-cause CTAs: degraded US coverage must point to Google Finance setup only for anchor/formula gaps; otherwise it should point to US feed, quote provider, ticker/theme mapping, or quote status checks.
 - Real usability recovery extends this baseline with a `QuoteProviderRouter`: Google Sheets is fallback/ops read-back, while future external KR/US providers are explicit provider slots and currently report `provider_not_configured`.
 - Smart Ticker Resolve is a first-class read-only registration proposal layer. It may fill local form state, but watchlist persistence remains the explicit existing POST path.
 - Today Candidate can use a read-only Discovery Universe based on user interest themes. It is not watchlist registration and reports generated/resolved/unresolved counts.

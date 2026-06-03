@@ -171,6 +171,7 @@ Content-Type: application/json
 
 ## EVO-051 Display Contract Note
 
+- EVO-051-1: normal `long_report` must not show the amber protective fallback card. Warning cards are reserved for `protective_fallback`; normal reports should offer preview, full-report expand, compact-summary copy, full-text copy, and downstream handoff actions.
 - `qualityMeta.reportDisplay.mode` separates normal `long_report` from `protective_fallback`.
 - Normal Trend reports preserve the full report body and may show an initial 2,000-character preview with an explicit full-report expand action.
 - Protective fallback is reserved for unusually long output or provider-finalizer degradation; it should not replace a usable 6,000-8,000 character report.

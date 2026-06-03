@@ -2,6 +2,7 @@
 
 ## EVO-051 Quote Provider Router
 
+- EVO-051-1: degraded US coverage must not automatically make Google Finance setup the primary CTA. Use Google Finance setup only for anchor/formula gaps; use US feed, quote provider, ticker mapping, theme mapping, or quote status checks for other root causes.
 - Google Sheets GOOGLEFINANCE is a formula read-back fallback/ops layer, not the primary real-time quote provider.
 - `/api/portfolio/quotes/status` may expose `quoteProviderRouter` so UI can separate `provider_not_configured`, ticker mapping, formula pending, and read-back partial states.
 - If Google Finance anchors are OK but US candidates are missing, the next check is quote provider/router, ticker mapping, US discovery universe, and candidate queue policy, not repeated Sheets repair.

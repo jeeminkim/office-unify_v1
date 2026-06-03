@@ -110,6 +110,7 @@ type WatchlistResolveCandidateView = {
   quoteSymbol?: string;
   sector?: string;
   confidence?: string;
+  matchType?: string;
   warnings?: string[];
   actionHint?: string;
   sourceRefs?: Array<{ source: string; label: string }>;
@@ -840,6 +841,13 @@ export function PortfolioLedgerClient() {
   }, [watchCreateDraft.market, watchCreateDraft.symbol, watchCreateDraft.name]);
 
   const applyWatchResolveCandidate = useCallback((candidate: WatchlistResolveCandidateView) => {
+    if (candidate.symbol === "UNKNOWN" || candidate.matchType === "manual_review") {
+      setSuggestFormBanner({
+        kind: "partial",
+        message: "ETF 6자리 코드 또는 US ticker를 먼저 확인해 symbol에 입력해야 저장할 수 있습니다. 이 후보는 이름/섹터 힌트만 제공합니다.",
+      });
+      return;
+    }
     setWatchCreateDraft((prev) => ({
       ...prev,
       market: candidate.market === "US" ? "US" : "KR",
@@ -1728,12 +1736,18 @@ export function PortfolioLedgerClient() {
                   </div>
                   <button
                     type="button"
-                    className="rounded border border-teal-500 bg-teal-600 px-2 py-1 text-white"
+                    className="rounded border border-teal-500 bg-teal-600 px-2 py-1 text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={candidate.symbol === "UNKNOWN" || candidate.matchType === "manual_review"}
                     onClick={() => applyWatchResolveCandidate(candidate)}
                   >
                     이 후보로 채우기
                   </button>
                 </div>
+                {candidate.symbol === "UNKNOWN" || candidate.matchType === "manual_review" ? (
+                  <p className="mt-1 text-[11px] text-amber-800">
+                    6자리 코드 또는 US ticker를 먼저 확인해야 저장할 수 있습니다. 이름/섹터 힌트만 유지합니다.
+                  </p>
+                ) : null}
                 {candidate.warnings?.length ? <p className="mt-1 text-[11px] text-amber-800">{candidate.warnings.join(" / ")}</p> : null}
               </div>
             ))}

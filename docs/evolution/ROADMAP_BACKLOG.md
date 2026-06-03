@@ -2,6 +2,7 @@
 
 ## EVO-051 Project Reality Recovery
 
+- EVO-051-1 minimal follow-up: tightened quote CTA root-cause selection, US missing-slot copy, manual-review ETF resolve UX, and Trend long_report/protective_fallback display boundaries. Tests intentionally not run for this prompt.
 - Extended recovery with Quote Provider Router, Smart Ticker Resolve output contract, read-only Discovery Universe, and Trend long report mode. Sheets remains fallback/ops read-back; Discovery is not watchlist registration; KR 2 + US 1 is a contract with missing reasons, not forced generation.
 - Shipped root-cause CTA separation for quote/provider failures and expanded the read-only ticker registry for common KR/US names plus manual-review ETF/LG CNS seeds.
 - Shipped quote provider reality layer: Google Sheets `GOOGLEFINANCE` is shown as delayed formula read-back, not a real-time quote API.

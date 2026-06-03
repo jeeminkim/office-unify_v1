@@ -175,7 +175,7 @@ export function buildQuoteProviderRouterSummary(input: {
     usSignalMappingEmpty: input.usSignalMappingEmpty === true,
     lowConfidenceMapping: input.lowConfidenceMapping === true,
   });
-  const actionCopy = primaryActionCopy(primaryAction);
+  const actionCopy = normalizedPrimaryActionCopy(primaryAction);
 
   return {
     primaryProvider,
@@ -215,7 +215,48 @@ function selectPrimaryAction(input: {
   return 'quote_provider_status_check';
 }
 
-function primaryActionCopy(action: QuoteProviderPrimaryAction): { label: string; message: string } {
+function normalizedPrimaryActionCopy(action: QuoteProviderPrimaryAction): { label: string; message: string } {
+  switch (action) {
+    case 'google_finance_setup':
+      return {
+        label: 'Google Finance 설정 확인',
+        message: 'Sheets anchor 또는 formula 설정이 부족합니다.',
+      };
+    case 'quote_status_check':
+      return {
+        label: '시세 상태 확인',
+        message: 'Google Finance anchor가 정상이어도 실제 종목 시세 read-back은 부족할 수 있습니다.',
+      };
+    case 'wait_for_formula_readback':
+      return {
+        label: '계산 대기 후 재확인',
+        message: 'Google Sheets 수식 계산이 아직 반영되지 않았습니다. 30~60초 뒤 상태를 다시 확인하세요.',
+      };
+    case 'ticker_mapping_check':
+      return {
+        label: 'ticker 매핑 확인',
+        message: '종목명, 코드/ticker 연결이 불완전합니다.',
+      };
+    case 'us_market_feed_check':
+      return {
+        label: '미국 시장 feed 확인',
+        message: '미국장 신호 feed를 가져오지 못했습니다. Google Finance 설정 문제가 아닐 수 있습니다.',
+      };
+    case 'theme_mapping_check':
+      return {
+        label: '테마 연결 확인',
+        message: '미국 신호가 국내/관련 후보로 연결되지 않았습니다.',
+      };
+    case 'quote_provider_status_check':
+    default:
+      return {
+        label: 'Quote Provider 상태 확인',
+        message: '실시간 또는 준실시간 quote provider가 아직 설정되지 않았습니다. Google Sheets는 지연 read-back입니다.',
+      };
+  }
+}
+
+export function primaryActionCopy(action: QuoteProviderPrimaryAction): { label: string; message: string } {
   switch (action) {
     case 'google_finance_setup':
       return {
