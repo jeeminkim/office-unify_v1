@@ -427,6 +427,33 @@ function reasonCodeFromUsFallback(
   }
 }
 
+type CandidateDisplayPrimaryAction = CandidateDisplaySlot['primaryAction'];
+
+function toCandidateDisplayPrimaryAction(actionKey: string): CandidateDisplayPrimaryAction {
+  switch (actionKey) {
+    case 'none':
+    case 'quote_recovery':
+    case 'quote_status_check':
+    case 'google_finance_setup':
+    case 'ticker_resolver':
+    case 'us_mapping_diagnosis':
+    case 'theme_mapping_check':
+    case 'discovery_universe_check':
+      return actionKey;
+    case 'quote_provider_status':
+    case 'google_finance_readback_check':
+    case 'us_market_feed_check':
+      return 'quote_status_check';
+    case 'fix_symbol':
+      return 'ticker_resolver';
+    case 'candidate_queue_review':
+    case 'candidate_shortage_review':
+      return 'discovery_universe_check';
+    default:
+      return 'none';
+  }
+}
+
 function slotCopy(code: QuoteRootCauseCode): Pick<
   CandidateDisplaySlot,
   'reasonLabelKo' | 'actionHintKo' | 'primaryAction' | 'primaryActionLabelKo'
@@ -438,7 +465,7 @@ function slotCopy(code: QuoteRootCauseCode): Pick<
   return {
     reasonLabelKo: reason.userTitleKo,
     actionHintKo: reason.actionHintKo,
-    primaryAction: reason.primaryActionKey,
+    primaryAction: toCandidateDisplayPrimaryAction(reason.primaryActionKey),
     primaryActionLabelKo: reason.primaryActionLabelKo,
   };
 }
