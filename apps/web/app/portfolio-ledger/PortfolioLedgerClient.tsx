@@ -764,10 +764,19 @@ export function PortfolioLedgerClient() {
         failureCode?: string;
         actionHint?: string;
         candidates?: WatchlistResolveCandidateView[];
+        canAutoFillForm?: boolean;
       };
       if (resolved.ok && resolved.resolved) {
         const r = resolved.resolved;
         setWatchResolveCandidates([r]);
+        if (resolved.canAutoFillForm !== true || r.confidence !== "high") {
+          setSuggestFormBanner({
+            kind: "partial",
+            message:
+              "확인정보 자동 채우기: 후보를 찾았지만 신뢰도가 high가 아니어서 폼을 자동 변경하지 않았습니다. 아래 후보 카드에서 확인 후 채우세요.",
+          });
+          return;
+        }
         setWatchCreateDraft((prev) => ({
           ...prev,
           symbol: r.symbol,
@@ -778,7 +787,7 @@ export function PortfolioLedgerClient() {
           krQuoteMarket: r.quoteSymbol?.endsWith(".KQ") ? "KOSDAQ" : r.quoteSymbol?.endsWith(".KS") ? "KOSPI" : prev.krQuoteMarket,
         }));
         setSuggestFormBanner({
-          kind: r.confidence === "low" ? "partial" : "success",
+          kind: "success",
           message: `1단계 resolve: 등록 후보로 폼을 채웠습니다. 저장 전 코드와 Google ticker를 확인하세요. (${r.symbol} · ${r.googleTicker})`,
         });
         return;
@@ -1712,7 +1721,7 @@ export function PortfolioLedgerClient() {
             disabled={suggestFillWatchBusy}
             onClick={() => void fillWatchFromSuggest()}
           >
-            {suggestFillWatchBusy ? "처리 중…" : "관심 정보 자동 채움"}
+            {suggestFillWatchBusy ? "확인 중..." : "확인정보 자동 채우기"}
           </button>
           <button type="button" className="rounded border border-blue-600 bg-blue-600 px-3 py-1 text-white disabled:opacity-50" disabled={createBusy === "watchlist" || quoteRefreshBusy || quoteStatusBusy} onClick={() => void createWatchlist()}>{createBusy === "watchlist" ? "저장 중…" : "관심종목 추가"}</button>
         </div>

@@ -1,5 +1,19 @@
 # System Architecture (Personal Investment Console)
 
+## EVO-053 Quote Recovery Runbook
+
+- `apps/web/lib/server/quoteRecoveryRunbook.ts` owns quote recovery plan/execution. It uses server helpers instead of internal fetches and keeps GET read-only.
+- `packages/shared-types/src/opsRunbook.ts` now includes `QuoteRecoveryRunbookStep`, `QuoteRecoveryRunbookResponse`, and `CandidateDisplaySlot`.
+- Dashboard and Portfolio call the same quote recovery POST endpoint after explicit user clicks. The runbook can request quote refresh, but never trades, orders, rebalances, forces candidates, or auto-registers watchlist rows.
+- Today Candidate UI composes additive display slots from existing deck diagnostics; `primaryCandidateDeck` remains unchanged.
+
+## EVO-052 Ops Runbook Layer
+
+- `packages/shared-types/src/opsRunbook.ts` defines the shared runbook plan, step, scope, and execution response contract.
+- `apps/web/lib/server/opsRunbookPlanner.ts` is pure plan composition: it partitions safe steps, confirm-required steps, and blocked steps without performing writes.
+- `apps/web/lib/server/opsRunbookExecutor.ts` collects runtime diagnostics and executes only the explicitly confirmed runbook scope. GET planning stays read-only; POST execution does not trade, rebalance, create candidates, or auto-register watchlist rows.
+- Dashboard consumes the runbook APIs as an operator control surface. The UX is status-first and diagnostic; it is not an investment recommendation surface.
+
 ## EVO-051 Reality Recovery Contracts
 
 - Quote Provider Router defines provider priority and failure reasons. Google Sheets `GOOGLEFINANCE` is fallback formula read-back; external KR/US providers are explicit stubs until configured.

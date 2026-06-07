@@ -1,5 +1,6 @@
 import type {
   CandidateDecisionTrace,
+  CandidateDisplaySlot,
   CandidateJudgmentQuality,
   ConcentrationRiskAssessment,
   ObservationScoreFactorCode,
@@ -406,6 +407,8 @@ export interface TodayBriefWithCandidatesResponse {
         primarySuppressedCount: number;
         policyVersion: string;
       };
+      /** additive: EVO-055 fixed 3-slot screen contract; real candidate or diagnostic/data-check slot. */
+      displaySlots?: CandidateDisplaySlot[];
       /** additive: read-only interest-based candidate universe; never auto-registers watchlist rows. */
       discoveryUniverse?: {
         status: 'ok' | 'partial' | 'empty' | 'degraded';

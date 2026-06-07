@@ -1072,6 +1072,7 @@ export async function GET(req?: Request) {
           recommendationCandidates,
           feedbackSummary: feedbackSummaryEarly,
           queueDiagnostics,
+          displaySlots: composedDeck.qualityMeta.displaySlots,
           personalization: personalizationBundle?.summary,
         },
       },

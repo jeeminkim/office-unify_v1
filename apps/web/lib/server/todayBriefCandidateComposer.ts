@@ -3,6 +3,7 @@ import type {
   SectorRadarSummaryResponse,
   SectorRadarSummarySector,
 } from '@/lib/sectorRadarContract';
+import type { CandidateDisplaySlot, QuoteRootCauseCode } from '@office-unify/shared-types';
 import type { TodayStockCandidate, UsMarketMorningSummary } from '@/lib/todayCandidatesContract';
 import { buildTodayCandidateDisplayMetrics } from '@/lib/server/todayBriefCandidateDisplay';
 import type { TodayCandidateRepeatStat } from '@/lib/server/todayCandidateRepeatExposure';
@@ -234,6 +235,7 @@ export function composeTodayBriefCandidates(input: {
     usMarketCheckDiagnosticCount?: number;
     usMarketSummaryStatus?: string;
     deckContract: CandidateDeckContractDiagnostics;
+    displaySlots: CandidateDisplaySlot[];
   };
 } {
   const droppedReasons: string[] = [];
@@ -335,6 +337,11 @@ export function composeTodayBriefCandidates(input: {
     usPoolCount: input.usDirectCandidates?.length ?? 0,
     usSignalCandidateCount: input.usMarketKrCandidates.length,
   });
+  const displaySlots = buildCandidateDisplaySlots({
+    primaryDeck: usAttach.primaryDeck,
+    diagnosticCandidateCards: [...repeatedMonitoringCandidates, ...usAttach.diagnosticCandidateCards],
+    deckContract,
+  });
 
   return {
     deck: usAttach.primaryDeck,
@@ -359,6 +366,7 @@ export function composeTodayBriefCandidates(input: {
       riskReviewIncluded: Boolean(riskSlot),
       usMarketCheckDiagnosticCount: usAttach.diagnosticCandidateCards.length,
       deckContract,
+      displaySlots,
     },
   };
 }
@@ -385,6 +393,194 @@ export type CandidateDeckContractDiagnostics = {
   deckContractStatus: 'ok' | 'partial' | 'degraded';
   actionHint: string;
 };
+
+function candidateKind(c: TodayStockCandidate): CandidateDisplaySlot['kind'] {
+  if (c.briefDeckSlot === 'risk_review' || c.candidateAction === 'review_required') return 'risk_review';
+  if (c.confidence === 'low' || c.confidence === 'very_low') return 'low_confidence_candidate';
+  if (c.displayMetrics?.candidateCardKind === 'us_data_check' || c.briefDeckSlot === 'us_market_check') return 'data_check';
+  return 'candidate';
+}
+
+function reasonCodeFromUsFallback(
+  reason: CandidateDeckContractDiagnostics['usSlotFallbackReason'],
+): QuoteRootCauseCode {
+  switch (reason) {
+    case 'us_quote_provider_not_configured':
+      return 'provider_not_configured';
+    case 'us_symbol_resolve_failed':
+    case 'low_confidence_mapping':
+      return 'ticker_mapping_required';
+    case 'quote_quality_low':
+    case 'us_quote_quality_low':
+      return 'quote_rows_missing';
+    case 'us_signal_mapping_empty':
+      return 'us_signal_mapping_empty';
+    case 'queue_policy_suppressed':
+    case 'risk_queue_dominates':
+    case 'repeat_suppression':
+      return 'queue_policy_suppressed';
+    case 'no_us_pool':
+    case 'insufficient_us_candidates':
+    default:
+      return 'insufficient_candidates';
+  }
+}
+
+function slotCopy(code: QuoteRootCauseCode): Pick<
+  CandidateDisplaySlot,
+  'reasonLabelKo' | 'actionHintKo' | 'primaryAction' | 'primaryActionLabelKo'
+> {
+  switch (code) {
+    case 'us_market_feed_missing':
+      return {
+        reasonLabelKo: 'US market feed missing',
+        actionHintKo: 'US market feed is empty. This may not be a Google Finance setup issue.',
+        primaryAction: 'quote_recovery',
+        primaryActionLabelKo: 'Run Quote Recovery',
+      };
+    case 'us_signal_mapping_empty':
+      return {
+        reasonLabelKo: 'US signal mapping empty',
+        actionHintKo: 'US signals exist but are not connected to KR/watchlist candidates. Check theme mapping.',
+        primaryAction: 'us_mapping_diagnosis',
+        primaryActionLabelKo: 'Check US mapping',
+      };
+    case 'ticker_mapping_required':
+    case 'missing_google_ticker':
+    case 'invalid_symbol':
+      return {
+        reasonLabelKo: 'Ticker mapping required',
+        actionHintKo: 'Check stock code, US ticker, and Google Finance ticker before treating this as a quote outage.',
+        primaryAction: 'ticker_resolver',
+        primaryActionLabelKo: 'Check ticker',
+      };
+    case 'queue_policy_suppressed':
+      return {
+        reasonLabelKo: 'Queue policy suppressed',
+        actionHintKo: 'A candidate existed, but repeat exposure, risk review, or data quality moved it to diagnostics.',
+        primaryAction: 'none',
+        primaryActionLabelKo: 'Review diagnostics',
+      };
+    case 'quote_rows_missing':
+    case 'google_finance_readback_partial':
+      return {
+        reasonLabelKo: 'Quote read-back incomplete',
+        actionHintKo: 'Run quote recovery and refresh only missing or partial quote rows.',
+        primaryAction: 'quote_recovery',
+        primaryActionLabelKo: 'Run Quote Recovery',
+      };
+    case 'google_finance_anchor_missing':
+    case 'google_finance_formula_pending':
+      return {
+        reasonLabelKo: 'Google Finance setup/read-back',
+        actionHintKo: 'Google Finance setup is primary only for anchor, formula, or read-back issues.',
+        primaryAction: 'google_finance_setup',
+        primaryActionLabelKo: 'Google Finance setup',
+      };
+    case 'discovery_universe_empty':
+      return {
+        reasonLabelKo: 'Discovery universe empty',
+        actionHintKo: 'Discovery did not find enough resolved candidates. No watchlist rows are auto-registered.',
+        primaryAction: 'discovery_universe_check',
+        primaryActionLabelKo: 'Check discovery',
+      };
+    case 'insufficient_candidates':
+    default:
+      return {
+        reasonLabelKo: 'Insufficient candidates',
+        actionHintKo: 'Not enough candidates passed observation criteria; this slot is a data-check placeholder.',
+        primaryAction: 'none',
+        primaryActionLabelKo: 'Review data',
+      };
+  }
+}
+
+function buildCandidateDisplaySlots(input: {
+  primaryDeck: TodayStockCandidate[];
+  diagnosticCandidateCards: TodayStockCandidate[];
+  deckContract: CandidateDeckContractDiagnostics;
+}): CandidateDisplaySlot[] {
+  const slots: CandidateDisplaySlot[] = input.primaryDeck.slice(0, 3).map((c, index) => ({
+    slotId: `candidate-${c.candidateId}`,
+    slotIndex: index + 1,
+    targetMarket: c.country === 'US' ? 'US' : c.country === 'KR' ? 'KR' : 'ANY',
+    kind: candidateKind(c),
+    title: c.name,
+    subtitle: c.reasonSummary,
+    reasonCode: c.dataQuality?.quoteReady === false ? 'quote_rows_missing' : 'unknown',
+    reasonLabelKo: c.briefDeckSlot === 'risk_review' ? 'Risk review' : 'Observation candidate',
+    actionHintKo: c.isBuyRecommendation === false ? 'Observation only. No buy/sell/order action is created.' : 'Observation only.',
+    primaryAction: 'none',
+    primaryActionLabelKo: 'Review card',
+    isTradeCandidate: false,
+  }));
+
+  if (input.deckContract.filledUsSlots < input.deckContract.targetUsSlots && slots.length < 3) {
+    const code = reasonCodeFromUsFallback(input.deckContract.usSlotFallbackReason);
+    const copy = slotCopy(code);
+    slots.push({
+      slotId: 'diagnostic-us-slot',
+      slotIndex: slots.length + 1,
+      targetMarket: 'US',
+      kind: 'us_diagnostic',
+      title: 'US candidate diagnostic',
+      subtitle: 'US slot is shown as a typed diagnostic instead of a forced candidate.',
+      reasonCode: code,
+      ...copy,
+      isTradeCandidate: false,
+    });
+  }
+
+  if (input.deckContract.filledKrSlots < input.deckContract.targetKrSlots && slots.length < 3) {
+    const copy = slotCopy('insufficient_candidates');
+    slots.push({
+      slotId: 'diagnostic-kr-slot',
+      slotIndex: slots.length + 1,
+      targetMarket: 'KR',
+      kind: 'insufficient_candidate',
+      title: 'KR candidate diagnostic',
+      subtitle: 'KR observation slot is short; no synthetic candidate was created.',
+      reasonCode: 'insufficient_candidates',
+      ...copy,
+      isTradeCandidate: false,
+    });
+  }
+
+  for (const c of input.diagnosticCandidateCards) {
+    if (slots.length >= 3) break;
+    const us = c.country === 'US' || c.briefDeckSlot === 'us_market_check';
+    const code: QuoteRootCauseCode = us ? reasonCodeFromUsFallback(input.deckContract.usSlotFallbackReason) : 'queue_policy_suppressed';
+    const copy = slotCopy(code);
+    slots.push({
+      slotId: `diagnostic-${c.candidateId}`,
+      slotIndex: slots.length + 1,
+      targetMarket: us ? 'US' : c.country === 'KR' ? 'KR' : 'ANY',
+      kind: us ? 'us_diagnostic' : 'data_check',
+      title: c.name,
+      subtitle: c.reasonSummary,
+      reasonCode: code,
+      ...copy,
+      isTradeCandidate: false,
+    });
+  }
+
+  while (slots.length < 3) {
+    const copy = slotCopy('insufficient_candidates');
+    slots.push({
+      slotId: `insufficient-slot-${slots.length + 1}`,
+      slotIndex: slots.length + 1,
+      targetMarket: slots.length === 2 ? 'US' : 'ANY',
+      kind: 'insufficient_candidate',
+      title: 'Candidate slot unavailable',
+      subtitle: 'No forced candidate was created for this slot.',
+      reasonCode: 'insufficient_candidates',
+      ...copy,
+      isTradeCandidate: false,
+    });
+  }
+
+  return slots.slice(0, 3).map((slot, index) => ({ ...slot, slotIndex: index + 1 }));
+}
 
 function inferUsFallbackReason(input: {
   diagnosticCandidateCards: TodayStockCandidate[];

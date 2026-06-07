@@ -9,6 +9,8 @@ import { analyzeActionItemDetailCompleteness } from '@/lib/actionItemDetailCompl
 import type { TodayStockCandidate } from '@/lib/todayCandidatesContract';
 import { isRiskReviewCandidateClient } from '@/lib/todayCandidateUiCopy';
 import type { ActionIntent } from '@/lib/actionIntentContract';
+import { quoteRootCauseByCode } from '@/lib/quoteRootCause';
+import type { QuoteRootCauseCode } from '@office-unify/shared-types';
 
 export type CommandCenterItemType =
   | 'data_blocker'
@@ -102,6 +104,42 @@ function quoteRootCauseCta(message?: string): {
   expectation: string;
 } {
   const m = (message ?? '').toLowerCase();
+  const code: QuoteRootCauseCode =
+    m.includes('sheets_anchor_zero') || m.includes('anchor 0') || m.includes('google finance anchor')
+      ? 'google_finance_anchor_missing'
+      : m.includes('formula_pending')
+        ? 'google_finance_formula_pending'
+        : m.includes('readback_partial')
+          ? 'google_finance_readback_partial'
+          : m.includes('usmarketdatamissing') || m.includes('market feed') || m.includes('yahoo') || m.includes('feed')
+            ? 'us_market_feed_missing'
+            : m.includes('us_signal_mapping_empty')
+              ? 'us_signal_mapping_empty'
+              : m.includes('mapping') || m.includes('ticker') || m.includes('resolve')
+                ? 'ticker_mapping_required'
+                : m.includes('provider_not_configured') || m.includes('quote provider')
+                  ? 'provider_not_configured'
+                  : 'unknown';
+  const root = quoteRootCauseByCode(code);
+  const href =
+    root.primaryAction === 'google_finance_setup'
+      ? '/ops/google-finance-setup'
+      : root.primaryAction === 'ticker_resolver'
+        ? '/portfolio-ledger'
+        : root.primaryAction === 'us_mapping_diagnosis' || root.primaryAction === 'theme_mapping_check'
+          ? '/sector-radar'
+          : '/';
+  if (code !== 'unknown') {
+    return {
+      label: root.primaryActionLabelKo,
+      href,
+      reason: root.userMessageKo,
+      expectation:
+        root.primaryAction === 'quote_recovery'
+          ? 'Quote Recovery checks status, missing quote rows, mapping, US feed, and theme mapping in one flow. No auto trade/order/watchlist write is run.'
+          : 'This is a navigation or read-only diagnostic action unless an explicit confirmed write button is shown.',
+    };
+  }
   if (m.includes('sheets_anchor_zero') || m.includes('anchor 0') || m.includes('google finance anchor')) {
     return {
       label: 'Google Finance 설정 확인',

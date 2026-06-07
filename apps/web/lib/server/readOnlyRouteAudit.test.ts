@@ -7,6 +7,8 @@ const hoisted = vi.hoisted(() => ({
   listPendingRecommendations: vi.fn(),
   runSqlReadinessCheckWithSupabase: vi.fn(),
   getServiceSupabase: vi.fn(),
+  buildDataReadinessRunbookPlanFromRuntime: vi.fn(),
+  buildQuoteRecoveryRunbookPlan: vi.fn(),
 }));
 
 vi.mock('@/lib/server/persona-chat-auth', () => ({
@@ -35,6 +37,14 @@ vi.mock('@/lib/server/watchlistRecommendationService', () => ({
 
 vi.mock('@/lib/server/sqlReadinessCheck', () => ({
   runSqlReadinessCheckWithSupabase: hoisted.runSqlReadinessCheckWithSupabase,
+}));
+
+vi.mock('@/lib/server/opsRunbookExecutor', () => ({
+  buildDataReadinessRunbookPlanFromRuntime: hoisted.buildDataReadinessRunbookPlanFromRuntime,
+}));
+
+vi.mock('@/lib/server/quoteRecoveryRunbook', () => ({
+  buildQuoteRecoveryRunbookPlan: hoisted.buildQuoteRecoveryRunbookPlan,
 }));
 
 vi.mock('@/lib/server/sectorRadarSummaryService', () => ({
@@ -170,6 +180,50 @@ describe('read-only GET route audit (no ops/DB writes)', () => {
     expectNoWrites();
     const j = (await res.json()) as { readOnly?: boolean };
     expect(j.readOnly).toBe(true);
+  });
+
+  it('GET /api/ops/runbook/data-readiness — 0 ops writes', async () => {
+    hoisted.buildDataReadinessRunbookPlanFromRuntime.mockResolvedValue({
+      status: 'ready',
+      runbookId: 'us_data_readiness',
+      title: 'test',
+      summary: 'test',
+      steps: [],
+      safeToRunSteps: [],
+      confirmRequiredSteps: [],
+      blockedSteps: [],
+      expectedOutcome: 'test',
+      writeAction: false,
+    });
+    const { GET } = await import('@/app/api/ops/runbook/data-readiness/route');
+    const res = await GET();
+    expect(res.ok).toBe(true);
+    expectNoWrites();
+    const j = (await res.json()) as { plan?: { writeAction?: boolean } };
+    expect(j.plan?.writeAction).toBe(false);
+  });
+
+  it('GET /api/ops/runbook/quote-recovery — 0 ops writes', async () => {
+    hoisted.buildQuoteRecoveryRunbookPlan.mockResolvedValue({
+      ok: true,
+      runbookId: 'quote_recovery',
+      status: 'ready',
+      title: 'test',
+      summaryKo: 'test',
+      steps: [],
+      nextPrimaryAction: 'none',
+      writeAction: false,
+      autoTrading: false,
+      autoOrder: false,
+    });
+    const { GET } = await import('@/app/api/ops/runbook/quote-recovery/route');
+    const res = await GET();
+    expect(res.ok).toBe(true);
+    expectNoWrites();
+    const j = (await res.json()) as { writeAction?: boolean; autoTrading?: boolean; autoOrder?: boolean };
+    expect(j.writeAction).toBe(false);
+    expect(j.autoTrading).toBe(false);
+    expect(j.autoOrder).toBe(false);
   });
 
   it('GET /api/watchlist/recommendations — 0 ops writes', async () => {

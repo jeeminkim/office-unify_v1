@@ -31,6 +31,9 @@ import type {
   PbWeeklyReview,
   MonthlyJudgmentReview,
   LongResponseFallback,
+  OpsRunbookExecutionResponse,
+  OpsRunbookPlan,
+  QuoteRecoveryRunbookResponse,
 } from "@office-unify/shared-types";
 import { LongResponseFallbackCard } from "@/components/LongResponseFallbackCard";
 import { isMessageExceedsLimitError } from "@/lib/longResponseFallback";
@@ -399,6 +402,13 @@ export function DashboardClient() {
   const [watchRecHint, setWatchRecHint] = useState<string | null>(null);
   const [openActionItems, setOpenActionItems] = useState<CommandCenterOpenActionItem[]>([]);
   const [actionItemsLoading, setActionItemsLoading] = useState(false);
+  const [opsRunbookPlan, setOpsRunbookPlan] = useState<OpsRunbookPlan | null>(null);
+  const [opsRunbookResult, setOpsRunbookResult] = useState<OpsRunbookExecutionResponse | null>(null);
+  const [opsRunbookBusy, setOpsRunbookBusy] = useState<"plan" | "execute" | null>(null);
+  const [opsRunbookError, setOpsRunbookError] = useState<string | null>(null);
+  const [quoteRecovery, setQuoteRecovery] = useState<QuoteRecoveryRunbookResponse | null>(null);
+  const [quoteRecoveryBusy, setQuoteRecoveryBusy] = useState<"plan" | "execute" | null>(null);
+  const [quoteRecoveryError, setQuoteRecoveryError] = useState<string | null>(null);
 
   const watchQueueTop5 = useMemo(() => {
     const rows = watchQueue?.candidates ?? [];
@@ -1081,6 +1091,83 @@ export function DashboardClient() {
     return () => window.removeEventListener("portfolio-ledger:updated", onLedgerUpdate);
   }, [loadOverview]);
 
+  const loadOpsRunbookPlan = useCallback(async () => {
+    setOpsRunbookBusy("plan");
+    setOpsRunbookError(null);
+    try {
+      const res = await fetch("/api/ops/runbook/data-readiness", { credentials: "same-origin" });
+      const data = await readDashboardJson<{ ok?: boolean; plan?: OpsRunbookPlan; error?: string }>(res);
+      if (!res.ok || !data.plan) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setOpsRunbookPlan(data.plan);
+      setOpsRunbookResult(null);
+    } catch (e) {
+      setOpsRunbookError(e instanceof Error ? e.message : "runbook plan failed");
+    } finally {
+      setOpsRunbookBusy(null);
+    }
+  }, []);
+
+  const executeOpsRunbook = useCallback(async (scope: "us_data_readiness" | "today_candidates") => {
+    setOpsRunbookBusy("execute");
+    setOpsRunbookError(null);
+    try {
+      const res = await fetch("/api/ops/runbook/data-readiness/execute", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ confirm: true, scope, allowConfirmedSheetRepair: false }),
+      });
+      const data = await readDashboardJson<OpsRunbookExecutionResponse & { error?: string }>(res);
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setOpsRunbookResult(data);
+      setOpsRunbookPlan(data.plan);
+    } catch (e) {
+      setOpsRunbookError(e instanceof Error ? e.message : "runbook execute failed");
+    } finally {
+      setOpsRunbookBusy(null);
+    }
+  }, []);
+
+  const loadQuoteRecoveryPlan = useCallback(async () => {
+    setQuoteRecoveryBusy("plan");
+    setQuoteRecoveryError(null);
+    try {
+      const res = await fetch("/api/ops/runbook/quote-recovery", { credentials: "same-origin" });
+      const data = await readDashboardJson<QuoteRecoveryRunbookResponse & { error?: string }>(res);
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setQuoteRecovery(data);
+    } catch (e) {
+      setQuoteRecoveryError(e instanceof Error ? e.message : "quote recovery plan failed");
+    } finally {
+      setQuoteRecoveryBusy(null);
+    }
+  }, []);
+
+  const executeQuoteRecovery = useCallback(async (scope: "dashboard" | "today_candidates") => {
+    setQuoteRecoveryBusy("execute");
+    setQuoteRecoveryError(null);
+    try {
+      const res = await fetch("/api/ops/runbook/quote-recovery/execute", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ confirm: true, scope, allowSheetsRepair: false }),
+      });
+      const data = await readDashboardJson<QuoteRecoveryRunbookResponse & { error?: string }>(res);
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setQuoteRecovery(data);
+    } catch (e) {
+      setQuoteRecoveryError(e instanceof Error ? e.message : "quote recovery execute failed");
+    } finally {
+      setQuoteRecoveryBusy(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOpsRunbookPlan();
+    void loadQuoteRecoveryPlan();
+  }, [loadOpsRunbookPlan, loadQuoteRecoveryPlan]);
+
   const statusSummary = useMemo(() => {
     const errors = statusSections.filter((s) => s.status === "error").length;
     const warns = statusSections.filter((s) => s.status === "warn").length;
@@ -1147,6 +1234,139 @@ export function DashboardClient() {
         personalization={commandCenter.personalization}
         loading={reloading || actionItemsLoading}
       />
+      <section className="mb-5 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">미국 데이터 준비 Runbook</h2>
+            <p className="mt-1 text-xs text-sky-900">
+              quote status, ticker mapping, theme mapping, candidate universe를 순서대로 재점검합니다. 자동매매, 주문,
+              후보 강제 생성, 관심종목 자동 저장은 하지 않습니다.
+            </p>
+            <p className="mt-1 text-xs text-sky-800">
+              시세가 없는 종목만 점검하고, 이미 값이 있는 종목은 사용자가 새로고침을 누르기 전까지 건드리지 않습니다.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <button
+              type="button"
+              className="rounded border border-emerald-600 bg-emerald-600 px-3 py-1.5 font-medium text-white disabled:opacity-50"
+              disabled={quoteRecoveryBusy != null}
+              onClick={() => void executeQuoteRecovery("dashboard")}
+            >
+              {quoteRecoveryBusy === "execute" ? "점검 중..." : "시세·후보 한 번에 점검"}
+            </button>
+            <button
+              type="button"
+              className="rounded border border-emerald-300 bg-white px-3 py-1.5 text-emerald-950 disabled:opacity-50"
+              disabled={quoteRecoveryBusy != null}
+              onClick={() => void loadQuoteRecoveryPlan()}
+            >
+              {quoteRecoveryBusy === "plan" ? "상태 확인 중..." : "시세 상태 보기"}
+            </button>
+            <button
+              type="button"
+              className="rounded border border-sky-300 bg-white px-3 py-1.5 text-sky-950 disabled:opacity-50"
+              disabled={opsRunbookBusy != null}
+              onClick={() => void loadOpsRunbookPlan()}
+            >
+              {opsRunbookBusy === "plan" ? "계획 확인 중..." : "실행 결과 보기"}
+            </button>
+            <button
+              type="button"
+              className="rounded border border-blue-600 bg-blue-600 px-3 py-1.5 font-medium text-white disabled:opacity-50"
+              disabled={opsRunbookBusy != null}
+              onClick={() => void executeOpsRunbook("us_data_readiness")}
+            >
+              {opsRunbookBusy === "execute" ? "실행 중..." : "미국 데이터 준비 실행"}
+            </button>
+            <button
+              type="button"
+              className="rounded border border-violet-300 bg-white px-3 py-1.5 text-violet-950 disabled:opacity-50"
+              disabled={opsRunbookBusy != null}
+              onClick={() => void executeOpsRunbook("today_candidates")}
+            >
+              후보를 한 번에 재점검
+            </button>
+          </div>
+        </div>
+        {quoteRecoveryError ? (
+          <p className="mt-3 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800">{quoteRecoveryError}</p>
+        ) : null}
+        {quoteRecovery ? (
+          <div className="mt-3 rounded border border-emerald-100 bg-white/70 p-2 text-xs text-emerald-950">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold">
+                Quote Recovery · {quoteRecovery.status} · next {quoteRecovery.nextPrimaryAction}
+              </p>
+              <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px]">
+                autoTrading {String(quoteRecovery.autoTrading)} · autoOrder {String(quoteRecovery.autoOrder)}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-emerald-900">{quoteRecovery.summaryKo}</p>
+            <div className="mt-2 grid gap-1 md:grid-cols-2">
+              {quoteRecovery.steps.slice(0, 6).map((step) => (
+                <div key={step.key} className="rounded border border-emerald-100 bg-white px-2 py-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-slate-950">{step.labelKo}</span>
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">{step.status}</span>
+                  </div>
+                  <p className="mt-0.5 text-[10px] text-slate-600">{step.resultSummaryKo ?? step.descriptionKo}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {opsRunbookError ? (
+          <p className="mt-3 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800">{opsRunbookError}</p>
+        ) : null}
+        {opsRunbookPlan ? (
+          <div className="mt-3">
+            <p className="text-xs text-sky-900">
+              상태 {opsRunbookPlan.status} · confirm 필요 {opsRunbookPlan.confirmRequiredSteps.length} · blocked{" "}
+              {opsRunbookPlan.blockedSteps.length}
+            </p>
+            <div className="mt-2 grid gap-2 md:grid-cols-2">
+              {opsRunbookPlan.steps.map((step) => (
+                <div key={step.key} className="rounded border border-sky-100 bg-white/80 p-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium text-slate-950">{step.labelKo}</p>
+                    <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] text-slate-700">
+                      {step.result ?? "pending"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-600">{step.reasonKo}</p>
+                  {step.endpoint ? (
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {step.method ?? "OPEN"} {step.endpoint}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {opsRunbookResult?.messages.length ? (
+          <ul className="mt-3 list-inside list-disc text-xs text-sky-900">
+            {opsRunbookResult.messages.map((m, idx) => (
+              <li key={`${m}-${idx}`}>{m}</li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <Link href="/ops/google-finance-setup" className="rounded border border-sky-300 bg-white px-2 py-1 text-sky-950">
+            Google Finance setup
+          </Link>
+          <Link href="/portfolio-ledger#ticker" className="rounded border border-sky-300 bg-white px-2 py-1 text-sky-950">
+            Ticker resolver
+          </Link>
+          <Link href="/ops/google-finance-setup" className="rounded border border-sky-300 bg-white px-2 py-1 text-sky-950">
+            Quote status
+          </Link>
+          <Link href="/sector-radar" className="rounded border border-sky-300 bg-white px-2 py-1 text-sky-950">
+            Theme mapping
+          </Link>
+        </div>
+      </section>
       <ActionItemsSummarySection items={openActionItems} loading={actionItemsLoading} />
       <section className="mb-5 rounded-xl border border-violet-200 bg-violet-50 p-4">
         <TodayBriefSection
@@ -1159,7 +1379,10 @@ export function DashboardClient() {
         (todayBrief?.diagnosticCandidateCards?.length ?? 0) > 0 ||
         Boolean(todayBrief?.qualityMeta?.todayCandidates?.deckContract) ||
         Boolean(todayBrief?.qualityMeta?.todayCandidates?.usCandidateDiagnostics) ? (
-          <TodayCandidatesSection deckContract={todayBrief?.qualityMeta?.todayCandidates?.deckContract}>
+            <TodayCandidatesSection
+              deckContract={todayBrief?.qualityMeta?.todayCandidates?.deckContract}
+              displaySlots={todayBrief?.qualityMeta?.todayCandidates?.displaySlots}
+            >
             {todayBrief?.qualityMeta?.todayCandidates?.usCoverage?.status === "degraded" ? (
               <p className="mt-2 rounded border border-amber-200 bg-amber-50/90 p-2 text-[11px] text-amber-950">
                 미국 데이터 없음·부분 확인:{" "}

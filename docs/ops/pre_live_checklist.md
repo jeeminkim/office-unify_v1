@@ -2,6 +2,32 @@
 
 배포·실사용 전에 아래를 순서에 맞게 확인합니다. 이 앱은 **관찰·복기·데이터 점검**용이며 **자동매매·자동 주문·자동 리밸런싱**은 없습니다.
 
+## EVO-055 Quote and Today Truth Consolidation
+
+- [ ] Quote root-cause mapper returns typed reasons and does not treat every degraded state as Google Finance setup.
+- [ ] Google Finance setup is primary only for anchor missing, formula pending, or read-back partial.
+- [ ] Today Brief response includes exactly three `qualityMeta.todayCandidates.displaySlots`.
+- [ ] Missing US/KR slots render diagnostic or insufficient slots with `isTradeCandidate: false`.
+- [ ] Command Center CTA explains the root cause and one primary next action; no forced candidates, auto watchlist, trade/order/rebalance, or buy/sell directive.
+
+## EVO-053 One-Click Quote Recovery
+
+- [ ] `GET /api/ops/runbook/quote-recovery` returns a plan only and performs no writes.
+- [ ] `POST /api/ops/runbook/quote-recovery/execute` rejects missing `confirm=true`.
+- [ ] Existing usable quotes do not trigger automatic refresh; missing/partial quotes can refresh only after explicit user action.
+- [ ] Dashboard and Portfolio show quote recovery step results and no buy/sell/order/rebalance copy.
+- [ ] Today Candidate shows 3 observation slots with diagnostic/data-check/insufficient slots when qualified candidates are sparse.
+- [ ] Google Sheets repair/write is not auto-run by quote recovery.
+
+## EVO-052 One-Click Ops Runbook
+
+- [ ] `GET /api/ops/runbook/data-readiness` returns a plan only and performs no DB, Sheets, or ops-log writes.
+- [ ] `POST /api/ops/runbook/data-readiness/execute` rejects missing `confirm=true` and does not run confirmed Sheet repair by default.
+- [ ] Dashboard shows plan before execution and then per-step results after the user clicks "미국 데이터 준비 실행" or "후보를 한 번에 재점검".
+- [ ] Formula pending is shown as wait/recheck guidance, not as success.
+- [ ] Portfolio Ledger auto-fills watchlist resolve results only for high-confidence candidates; ambiguous/manual-review results do not save until the explicit add button.
+- [ ] No SQL, no GET write, no forced candidate generation, no automatic watchlist registration, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ## EVO-051 Project Reality Recovery
 
 - [ ] EVO-051-1: degraded US coverage primary CTA follows root cause and does not default to Google Finance setup.

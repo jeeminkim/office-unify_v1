@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { selectQuoteRootCause, type QuoteRootCause } from '@/lib/quoteRootCause';
+
 export type QuoteProviderName =
   | 'google_sheets_googlefinance'
   | 'manual_cache'
@@ -67,6 +69,7 @@ export type QuoteProviderRouterSummary = {
   primaryActionLabel: string;
   userMessage: string;
   actionHint: string;
+  rootCause: QuoteRootCause;
   writeAction: false;
 };
 
@@ -166,16 +169,16 @@ export function buildQuoteProviderRouterSummary(input: {
       ? 'Google Sheets read-back supplied usable quotes, but it is still delayed formula read-back.'
       : 'No primary realtime quote provider is configured. Show provider_not_configured, mapping, and read-back reasons separately.';
 
-  const primaryAction = selectPrimaryAction({
+  const rootCause = selectQuoteRootCause({
     googleFinanceConfigured: input.googleFinanceConfigured,
-    googleUsed,
-    formulaPendingCount: input.formulaPendingCount ?? 0,
+    matchedQuoteCount: input.matchedQuoteCount,
+    missingSymbolCount: input.missingSymbols?.length ?? 0,
+    formulaPendingCount: input.formulaPendingCount,
     quoteUsabilityStatus: input.quoteUsabilityStatus,
     usMarketDataMissing: input.usMarketDataMissing === true,
     usSignalMappingEmpty: input.usSignalMappingEmpty === true,
-    lowConfidenceMapping: input.lowConfidenceMapping === true,
   });
-  const actionCopy = normalizedPrimaryActionCopy(primaryAction);
+  const primaryAction = rootCauseToProviderAction(rootCause);
 
   return {
     primaryProvider,
@@ -183,11 +186,30 @@ export function buildQuoteProviderRouterSummary(input: {
     googleFinanceIsPrimaryRealtimeProvider: false,
     results,
     primaryAction,
-    primaryActionLabel: actionCopy.label,
-    userMessage: actionCopy.message,
+    primaryActionLabel: rootCause.primaryActionLabelKo,
+    userMessage: rootCause.userMessageKo,
     actionHint,
+    rootCause,
     writeAction: false,
   };
+}
+
+function rootCauseToProviderAction(rootCause: QuoteRootCause): QuoteProviderPrimaryAction {
+  switch (rootCause.primaryAction) {
+    case 'google_finance_setup':
+      return rootCause.code === 'google_finance_formula_pending' ? 'wait_for_formula_readback' : 'google_finance_setup';
+    case 'ticker_resolver':
+      return 'ticker_mapping_check';
+    case 'us_mapping_diagnosis':
+    case 'theme_mapping_check':
+      return 'theme_mapping_check';
+    case 'quote_recovery':
+      return rootCause.code === 'us_market_feed_missing' ? 'us_market_feed_check' : 'quote_status_check';
+    case 'quote_status_check':
+      return 'quote_status_check';
+    default:
+      return 'quote_provider_status_check';
+  }
 }
 
 function selectPrimaryAction(input: {
@@ -244,7 +266,7 @@ function normalizedPrimaryActionCopy(action: QuoteProviderPrimaryAction): { labe
       };
     case 'theme_mapping_check':
       return {
-        label: '테마 연결 확인',
+        label: 'Watchlist 테마 연결 확인',
         message: '미국 신호가 국내/관련 후보로 연결되지 않았습니다.',
       };
     case 'quote_provider_status_check':

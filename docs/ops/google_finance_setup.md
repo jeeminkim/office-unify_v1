@@ -1,5 +1,26 @@
 # Google Finance / Sheets 설정
 
+## EVO-055 Root-Cause CTA Boundary
+
+- Google Finance setup is primary only for `google_finance_anchor_missing`, `google_finance_formula_pending`, and `google_finance_readback_partial`.
+- `provider_not_configured`, `quote_rows_missing`, `ticker_mapping_required`, `us_market_feed_missing`, `us_signal_mapping_empty`, and `theme_mapping_required` must route to Quote Recovery, quote status, ticker resolver, US mapping, or theme mapping diagnostics instead of repeating Google Finance setup.
+- Quote Recovery may check status and refresh missing/partial quotes after explicit user action, but it does not auto-run Sheets repair/write.
+
+## EVO-053 Quote Recovery Policy
+
+- Quote recovery checks status, refresh need, formula read-back, ticker mapping, US feed, and Today Brief before asking the user to open Sheets.
+- Existing usable quote values are not automatically refreshed. Missing/partial quotes can be refreshed only by explicit POST execution.
+- `allowSheetsRepair=false` is the default. Even when true, quote recovery does not auto-run repair writes; the existing confirmed low-risk repair assistant remains the only write path.
+- Direct Google Sheets editing is presented as the last resort after app-side read-back, refresh, ticker mapping, and candidate diagnostics.
+
+## EVO-052 Data Readiness Runbook
+
+- The Dashboard runbook starts with a read-only plan from `GET /api/ops/runbook/data-readiness`.
+- The execution route requires an explicit user click: `POST /api/ops/runbook/data-readiness/execute` with `confirm=true` and `allowConfirmedSheetRepair=false` by default.
+- Quote refresh can be requested as an explicit runbook step, but formula read-back pending must remain a wait/recheck state.
+- Google Finance setup is only one step in the sequence. The runbook also checks quote status, ticker mapping, theme mapping, discovery universe diagnostics, Today Brief read-back, and quote provider status.
+- Sheets repair/write remains the separate confirmed repair assistant path and is not auto-run by the runbook.
+
 ## EVO-051 Quote Provider Router
 
 - EVO-051-1: degraded US coverage must not automatically make Google Finance setup the primary CTA. Use Google Finance setup only for anchor/formula gaps; use US feed, quote provider, ticker mapping, theme mapping, or quote status checks for other root causes.

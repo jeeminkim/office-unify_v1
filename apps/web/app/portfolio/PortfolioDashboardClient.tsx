@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { QuoteRecoveryRunbookResponse } from "@office-unify/shared-types";
 import { OpsFeedbackButton } from "@/components/OpsFeedbackButton";
 import { PortfolioRoleBanner } from "@/components/PortfolioRoleBanner";
 
@@ -261,6 +262,7 @@ export function PortfolioDashboardClient() {
   const [alerts, setAlerts] = useState<PortfolioAlert[]>([]);
   const [bulkApplying, setBulkApplying] = useState(false);
   const [quoteRefreshRequested, setQuoteRefreshRequested] = useState(false);
+  const [quoteRecoveryResult, setQuoteRecoveryResult] = useState<QuoteRecoveryRunbookResponse | null>(null);
   const [tickerAppliedCount, setTickerAppliedCount] = useState(0);
   const [kosdaqSwitchingKey, setKosdaqSwitchingKey] = useState<string | null>(null);
 
@@ -295,30 +297,30 @@ export function PortfolioDashboardClient() {
     setError(null);
     setInfo(null);
     try {
-      const refresh = await fetch("/api/portfolio/quotes/refresh", {
+      const refresh = await fetch("/api/ops/runbook/quote-recovery/execute", {
         method: "POST",
         credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true, scope: "portfolio", allowSheetsRepair: false }),
       });
-      const r = (await refresh.json()) as {
-        ok?: boolean;
-        message?: string;
+      const r = (await refresh.json()) as QuoteRecoveryRunbookResponse & {
         error?: string;
+        message?: string;
         warning?: string;
         actionHint?: string;
-        holdingsTotal?: number;
-        holdingsWithGoogleTicker?: number;
-        holdingsMissingGoogleTicker?: number;
-        refreshedCount?: number;
         requestId?: string;
         refreshStatus?: string;
-        lifecycle?: Array<{ step: string; status: string; message: string }>;
+        holdingsTotal?: number;
+        holdingsWithGoogleTicker?: number;
+        refreshedCount?: number;
       };
       if (!refresh.ok) throw new Error(r.error ?? `HTTP ${refresh.status}`);
       if (r.ok === false) {
-        setInfo([r.message, r.warning, r.actionHint].filter(Boolean).join(" "));
+        setInfo(r.summaryKo);
         return;
       }
-      setQuoteRefreshRequested(true);
+      setQuoteRecoveryResult(r);
+      setQuoteRefreshRequested(r.writeAction);
       let msg =
         r.message ?? "Google Sheets 계산 반영까지 시간이 걸릴 수 있습니다. 1분 뒤 다시 조회하세요.";
       if (r.requestId) msg += ` requestId: ${r.requestId}.`;
@@ -781,6 +783,25 @@ export function PortfolioDashboardClient() {
           </ul>
         )}
       </section>
+      {quoteRecoveryResult ? (
+        <section className="mb-4 rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+          <p className="font-semibold">시세 한 번에 점검 결과 · {quoteRecoveryResult.status}</p>
+          <p className="mt-1 text-emerald-900">
+            시세값이 없는 종목만 점검합니다. 이미 값이 있는 종목은 사용자가 새로고침을 누르기 전까지 건드리지 않습니다.
+          </p>
+          <div className="mt-2 grid gap-1 md:grid-cols-2">
+            {quoteRecoveryResult.steps.slice(0, 6).map((step) => (
+              <div key={step.key} className="rounded border border-emerald-100 bg-white px-2 py-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-slate-950">{step.labelKo}</span>
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">{step.status}</span>
+                </div>
+                <p className="mt-0.5 text-[10px] text-slate-600">{step.resultSummaryKo ?? step.descriptionKo}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {quoteStatus ? (
         <section className="mb-4 rounded border border-slate-200 bg-white p-3 text-xs">
           <p className="font-semibold text-slate-800">Google Sheets 시세 상태</p>

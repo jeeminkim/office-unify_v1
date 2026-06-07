@@ -2,6 +2,23 @@
 
 export type UsCandidateDiagnosticsStatus = 'ok' | 'degraded' | 'empty' | 'disabled' | 'unknown';
 
+export type QuoteRootCauseCode =
+  | 'provider_not_configured'
+  | 'google_finance_anchor_missing'
+  | 'google_finance_formula_pending'
+  | 'google_finance_readback_partial'
+  | 'quote_rows_missing'
+  | 'ticker_mapping_required'
+  | 'invalid_symbol'
+  | 'missing_google_ticker'
+  | 'us_market_feed_missing'
+  | 'us_signal_mapping_empty'
+  | 'theme_mapping_required'
+  | 'queue_policy_suppressed'
+  | 'discovery_universe_empty'
+  | 'insufficient_candidates'
+  | 'unknown';
+
 export type UsCandidateDiagnostics = {
   status: UsCandidateDiagnosticsStatus;
   userUsWatchlistCount: number;

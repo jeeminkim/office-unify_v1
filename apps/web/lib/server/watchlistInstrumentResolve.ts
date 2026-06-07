@@ -187,7 +187,7 @@ const KNOWN_KR: KnownInstrument[] = [
   kr('알테오젠', '196170', 'KOSDAQ', ['alteogen'], '바이오'),
   kr('삼성전기', '009150', 'KOSPI', ['samsung electro-mechanics'], '전자부품'),
   manualSeed('LG CNS', ['lg cns', '엘지씨엔에스'], 'IT 서비스'),
-  manualSeed('RISE 현대차그룹피지컬AI ETF', ['rise 현대차그룹피지컬ai etf', '현대차그룹피지컬ai', 'physical ai etf'], '자동차/로봇/AI'),
+  manualSeed('RISE 현대차그룹피지컬AI ETF', ['rise 현대차그룹피지컬ai etf', '현대차그룹피지컬ai', 'physical ai etf', 'rise physical ai'], '자동차/로봇/AI'),
   manualSeed('RISE 현대차고정피지컬AI ETF', ['rise 현대차고정피지컬ai etf', '현대차고정피지컬ai', 'physical ai etf'], '로봇/AI 인프라'),
   manualSeed('TIGER 코리아AI전력기기TOP3플러스', ['tiger 코리아ai전력기기 top3플러스', '코리아ai전력기기', 'ai전력기기 top3'], '전력기기/AI 인프라'),
   manualSeed('KODEX AI반도체핵심장비', ['kodex ai반도체핵심장비', 'ai반도체핵심장비', '반도체핵심장비 etf'], '반도체 장비'),

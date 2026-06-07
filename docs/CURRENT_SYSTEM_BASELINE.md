@@ -1,5 +1,28 @@
 # Current System Baseline
 
+## EVO-055 Quote and Today Truth Consolidation
+
+- Quote blockers now flow through a typed root-cause contract that separates Google Finance anchor/formula/read-back issues from quote rows, ticker mapping, US feed, US signal mapping, queue suppression, discovery, and insufficient-candidate causes.
+- Google Finance setup is the primary CTA only for anchor missing, formula pending, or read-back partial states. Other degraded states should route to Quote Recovery, quote status, ticker resolver, US mapping, or theme mapping diagnostics.
+- Today Candidate returns exactly three `displaySlots` in `qualityMeta.todayCandidates`: each slot is either a real observation candidate or a diagnostic/data-check/insufficient slot. Missing slots must never be filled with forced candidates.
+- All diagnostic display slots carry `isTradeCandidate: false`; no watchlist auto-registration, trade/order/rebalance, or buy/sell directive is introduced.
+
+## EVO-053 One-Click Quote Recovery
+
+- Quote recovery is a separate runbook from data readiness: `GET /api/ops/runbook/quote-recovery` is plan-only, while `POST /api/ops/runbook/quote-recovery/execute` requires `confirm=true`.
+- The runbook checks quote status first and only requests refresh when quotes are missing/partial. Existing usable quote values are left untouched unless the user explicitly runs recovery.
+- Today Candidate display targets a 3-slot observation surface. When qualified candidates are insufficient, diagnostic/data-check/insufficient slots explain why instead of creating forced candidates.
+- Portfolio and Dashboard use the shared quote recovery endpoint for quote refresh/read-back/recheck guidance.
+- Google Sheets direct editing remains the last resort; repair/write stays on the separate confirmed low-risk repair path.
+
+## EVO-052 One-Click Ops Runbook
+
+- US data readiness now has a plan-first runbook: `GET /api/ops/runbook/data-readiness` only returns the current step plan and never writes.
+- `POST /api/ops/runbook/data-readiness/execute` requires `confirm=true` and a scope. It may request portfolio quote refresh after a user click, but Sheets repair remains disabled unless a separate confirmed low-risk path is used.
+- Dashboard exposes the runbook as an operational CTA with per-step statuses for Google Finance setup, quote status, formula wait, ticker resolve, discovery universe, theme mapping, Today Brief, and quote provider status.
+- Portfolio Ledger watchlist resolve auto-fills only high-confidence results. Medium, ambiguous, UNKNOWN, or `manual_review` candidates remain visible but require explicit user selection or manual correction before the normal add button writes.
+- No SQL, no GET write, no forced candidate generation, no automatic watchlist registration, no automatic trading/order/rebalancing, and no buy/sell directive.
+
 ## EVO-051 Project Reality Recovery
 
 - EVO-051-1 follow-up tightens root-cause CTAs: degraded US coverage must point to Google Finance setup only for anchor/formula gaps; otherwise it should point to US feed, quote provider, ticker/theme mapping, or quote status checks.

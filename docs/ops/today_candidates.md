@@ -8,6 +8,20 @@ DDL 적용 순서: `docs/sql/APPLY_ORDER.md`
 
 # Today Candidates (아침 관찰 후보)
 
+## EVO-055 Typed 3-Slot Display Contract
+
+- `qualityMeta.todayCandidates.displaySlots` is the screen contract: exactly three slots are returned for Dashboard display.
+- A slot can be `candidate`, `low_confidence_candidate`, `risk_review`, `data_check`, `us_diagnostic`, or `insufficient_candidate`.
+- Missing US slots use typed reason codes such as `us_market_feed_missing`, `us_signal_mapping_empty`, `ticker_mapping_required`, `queue_policy_suppressed`, or `insufficient_candidates` instead of text inference.
+- Diagnostic slots are not trade candidates and do not create watchlist rows, orders, rebalancing, or buy/sell guidance.
+
+## EVO-053 3-Slot Display Contract
+
+- Today Candidate targets a 3-slot observation surface, not three forced trade candidates.
+- Slot kinds may be qualified candidate, low-confidence candidate, data-check candidate, risk-review candidate, US diagnostic slot, or insufficient-candidate slot.
+- If qualified candidates are sparse, the UI may show diagnostic/data-check cards explaining quote quality, sector/theme mapping, repeated exposure, risk review, US feed gaps, or provider setup gaps.
+- `primaryCandidateDeck` remains unchanged; display slots are additive and must keep `isTradeCandidate: false` for diagnostic slots.
+
 ## EVO-051 Real Usability Recovery
 
 - EVO-051-1 follow-up: the dashboard should always show the KR 2 + US 1 target, the current KR/US filled counts, and the US slot state (`candidate`, `diagnostic card`, or `missing`). Missing US slots should include concrete next checks: quote status, quote provider, ticker resolve, theme mapping, Sector Radar mapping, and Discovery Universe counts.

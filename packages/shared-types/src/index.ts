@@ -2,6 +2,8 @@
  * ai-office `analysisTypes`와 정합되는 공용 타입(순수 타입만).
  * DB 컬럼명 `discord_user_id` 등은 기존 스키마 호환을 위해 유지한다.
  */
+export * from './opsRunbook';
+
 export type PersonaKey =
   | 'RAY'
   | 'HINDENBURG'
@@ -348,6 +350,7 @@ export type {
 } from './todayCandidateFeedback';
 export type {
   RecommendationCandidatesQualityMeta,
+  QuoteRootCauseCode,
   QuoteProviderCapability,
   ResearchReportDiffPayload,
   ResearchReportFreshness,

@@ -1,5 +1,25 @@
 # 로드맵 백로그 (scratchpad)
 
+## EVO-055 Quote and Today Truth Consolidation
+
+- Shipped a typed quote root-cause contract used by quote provider routing and Command Center CTA selection.
+- Shipped server-owned Today `displaySlots` so Dashboard always receives three real candidate or diagnostic/data-check slots.
+- Google Finance setup remains primary only for anchor/formula/read-back problems; other quote/candidate blockers route to recovery, ticker, US mapping, or theme diagnostics.
+- Guardrails: no SQL, no GET write, no forced candidates, no watchlist auto write, no trading/order/rebalancing.
+
+## EVO-053 One-Click Quote Recovery & Candidate Fill Contract
+
+- Shipped quote recovery runbook APIs for one-click quote status, missing quote refresh, formula wait, ticker mapping, US feed, discovery diagnostics, and Today Brief recheck.
+- Shipped Portfolio/Dashboard wiring to use the shared runbook instead of making users find separate quote refresh/status buttons.
+- Shipped additive Today Candidate 3-slot display contract and Smart Ticker Resolve alias hardening for Physical AI ETF manual-review candidates.
+- Guardrails: no SQL, no GET write, no forced candidates, no watchlist auto write, no trading/order/rebalancing.
+
+## EVO-052 One-Click Ops Runbook
+
+- Shipped plan-first US data readiness runbook APIs and Dashboard controls for quote status, ticker mapping, theme mapping, candidate universe diagnostics, Today Brief recheck, and quote provider status.
+- Shipped execution guardrails: GET is read-only; POST requires `confirm=true`; Sheets repair remains disabled by default; no SQL, no forced candidates, no automatic watchlist registration, and no trading/order/rebalancing.
+- Shipped Portfolio Ledger resolve refinement: only high-confidence candidates auto-fill the local form, while ambiguous/manual-review results stay as cards until explicit user action.
+
 ## EVO-051 Project Reality Recovery
 
 - EVO-051-1 minimal follow-up: tightened quote CTA root-cause selection, US missing-slot copy, manual-review ETF resolve UX, and Trend long_report/protective_fallback display boundaries. Tests intentionally not run for this prompt.

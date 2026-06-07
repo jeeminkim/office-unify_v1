@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### 2026-06-05 EVO-055 Quote and Today Truth Consolidation
+
+- **Quote root-cause truth:** added a shared typed root-cause mapper so quote status, Google Finance setup, Today diagnostics, and Command Center can separate Google Finance anchor/formula/read-back problems from provider, ticker mapping, US feed, theme mapping, queue, and insufficient-candidate causes.
+- **Today 3-slot contract:** Today Brief now returns `qualityMeta.todayCandidates.displaySlots` with exactly three candidate or diagnostic/data-check slots. Missing KR/US slots are not forced candidates.
+- **US missing reason codes:** US candidate gaps are represented by typed reason codes such as `us_market_feed_missing`, `us_signal_mapping_empty`, `ticker_mapping_required`, `queue_policy_suppressed`, and `insufficient_candidates`.
+- **CTA truth:** Command Center degraded-US blockers now reuse root-cause action copy and do not route every quote/candidate issue to Google Finance setup.
+- **Guardrails:** no SQL, no GET write, no Sheets repair/write auto-run, no forced candidate generation, no watchlist auto-registration, no trading/order/rebalancing, and no buy/sell directive.
+
+### 2026-06-04 EVO-053 One-Click Quote Recovery & Candidate Fill Contract
+
+- **Quote Recovery Runbook:** added `GET/POST /api/ops/runbook/quote-recovery` so Dashboard and Portfolio can run quote status, missing quote refresh, formula wait, ticker mapping, US feed, Discovery Universe, and Today Brief checks from one explicit user action.
+- **Refresh boundary:** existing usable quotes are not auto-refreshed; only missing/partial quote states can trigger refresh after `confirm=true`, with Sheets repair disabled by default.
+- **Candidate display contract:** Today Candidates now explains the 3-slot observation structure and fills missing slots with diagnostic/data-check/insufficient-candidate cards instead of forcing trade candidates.
+- **Portfolio recovery UI:** Portfolio quote refresh buttons now call the shared quote recovery runbook and show per-step recovery results.
+- **Guardrails:** no SQL, no GET write, no forced candidate, no automatic watchlist registration, no automatic trading/order/rebalancing, and no buy/sell directive.
+
+### 2026-06-04 EVO-052 One-Click Ops Runbook
+
+- **US data readiness runbook:** added a plan-first runbook contract and `/api/ops/runbook/data-readiness` GET route that reports the sequence without DB writes, Sheets writes, or candidate/watchlist mutation.
+- **Explicit execution route:** added `/api/ops/runbook/data-readiness/execute` POST with `confirm=true`, scoped execution, and default `allowConfirmedSheetRepair=false`; quote refresh remains an explicit user-click path and formula pending returns wait/recheck guidance.
+- **Dashboard CTA:** Dashboard now shows "미국 데이터 준비 실행", "후보를 한 번에 재점검", and "실행 결과 보기" with per-step runbook statuses.
+- **Portfolio Ledger resolve UX:** watchlist resolve now auto-fills only high-confidence candidates; medium/ambiguous/manual-review results stay as selectable or disabled candidate cards until the explicit add button is used.
+- **Guardrails:** no SQL, no GET write, no automatic trading/order/rebalancing, no buy/sell directive, no forced candidate generation, no automatic watchlist registration, and no automatic Sheets repair.
+
 ### 2026-06-03 EVO-051-1 Minimal Follow-up
 
 - **Quote CTA root-cause split:** Command Center US coverage blockers now choose the primary CTA by likely root cause instead of routing every degraded US state to Google Finance setup.

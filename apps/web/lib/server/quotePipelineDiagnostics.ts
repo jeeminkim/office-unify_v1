@@ -226,8 +226,8 @@ export function buildPortfolioQuoteReadbackDiagnostics(input: {
   const failedSymbols = Object.keys(failedReasonsBySymbol);
 
   let quoteUsabilityStatus: QuoteUsabilityStatus = 'ok';
-  if (input.holdings.length > 0 && rowsWithPrice === 0) quoteUsabilityStatus = 'failed';
-  else if (rowsFormulaPending > 0) quoteUsabilityStatus = 'formula_pending';
+  if (rowsFormulaPending > 0) quoteUsabilityStatus = 'formula_pending';
+  else if (input.holdings.length > 0 && rowsWithPrice === 0) quoteUsabilityStatus = 'failed';
   else if (rowsMissingGoogleTicker > 0 || rowsInvalidTicker > 0) quoteUsabilityStatus = 'mapping_required';
   else if (failedSymbols.length > 0 || rowsMissingPrice > 0) quoteUsabilityStatus = 'partial';
 

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import type { CandidateDisplaySlot } from "@office-unify/shared-types";
 
 type Props = {
   children: ReactNode;
@@ -15,108 +16,95 @@ type Props = {
     deckContractStatus?: "ok" | "partial" | "degraded";
     actionHint?: string;
   };
+  displaySlots?: CandidateDisplaySlot[];
 };
 
-const US_SLOT_REASON_COPY: Record<string, string> = {
-  us_quote_provider_not_configured: "미국 실시간 시세 공급자가 설정되지 않았습니다.",
-  usMarketDataMissing: "미국 시장 feed를 가져오지 못했습니다.",
-  us_symbol_resolve_failed: "미국 종목명/ticker 해석에 실패했습니다.",
-  us_quote_quality_low: "미국 후보 시세 신뢰가 낮습니다.",
-  us_signal_mapping_empty: "미국 신호가 국내/관련 후보로 연결되지 않았습니다.",
-  insufficient_us_candidates: "조건을 만족하는 미국 관찰 후보가 부족합니다.",
-  repeat_suppression: "최근 반복 노출로 우선순위가 낮아졌습니다.",
-  queue_policy_suppressed: "후보 큐 정책에서 진단 카드로 대체됐습니다.",
+const STATUS_LABEL: Record<NonNullable<Props["deckContract"]>["deckContractStatus"] & string, string> = {
+  ok: "contract ok",
+  partial: "diagnostic fallback",
+  degraded: "needs data check",
 };
 
-function usSlotReasonCopy(reason?: string): string | undefined {
-  if (!reason) return undefined;
-  switch (reason) {
-    case "us_quote_provider_not_configured":
-    case "provider_not_configured":
-      return "실시간·준실시간 미국 quote provider가 아직 설정되지 않았습니다. Google Sheets는 지연 read-back이므로 후보 선별에는 제한이 있습니다.";
-    case "usMarketDataMissing":
-    case "us_market_feed_missing":
-      return "미국 시장 feed를 가져오지 못해 미국 후보를 일반 관찰 카드에 넣지 못했습니다. Google Finance 설정 문제가 아닐 수 있습니다.";
-    case "us_signal_mapping_empty":
-      return "미국장 신호는 있으나 국내/관련 후보로 연결되지 않았습니다. Watchlist sector/theme과 Sector Radar mapping을 확인하세요.";
-    case "us_symbol_resolve_failed":
-      return "미국 종목명/ticker 해석에 실패했습니다.";
-    case "us_quote_quality_low":
-      return "미국 후보 시세 신뢰가 낮습니다.";
-    case "insufficient_us_candidates":
-      return "조건을 만족하는 미국 관찰 후보가 부족합니다.";
-    case "repeat_suppression":
-      return "최근 반복 노출로 우선순위가 낮아졌습니다.";
-    case "queue_policy_suppressed":
-      return "후보 큐 정책에서 진단 카드로 대체됐습니다.";
+function kindLabel(kind: CandidateDisplaySlot["kind"]): string {
+  switch (kind) {
+    case "candidate":
+      return "Candidate";
+    case "low_confidence_candidate":
+      return "Low confidence";
+    case "risk_review":
+      return "Risk review";
+    case "data_check":
+      return "Data check";
+    case "us_diagnostic":
+      return "US diagnostic";
+    case "insufficient_candidate":
+      return "Insufficient";
+    default:
+      return "Slot";
   }
-  return US_SLOT_REASON_COPY[reason] ?? reason;
 }
 
-/** Dashboard keeps candidate composition; this section only owns the section framing. */
-export function TodayCandidatesSection({ children, deckContract }: Props) {
-  const contractStatusLabel =
-    deckContract?.deckContractStatus === "ok"
-      ? "정상"
-      : deckContract?.deckContractStatus === "partial"
-        ? "일부 부족"
-        : deckContract?.deckContractStatus === "degraded"
-          ? "진단 필요"
-          : null;
+/** Dashboard section framing only; candidate/diagnostic slots are computed on the server. */
+export function TodayCandidatesSection({ children, deckContract, displaySlots }: Props) {
   const targetKr = deckContract?.targetKrSlots ?? 2;
   const targetUs = deckContract?.targetUsSlots ?? 1;
   const filledKr = deckContract?.filledKrSlots ?? 0;
   const filledUs = deckContract?.filledUsSlots ?? 0;
-  const showContractWarning = deckContract && deckContract.deckContractStatus !== "ok";
-  const usFallbackReason = usSlotReasonCopy(deckContract?.usSlotFallbackReason);
-  const usSlotState =
-    filledUs >= targetUs
-      ? "후보 표시"
-      : deckContract?.usDiagnosticSlotPresent
-        ? "진단 카드 표시"
-        : "후보 없음";
+  const status = deckContract?.deckContractStatus;
+  const slots = displaySlots?.slice(0, 3) ?? [];
 
   return (
     <div className="today-candidates-section">
-      <p className="mt-3 text-xs font-semibold text-violet-950">오늘의 관찰 큐</p>
+      <p className="mt-3 text-xs font-semibold text-violet-950">Today observation slots</p>
       <p className="mt-0.5 text-[10px] text-violet-800/90">
-        관찰 후보, 리스크 점검, 데이터 점검, 모니터링을 구분해 봅니다.
+        The screen always separates real candidates from data-check or diagnostic slots. No forced candidate, order, or watchlist write is created here.
       </p>
+
       {deckContract ? (
         <div className="mt-2 rounded border border-violet-200 bg-white/80 p-2 text-[11px] text-violet-950">
-          <div className="mb-1 rounded border border-violet-100 bg-violet-50/70 px-2 py-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-semibold">
-              오늘 관찰 후보 목표: 국내 {targetKr}개 + 미국 {targetUs}개
+              국내 {targetKr} + 미국 {targetUs} 원칙 · 현재 국내 {filledKr} + 미국 {filledUs}
             </p>
-            <p className="mt-0.5">
-              현재 표시: 국내 {filledKr}개 + 미국 {filledUs}개 · 미국 슬롯 상태: {usSlotState}
-            </p>
+            {status ? <span className="rounded bg-violet-100 px-2 py-0.5 text-[10px]">{STATUS_LABEL[status]}</span> : null}
           </div>
-          <p className="font-semibold">
-            국내 {targetKr} + 미국 {targetUs} 원칙 · 현재 국내 {filledKr} + 미국 {filledUs}
-            {contractStatusLabel ? ` · ${contractStatusLabel}` : ""}
+          <p className="mt-1 text-[10px] text-violet-900">
+            {deckContract.actionHint ?? "If candidates are short, the server returns diagnostic slots instead of inventing candidates."}
           </p>
-          {showContractWarning ? (
-            <div className="mt-1 space-y-1 text-[10px] leading-snug text-violet-900">
-              <p>{deckContract.actionHint ?? "후보 슬롯이 부족해 진단 카드로 원인을 표시합니다."}</p>
-              {filledUs < targetUs ? (
-                <p>
-                  미국 후보 슬롯을 채우지 못했습니다.
-                  {deckContract.usDiagnosticSlotPresent ? " 미국 진단 카드로 대체했습니다." : ""}
-                  {usFallbackReason ? ` 사유: ${usFallbackReason}` : ""}
-                </p>
-              ) : null}
-              {filledKr < targetKr ? (
-                <p>
-                  국내 후보가 목표보다 적습니다.
-                  {deckContract.krSlotFallbackReason ? ` 사유: ${deckContract.krSlotFallbackReason}` : ""}
-                </p>
-              ) : null}
-              <p>후보를 강제로 만들지 않고 quote quality, mapping, queue policy를 먼저 확인합니다.</p>
+          {filledUs < targetUs ? (
+            <p className="mt-1 text-[10px] text-violet-900">
+              미국 후보 슬롯을 채우지 못했습니다. 후보를 강제로 만들지 않고 typed diagnostic slot으로 원인과 다음 버튼을 표시합니다.
+            </p>
+          ) : null}
+          {filledKr < targetKr ? (
+            <p className="mt-1 text-[10px] text-violet-900">
+              국내 후보 슬롯도 목표보다 적습니다. 후보를 강제로 만들지 않고 data-check slot으로 대체합니다.
+            </p>
+          ) : null}
+          {slots.length > 0 ? (
+            <div className="mt-2 grid gap-1 md:grid-cols-3">
+              {slots.map((slot) => (
+                <div key={slot.slotId} className="rounded border border-violet-100 bg-violet-50/70 px-2 py-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium">{slot.title}</p>
+                    <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[9px] text-violet-800">
+                      {kindLabel(slot.kind)}
+                    </span>
+                  </div>
+                  {slot.subtitle ? <p className="mt-0.5 text-[10px] text-violet-900">{slot.subtitle}</p> : null}
+                  <p className="mt-1 text-[10px] text-violet-800">
+                    {slot.reasonLabelKo} · {slot.actionHintKo}
+                  </p>
+                  <p className="mt-0.5 text-[9px] text-violet-700">
+                    action: {slot.primaryActionLabelKo} · trade candidate: {String(slot.isTradeCandidate)}
+                  </p>
+                </div>
+              ))}
             </div>
           ) : null}
         </div>
       ) : null}
+
       {children}
     </div>
   );
