@@ -109,4 +109,27 @@ describe('userPersonalizationPromptBlock', () => {
     expect(summary.openActionItemCount).toBe(2);
     expect(summary.hint).toMatch(/참고만/);
   });
+
+  it('injects investment memory as structured summary without raw directives', () => {
+    const block = buildPersonalizationPromptBlock(
+      baseContext({
+        memorySummary: {
+          investmentMemoryLines: [
+            'AI 전력 인프라 thesis: 사용자는 LS/일진전기를 구조적 수요 관점에서 관찰',
+            'risk_pattern: 단기 하락 시 추가매수 유혹이 커질 수 있음',
+          ],
+          recentPbThemes: ['AI 전력 인프라 (2회)'],
+          recentPbSymbols: ['LS (2회)', '일진전기 (2회)'],
+          recentPbCheckpoints: ['수주 확인', '실적 확인', '수급 확인'],
+          recentPbEmotionShifts: ['불안하지만 thesis 유지'],
+        },
+        qualityMeta: { sources: ['user_investment_memory', 'pb_daily_conversations'], missingSources: [], readOnly: true },
+      }),
+    );
+    expect(block.compactKo).toContain('[사용자 투자 기억 요약]');
+    expect(block.compactKo).toContain('AI 전력 인프라');
+    expect(block.compactKo).toContain('추가매수 유혹');
+    expect(block.compactKo).toContain('[개인화 사용 원칙]');
+    expect(block.compactKo).not.toMatch(/매수하라|팔아라|자동\s*주문\s*실행|자동\s*매매\s*실행/);
+  });
 });

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### 2026-06-11 EVO-064 PB Memory Promotion & Personalization Injection
+
+- **Memory promotion policy:** added a pure `evaluateMemoryPromotionCandidate` policy that promotes only repeated, anchored, or explicit investment principles and keeps weak single-news reactions out of long-term memory.
+- **Standard memory candidate shape:** PB daily extraction now emits `memoryType`, normalized `memoryKey`, title/content, related symbols/themes, evidence, `promotionScore`, and `promotionReason`.
+- **Compare flow:** `PbActionCategory` and PB SQL action checks now include `compare`.
+- **SQL hardening:** `pb_daily_conversations` adds GIN indexes and template/action checks; `user_investment_memory` uses `(user_key, memory_type, memory_key)` uniqueness, promotion evidence fields, occurrence reinforcement, and an `updated_at` trigger.
+- **Personalization injection:** Today/Research/Committee/PB shared personalization context can include active investment memories plus recent PB themes, symbols, checkpoints, and emotion shifts under `[사용자 투자 기억 요약]` with `[개인화 사용 원칙]`.
+- **Guardrails:** promotion is additive and warning-only on missing schema; no raw conversation text storage, automatic trading, order, rebalancing, or buy/sell directive was added.
+
+### 2026-06-10 EVO-063 PB Daily Conversation Templates
+
+- **Private Banker daily check-in:** added a three-question PB check-in card with action buttons for buy, add-buy, sell, trim, hold, research, compare, and review flows.
+- **Template detection:** PB messages now resolve to `daily_checkin`, `buy_check`, `sell_check`, `anxiety_check`, `compare_check`, `research_check`, or `freeform` and inject required response sections into the PB prompt.
+- **Structured storage:** PB responses create a structured `pbDailyConversation` summary with template type, action category, thesis/risk snapshots, next checkpoints, and memory candidates. Save failures return a warning and do not block the PB answer.
+- **Memory context:** recent PB daily summaries and `user_investment_memory` are read into the PB prompt when the optional tables are applied.
+- **SQL:** added `docs/sql/append_pb_daily_conversations.sql` for `pb_daily_conversations` and `user_investment_memory`.
+- **Guardrails:** PB remains a judgment-structure and risk-check assistant only. No automatic trading, order, rebalancing, or buy/sell directive was added.
+
 ### 2026-06-08 EVO-062 AI Copilot Flow Reset
 
 - **Copilot status model:** added a shared no-dead-end status card model with one primary next action, companion copy, and explicit no-trade guardrails.

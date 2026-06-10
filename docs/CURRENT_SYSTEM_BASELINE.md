@@ -1,5 +1,23 @@
 # Current System Baseline
 
+## EVO-064 PB Memory Promotion & Personalization Injection
+
+- PB daily summaries can promote only filtered memory candidates into `user_investment_memory`.
+- Promotion is governed by a pure policy: repeated themes, explicit rules, symbol/theme anchors, and existing-memory reinforcement increase score; weak single-news or feeling-only reactions stay out.
+- `user_investment_memory` uniqueness is `(user_key, memory_type, memory_key)`; reinforcement increments occurrence count and refreshes `last_reinforced_at`.
+- Shared personalization context may include active investment memories, recent PB repeated themes/symbols, checkpoints, and emotion shifts.
+- Prompt blocks expose these as `[사용자 투자 기억 요약]` and apply `[개인화 사용 원칙]`: memory is for thesis/risk checking only, not trade direction.
+- Missing PB memory schema must degrade to warnings while preserving the user-facing PB answer and other personalization sources.
+
+## EVO-063 PB Daily Conversation Templates
+
+- Private Banker daily flow starts from a three-question check-in, not only free-form chat.
+- User intent is mapped to `daily_checkin`, `buy_check`, `sell_check`, `anxiety_check`, `compare_check`, `research_check`, or `freeform`.
+- PB responses must include template-specific sections and produce a structured summary with `templateType`, `actionCategory`, thesis/risk snapshots, next checkpoints, and memory candidates.
+- `pb_daily_conversations` stores structured summaries only. `user_investment_memory` is an optional promotion target for repeated or important judgment patterns.
+- Missing PB daily schema must not block the user-facing PB response; it should surface as an ops warning.
+- PB remains a risk-check and judgment-structure assistant: no automatic trading/order/rebalancing and no buy/sell directive.
+
 ## EVO-062 AI Copilot Flow Reset
 
 - Every major dashboard state should resolve to a Copilot status card with one primary next action.

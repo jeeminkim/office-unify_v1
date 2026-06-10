@@ -22,6 +22,7 @@ import {
   buildPersonalizationContextSummary,
   buildPersonalizationPromptBlock,
 } from '@/lib/server/userPersonalizationPromptBlock';
+import { getPbDailyPersonalizationSignals, getUserInvestmentMemoryContext } from '@/lib/server/privateBankerMemoryStore';
 import { COMMITTEE_LT_MEMORY_KEY, PRIVATE_BANKER_LT_MEMORY_KEY } from '@office-unify/ai-office-engine';
 
 const STALE_DAYS = 7;
@@ -305,6 +306,11 @@ export async function buildUserPersonalizationContext(
 
     let pbLtAvailable = false;
     let committeeLtAvailable = false;
+    let investmentMemoryLines: string[] = [];
+    let recentPbThemes: string[] = [];
+    let recentPbSymbols: string[] = [];
+    let recentPbCheckpoints: string[] = [];
+    let recentPbEmotionShifts: string[] = [];
     try {
       const [pbLt, committeeLt] = await Promise.all([
         selectPersonaLongTermSummary(supabase, key as OfficeUserKey, PRIVATE_BANKER_LT_MEMORY_KEY),
@@ -315,6 +321,29 @@ export async function buildUserPersonalizationContext(
       if (pbLtAvailable || committeeLtAvailable) sources.push('long_term_memory');
     } catch {
       missingSources.push('long_term_memory');
+    }
+
+    try {
+      const memoryContext = await getUserInvestmentMemoryContext(supabase, key as OfficeUserKey, 5);
+      if (memoryContext?.trim()) {
+        investmentMemoryLines = memoryContext.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 5);
+        sources.push('user_investment_memory');
+      }
+    } catch {
+      missingSources.push('user_investment_memory');
+    }
+
+    try {
+      const pbSignals = await getPbDailyPersonalizationSignals(supabase, key as OfficeUserKey, 30);
+      if (pbSignals) {
+        recentPbThemes = pbSignals.themes;
+        recentPbSymbols = pbSignals.symbols;
+        recentPbCheckpoints = pbSignals.checkpoints;
+        recentPbEmotionShifts = pbSignals.emotionShifts;
+        sources.push('pb_daily_conversations');
+      }
+    } catch {
+      missingSources.push('pb_daily_conversations');
     }
 
     if (recentSavedNoteCount > 0) {
@@ -353,7 +382,15 @@ export async function buildUserPersonalizationContext(
         nextRules,
       },
       dataQuality: { blockers, warnings },
-      memorySummary: { pbLtAvailable, committeeLtAvailable },
+      memorySummary: {
+        pbLtAvailable,
+        committeeLtAvailable,
+        investmentMemoryLines,
+        recentPbThemes,
+        recentPbSymbols,
+        recentPbCheckpoints,
+        recentPbEmotionShifts,
+      },
       promptBlock: { compactKo: '' },
       qualityMeta: { sources, missingSources, readOnly: true },
     };

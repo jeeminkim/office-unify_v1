@@ -114,9 +114,11 @@ select count(*) from information_schema.tables
 | 21 | `append_today_candidate_feedback.sql` | 사용자 피드백(hide_7d·mark_reviewed·keep_observing) | 피드백 저장 불가 · 리스크 점검 후보 사용자 제어 degraded |
 | 22 | `append_web_action_items.sql` | 통합 Action Item 인박스 | **`GET/POST /api/action-items` → `action_item_table_missing`** · 7개 출처에서 「액션 인박스에 저장」 불가 |
 | 23 | `append_daily_review_notes.sql` | Daily Review 일일 점검 메모 | **`POST /api/daily-review/notes` → table_missing** · 30일 복기 dailyReviewNotes partial · `/daily-review` 메모 저장 불가 |
+| 24 | `append_pb_daily_conversations.sql` | PB daily template conversation + 투자 기억 후보 | PB 응답은 계속 보이나 `pbDailyConversation.warning`에 schema missing · Today/Research/Committee/Risk Review 개인화 기억 미연계 |
 
 > `append_web_portfolio_ledger.sql`(관심·보유) 이후 적용 권장. Research follow-up(§3)과 병행 가능.
 > 피드백은 **confirm 후 POST**만 저장하며, impressions(노출 이력)와 분리합니다.
+> `append_pb_daily_conversations.sql`은 EVO-064 기준으로 GIN index, template/action CHECK, `user_investment_memory(user_key,memory_type,memory_key)` unique index, `updated_at` trigger까지 포함합니다. 기존 환경에 약한 `(user_key,memory_key)` unique가 남아 있으면 별도 감사 후 제거 여부를 판단하세요.
 
 **적용 후 확인:**
 
@@ -132,9 +134,36 @@ select table_name from information_schema.tables
      'watchlist_recommendation_candidates',
      'today_candidate_feedback',
      'web_action_items',
-     'web_daily_review_notes'
+     'web_daily_review_notes',
+     'pb_daily_conversations',
+     'user_investment_memory'
    )
  order by 1;
+```
+
+```sql
+-- PB daily conversation schema hardening
+select conname from pg_constraint
+ where conrelid = 'public.pb_daily_conversations'::regclass
+   and conname in (
+     'pb_daily_conversations_template_type_check',
+     'pb_daily_conversations_action_category_check'
+   );
+
+select indexname from pg_indexes
+ where schemaname = 'public'
+   and tablename in ('pb_daily_conversations', 'user_investment_memory')
+   and indexname in (
+     'idx_pb_daily_conversations_symbols_gin',
+     'idx_pb_daily_conversations_themes_gin',
+     'idx_user_investment_memory_unique_type_key',
+     'idx_user_investment_memory_user_updated'
+   );
+
+select trigger_name from information_schema.triggers
+ where event_object_schema = 'public'
+   and event_object_table = 'user_investment_memory'
+   and trigger_name = 'trg_user_investment_memory_updated_at';
 ```
 
 ```sql

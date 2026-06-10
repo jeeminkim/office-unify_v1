@@ -72,6 +72,30 @@ export function buildPersonalizationPromptBlock(ctx: UserPersonalizationContext)
     lines.push('- 최근 Today Candidate 피드백:', ...ctx.recentFeedback.summaryLines.map((l) => `  · ${l}`));
   }
 
+  const memory = ctx.memorySummary;
+  if (
+    memory?.investmentMemoryLines?.length ||
+    memory?.recentPbThemes?.length ||
+    memory?.recentPbSymbols?.length ||
+    memory?.recentPbCheckpoints?.length ||
+    memory?.recentPbEmotionShifts?.length
+  ) {
+    lines.push(
+      '',
+      '[사용자 투자 기억 요약]',
+      `- 최근 반복 관심 테마: ${memory?.recentPbThemes?.slice(0, 4).map((l) => sanitizePersonalizationLine(l, 80)).join(', ') || '-'}`,
+      `- 최근 반복 언급 종목: ${memory?.recentPbSymbols?.slice(0, 4).map((l) => sanitizePersonalizationLine(l, 80)).join(', ') || '-'}`,
+      '- 유지 중인 thesis:',
+      ...((memory?.investmentMemoryLines ?? []).filter((l) => /thesis|관찰|선호|position|watching/i.test(l)).slice(0, 3).map((l) => `  · ${sanitizePersonalizationLine(l)}`)),
+      '- 주의해야 할 행동 패턴:',
+      ...((memory?.investmentMemoryLines ?? []).filter((l) => /risk_pattern|유혹|추가매수|실수|보류/i.test(l)).slice(0, 3).map((l) => `  · ${sanitizePersonalizationLine(l)}`)),
+      '- 최근 불안/확신 변화:',
+      ...((memory?.recentPbEmotionShifts ?? []).slice(0, 3).map((l) => `  · ${sanitizePersonalizationLine(l)}`)),
+      '- 다음 판단에 반영할 확인 기준:',
+      ...((memory?.recentPbCheckpoints ?? []).slice(0, 4).map((l) => `  · ${sanitizePersonalizationLine(l)}`)),
+    );
+  }
+
   if (ctx.dataQuality.blockers.length) {
     lines.push(
       '- 데이터 품질 blocker(판단 점수보다 우선):',
@@ -86,6 +110,11 @@ export function buildPersonalizationPromptBlock(ctx: UserPersonalizationContext)
   }
 
   lines.push(
+    '',
+    '[개인화 사용 원칙]',
+    '- 위 기억은 매수/매도 지시가 아니라 판단 구조화와 리스크 점검에만 사용한다.',
+    '- 사용자의 기존 thesis와 충돌하는 새 정보가 있으면 단정하지 말고 변화 가능성으로 표시한다.',
+    '- 반복 행동 리스크는 하면 안 되는 행동 또는 확인 전 보류 문장에 반영한다.',
     '',
     '[답변 원칙]',
     '1. 매수/매도·자동 주문·자동 리밸런싱 지시 금지',

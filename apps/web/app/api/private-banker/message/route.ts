@@ -9,6 +9,20 @@ import { buildConcentrationRiskPromptSection, getPortfolioExposureSnapshotForUse
 import { buildInvestorProfilePromptContext } from '@/lib/server/suitabilityAssessment';
 import { buildLongResponseFallback, buildLongResponseFallbackFromError } from '@/lib/longResponseFallback';
 import { buildPbOutputContractAuditSummary } from '@/lib/server/pbOutputContractValidator';
+import {
+  buildPbMemoryExtractionPrompt,
+  buildPbTemplatePromptSection,
+  detectPbActionCategory,
+  detectPbTemplateType,
+  extractPbDailyConversationSummary,
+} from '@/lib/server/privateBankerConversationTemplates';
+import {
+  extractMemoryCandidates,
+  getRecentPbConversationContext,
+  getUserInvestmentMemoryContext,
+  promoteMemoryCandidate,
+  savePbDailyConversation,
+} from '@/lib/server/privateBankerMemoryStore';
 
 /**
  * POST /api/private-banker/message
@@ -61,10 +75,23 @@ export async function POST(req: Request) {
     );
   }
 
+  const templateType = detectPbTemplateType(content, body.pbTemplateType);
+  const actionCategory = detectPbActionCategory(content, body.pbActionCategory);
+
   let messageContent = content;
   try {
     const ip = await getInvestorProfileForUser(supabase, userKeyStr);
     const snap = await getPortfolioExposureSnapshotForUser(supabase, userKey);
+    const [recentPbContext, investmentMemoryContext] = await Promise.all([
+      getRecentPbConversationContext(supabase, userKey).catch(() => null),
+      getUserInvestmentMemoryContext(supabase, userKey).catch(() => null),
+    ]);
+    const pbTemplateSection = buildPbTemplatePromptSection({
+      templateType,
+      actionCategory,
+      recentConversationContext: recentPbContext,
+      memoryContext: investmentMemoryContext,
+    });
     const profileForConc = ip.ok && ip.profileStatus !== 'missing' ? ip.profile : null;
     const conc = buildConcentrationRiskPromptSection(profileForConc, snap);
     if (ip.ok) {
@@ -72,11 +99,11 @@ export async function POST(req: Request) {
         ip.profileStatus === 'missing' ? null : ip.profile,
         ip.profileStatus,
       );
-      messageContent = `${prefix}\n\n${conc}\n\n---\n\n${content}`;
+      messageContent = `${prefix}\n\n${conc}\n\n${pbTemplateSection}\n\n---\n\n${content}`;
     } else if (!ip.ok && ip.code === 'table_missing') {
-      messageContent = `[투자자 프로필 테이블 미적용 — docs/sql/append_investor_profile.sql. 판단 보조만 제공, 자동 주문 없음]\n\n${conc}\n\n---\n\n${content}`;
+      messageContent = `[투자자 프로필 테이블 미적용 — docs/sql/append_investor_profile.sql. 판단 보조만 제공, 자동 주문 없음]\n\n${conc}\n\n${pbTemplateSection}\n\n---\n\n${content}`;
     } else {
-      messageContent = `${conc}\n\n---\n\n${content}`;
+      messageContent = `${conc}\n\n${pbTemplateSection}\n\n---\n\n${content}`;
     }
   } catch {
     messageContent = content;
@@ -112,6 +139,35 @@ export async function POST(req: Request) {
       ? longResponseFallback.displayText
       : normalized.text;
     const fallbackUsed = Boolean(result.body.llmProviderNote && result.body.llmProviderNote.toLowerCase().includes('gemini'));
+    const dailySummary = extractPbDailyConversationSummary({
+      userContent: content,
+      assistantContent: normalized.text,
+      templateType,
+      actionCategory,
+    });
+    const dailySave = await savePbDailyConversation(supabase, {
+      userKey,
+      userMessageId: result.body.userMessage.id,
+      assistantMessageId: result.body.assistantMessage.id,
+      summary: dailySummary,
+    }).catch((e: unknown) => ({
+      ok: false as const,
+      code: 'save_failed' as const,
+      warning: e instanceof Error ? e.message : 'pb_daily_conversations save failed',
+    }));
+    const promotionResults = await Promise.all(
+      extractMemoryCandidates(dailySummary).map((candidate) =>
+        promoteMemoryCandidate(supabase, {
+          userKey,
+          candidate,
+          sourceConversationId: dailySave.ok ? dailySave.id ?? null : null,
+        }).catch((e: unknown) => ({
+          ok: false as const,
+          code: 'save_failed' as const,
+          warning: e instanceof Error ? e.message : 'memory promotion failed',
+        })),
+      ),
+    );
     const qualityMeta = {
       ...((result.body as { qualityMeta?: Record<string, unknown> }).qualityMeta ?? {}),
       privateBanker: {
@@ -122,6 +178,14 @@ export async function POST(req: Request) {
           longResponseFallbackUsed: longResponseFallback.exceededLimit,
           personalizationUsed: result.body.personalizationContextSummary ? true : undefined,
         }),
+        dailyConversation: {
+          templateType,
+          actionCategory,
+          memoryCandidateCount: dailySummary.memoryCandidates.length,
+          saved: dailySave.ok,
+          warning: dailySave.ok ? undefined : dailySave.warning,
+          promotedMemoryCount: promotionResults.filter((r) => r.ok).length,
+        },
       },
     };
     return NextResponse.json({
@@ -137,6 +201,14 @@ export async function POST(req: Request) {
         fallbackUsed,
       },
       qualityMeta,
+      pbDailyConversation: {
+        saved: dailySave.ok,
+        warning: dailySave.ok ? undefined : dailySave.warning,
+        summary: dailySummary,
+        promotedMemoryCount: promotionResults.filter((r) => r.ok).length,
+        promotionWarnings: promotionResults.filter((r) => !r.ok).map((r) => r.warning).slice(0, 3),
+        memoryExtractionPrompt: buildPbMemoryExtractionPrompt(dailySummary),
+      },
       deduplicated: result.deduplicated,
     });
   } catch (e: unknown) {

@@ -1,5 +1,21 @@
 # System Architecture (Personal Investment Console)
 
+## EVO-064 PB Memory Promotion & Personalization Injection
+
+- `apps/web/lib/server/investmentMemoryPromotionPolicy.ts` owns pure promotion decisions for PB memory candidates. It has no SQL or LLM dependency.
+- `privateBankerConversationTemplates.ts` extracts standardized memory candidates with memory type/key, evidence, related symbols/themes, and promotion scores.
+- `privateBankerMemoryStore.ts` saves daily summaries, evaluates promotion, upserts `user_investment_memory` by `(user_key, memory_type, memory_key)`, and increments occurrence counts on reinforcement.
+- `buildUserPersonalizationContext` reads `user_investment_memory` and recent `pb_daily_conversations` signals. The shared prompt block surfaces them under `[사용자 투자 기억 요약]` and `[개인화 사용 원칙]`.
+- Injection reaches PB directly and the existing shared personalization paths such as Research/Committee/Today context summaries without changing recommendation scores or creating trading actions.
+
+## EVO-063 PB Daily Conversation Templates
+
+- `apps/web/lib/server/privateBankerConversationTemplates.ts` owns PB template detection, template questions, required response sections, and deterministic extraction of structured save summaries.
+- `/private-banker` starts with a short three-question check-in card and action-category buttons. The UI sends `pbTemplateType` and `pbActionCategory` hints, while the server re-detects intent from the message.
+- `/api/private-banker/message` injects the selected template, recent PB daily conversation context, and optional `user_investment_memory` context before running the existing PB message flow.
+- `apps/web/lib/server/privateBankerMemoryStore.ts` writes structured summaries to `pb_daily_conversations` and reads recent PB/memory context. Missing schema becomes a warning, not a failed PB answer.
+- `user_investment_memory` is a promotion target for repeated or important memory candidates. Automatic trading/order/rebalancing and buy/sell directives remain forbidden.
+
 ## EVO-062 AI Copilot Flow Reset
 
 - `apps/web/lib/copilotStatusModel.ts` is the shared view-model layer for no-dead-end status cards. It maps screen state to status level, companion copy, one primary next action, secondary navigation, and guardrails.

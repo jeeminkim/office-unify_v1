@@ -52,6 +52,75 @@ export type PersonaChatMessageRequestBody = {
    * 성공 응답이 동일 프로세스 캐시에 있으면 LLM/DB를 다시 실행하지 않는다.
    */
   idempotencyKey?: string;
+  /** Private Banker 전용: 사용자가 UI에서 선택한 대화 템플릿. 서버가 발화 기반 감지를 우선 재확인한다. */
+  pbTemplateType?: PbConversationTemplateType;
+  /** Private Banker 전용: 사용자가 선택한 행동 범주. */
+  pbActionCategory?: PbActionCategory;
+};
+
+export type PbConversationTemplateType =
+  | 'daily_checkin'
+  | 'buy_check'
+  | 'sell_check'
+  | 'anxiety_check'
+  | 'compare_check'
+  | 'research_check'
+  | 'freeform';
+
+export type PbActionCategory =
+  | 'buy'
+  | 'add_buy'
+  | 'sell'
+  | 'trim'
+  | 'hold'
+  | 'watch'
+  | 'research'
+  | 'review'
+  | 'compare'
+  | 'no_action';
+
+export type PbDailyConversationMemoryCandidate = {
+  memoryType:
+    | 'investment_principle'
+    | 'risk_pattern'
+    | 'preferred_theme'
+    | 'avoidance_rule'
+    | 'watching_thesis'
+    | 'repeated_mistake'
+    | 'position_context'
+    | 'decision_style';
+  memoryKey: string;
+  title: string;
+  content: string;
+  relatedSymbols: string[];
+  relatedThemes: string[];
+  evidence: {
+    source: 'pb_daily_conversation';
+    conversationId?: string;
+    templateType?: PbConversationTemplateType;
+    actionCategory?: PbActionCategory;
+    userIntent?: string;
+    emotionalState?: string;
+    confidenceLevel?: string;
+    extractedAt: string;
+    relation?: 'supporting' | 'reinforcement' | 'contradiction' | 'thesis_shift';
+  };
+  promotionScore: number;
+  promotionReason: string;
+};
+
+export type PbDailyConversationSummary = {
+  templateType: PbConversationTemplateType;
+  userIntent: string;
+  actionCategory: PbActionCategory;
+  symbols: string[];
+  themes: string[];
+  emotionalState?: string;
+  confidenceLevel?: 'low' | 'medium' | 'high' | 'unknown';
+  thesisSnapshot: Record<string, unknown>;
+  riskSnapshot: Record<string, unknown>;
+  nextCheckpoints: string[];
+  memoryCandidates: PbDailyConversationMemoryCandidate[];
 };
 
 /** 투자위원회 토론(턴제) 한 발언자의 한 줄 */

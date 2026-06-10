@@ -48,6 +48,11 @@ export type UserPersonalizationContext = {
     personaLtAvailable?: boolean;
     pbLtAvailable?: boolean;
     committeeLtAvailable?: boolean;
+    investmentMemoryLines?: string[];
+    recentPbThemes?: string[];
+    recentPbSymbols?: string[];
+    recentPbCheckpoints?: string[];
+    recentPbEmotionShifts?: string[];
   };
   promptBlock: {
     compactKo: string;
