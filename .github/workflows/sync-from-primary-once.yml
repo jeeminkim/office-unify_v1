@@ -1,0 +1,44 @@
+name: One-time sync from office-unify
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/sync-from-primary-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout mirror repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Replace mirror contents with primary main
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp_dir="$(mktemp -d)"
+          git clone --depth 1 --branch main https://github.com/jeeminkim/office-unify.git "$temp_dir/source"
+          rsync -a --delete --exclude='.git' "$temp_dir/source/" ./
+          rm -rf "$temp_dir"
+
+      - name: Commit and push mirrored source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Mirror is already up to date."
+            exit 0
+          fi
+          git commit -m "chore: mirror office-unify main"
+          git push origin HEAD:main
