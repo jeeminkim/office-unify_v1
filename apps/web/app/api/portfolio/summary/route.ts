@@ -53,12 +53,12 @@ type EnhancedPortfolioSummaryResponse = {
     staleQuoteCount: number;
     missingMetadataCount: number;
     source: string;
-    providerUsed?: 'google_sheets_googlefinance' | 'yahoo' | 'none';
+    providerUsed?: 'toss_securities' | 'google_sheets_googlefinance' | 'yahoo' | 'none';
     delayed?: boolean;
     delayMinutes?: number;
     missingQuoteSymbols?: string[];
     fxAvailable?: boolean;
-    fxProviderUsed?: 'google_sheets_googlefinance' | 'yahoo' | 'none';
+    fxProviderUsed?: 'toss_securities' | 'google_sheets_googlefinance' | 'yahoo' | 'none';
     quoteFallbackUsed?: boolean;
     readBackSucceeded?: boolean;
     refreshRequested?: boolean;
@@ -368,7 +368,9 @@ export async function GET(req: Request) {
         staleQuoteCount: topPositionsRaw.filter((row) => row.stale).length,
         missingMetadataCount,
         source:
-          quoteBundle.providerMeta.providerUsed === 'google_sheets_googlefinance'
+          quoteBundle.providerMeta.providerUsed === 'toss_securities'
+            ? 'toss_securities_open_api'
+            : quoteBundle.providerMeta.providerUsed === 'google_sheets_googlefinance'
             ? 'google_sheets_googlefinance_readback'
             : quoteBundle.quoteAvailable
               ? 'yahoo_quote_plus_web_portfolio_holdings'

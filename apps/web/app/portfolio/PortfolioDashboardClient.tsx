@@ -42,12 +42,12 @@ type SummaryResponse = {
     staleQuoteCount: number;
     missingMetadataCount: number;
     source: string;
-    providerUsed?: "google_sheets_googlefinance" | "yahoo" | "none";
+    providerUsed?: "toss_securities" | "google_sheets_googlefinance" | "yahoo" | "none";
     delayed?: boolean;
     delayMinutes?: number;
     missingQuoteSymbols?: string[];
     fxAvailable?: boolean;
-    fxProviderUsed?: "google_sheets_googlefinance" | "yahoo" | "none";
+    fxProviderUsed?: "toss_securities" | "google_sheets_googlefinance" | "yahoo" | "none";
     quoteFallbackUsed?: boolean;
     readBackSucceeded?: boolean;
     refreshRequested?: boolean;
@@ -1293,6 +1293,8 @@ export function PortfolioDashboardClient() {
                         <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-900">fx_missing</span>
                       ) : row.currentPrice == null ? (
                         <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-900">stale/missing</span>
+                      ) : summary?.dataQuality.providerUsed === "toss_securities" ? (
+                        <span className="rounded bg-emerald-100 px-2 py-0.5 text-emerald-900">toss open api</span>
                       ) : summary?.dataQuality.providerUsed === "google_sheets_googlefinance" ? (
                         <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-900">googlefinance delayed</span>
                       ) : summary?.dataQuality.providerUsed === "yahoo" ? (

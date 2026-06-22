@@ -5,6 +5,7 @@ import {
   syncGoogleFinanceQuoteSheetRows,
 } from '@/lib/server/googleFinanceSheetQuoteService';
 import { buildGoogleSheetRowMap, normalizeQuoteKey } from '@/lib/server/quoteReadbackUtils';
+import { fetchTossMarketData, isTossMarketDataConfigured } from '@/lib/server/tossMarketDataService';
 
 type HoldingInput = {
   market: string;
@@ -21,13 +22,13 @@ export type HoldingQuote = {
   currency?: string;
   stale: boolean;
   sourceSymbol?: string;
-  provider?: 'google_sheets_googlefinance' | 'yahoo' | 'none';
+  provider?: 'toss_securities' | 'google_sheets_googlefinance' | 'yahoo' | 'none';
   delayed?: boolean;
   delayMinutes?: number;
 };
 
 export type QuoteProviderMeta = {
-  providerUsed: 'google_sheets_googlefinance' | 'yahoo' | 'none';
+  providerUsed: 'toss_securities' | 'google_sheets_googlefinance' | 'yahoo' | 'none';
   delayed: boolean;
   delayMinutes?: number;
   readBackSucceeded: boolean;
@@ -35,7 +36,7 @@ export type QuoteProviderMeta = {
   missingSymbols: string[];
   warnings: string[];
   fxAvailable: boolean;
-  fxProviderUsed: 'google_sheets_googlefinance' | 'yahoo' | 'none';
+  fxProviderUsed: 'toss_securities' | 'google_sheets_googlefinance' | 'yahoo' | 'none';
   quoteFallbackUsed: boolean;
 };
 
@@ -145,6 +146,60 @@ export async function loadHoldingQuotes(
 ): Promise<QuoteBundle> {
   const warnings: string[] = [];
   const quoteByHolding = new Map<string, HoldingQuote>();
+
+  if (isTossMarketDataConfigured()) {
+    try {
+      const symbolByHolding = new Map<string, string>();
+      holdings.forEach((holding) => {
+        const symbol = holding.market === 'KR'
+          ? holding.symbol.trim().toUpperCase().padStart(6, '0')
+          : holding.symbol.trim().toUpperCase();
+        symbolByHolding.set(holdingKey(holding.market, holding.symbol), symbol);
+      });
+      const toss = await fetchTossMarketData([...symbolByHolding.values()]);
+      let matched = 0;
+      symbolByHolding.forEach((sourceSymbol, key) => {
+        const [market, symbol] = key.split(':');
+        const row = toss.prices.get(sourceSymbol);
+        const timestamp = row?.timestamp ? Date.parse(row.timestamp) : NaN;
+        const stale = !Number.isFinite(timestamp) || Date.now() - timestamp > STALE_MS;
+        if (row) matched += 1;
+        quoteByHolding.set(key, {
+          market,
+          symbol,
+          currentPrice: row?.price,
+          currency: row?.currency,
+          stale: row ? stale : true,
+          sourceSymbol,
+          provider: row ? 'toss_securities' : 'none',
+          delayed: stale,
+        });
+      });
+      if (matched > 0) {
+        if (!toss.usdKrwRate) warnings.push('usdkrw_rate_unavailable');
+        return {
+          quoteByHolding,
+          usdKrwRate: toss.usdKrwRate,
+          warnings,
+          quoteAvailable: true,
+          providerMeta: {
+            providerUsed: 'toss_securities',
+            delayed: Array.from(quoteByHolding.values()).some((row) => row.delayed),
+            readBackSucceeded: true,
+            refreshRequested: options?.requestRefresh === true,
+            missingSymbols: computeMissingSymbols(holdings, quoteByHolding),
+            warnings,
+            fxAvailable: toss.usdKrwRate != null,
+            fxProviderUsed: toss.usdKrwRate != null ? 'toss_securities' : 'none',
+            quoteFallbackUsed: false,
+          },
+        };
+      }
+      warnings.push('toss_quote_empty');
+    } catch {
+      warnings.push('toss_quote_failed');
+    }
+  }
 
   if (isGoogleFinanceQuoteConfigured()) {
     try {
