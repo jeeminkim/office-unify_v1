@@ -6,6 +6,7 @@ Next.js(App Router) + TypeScript + Tailwind입니다. **저장소 루트(`../..`
 
 - **투자 대시보드** (`/`): 시스템 상태, 포트폴리오 요약, 일일 루틴, Trend 기억 요약, 신호 연결 + **오늘의 3줄 브리핑**, **Action feed**, **Profit→Goal 요약**, **My bias(반복 실수 패턴)**.
 - **포트폴리오 현황 대시보드** (`/portfolio`): 보유 평가/손익/비중/경고 점검 화면. Google Sheets `GOOGLEFINANCE` 기반 **추천 ticker 찾기**(후보 수식 → 지연 read-back → 사용자 승인 시에만 DB 저장) 지원.
+- **내 자산** (`/assets`): 토스증권 Open API의 실제 종합계좌 보유자산을 읽어 총 평가금액, 오늘/누적 손익, 국내·미국 구성, 보유종목을 표시하는 읽기 전용 화면.
 - **Quote recovery panel** (`/portfolio`): 미설정 ticker 감지 → 후보 검증 → 선택/일괄 승인 저장 → 시세 refresh → status 재확인까지 단계형 복구 흐름 제공. Sheets 후보가 **pending**이면 **검증 전 기본 추천**(KRX 숫자 등)을 사용자 버튼으로만 저장한 뒤 시세 refresh로 `portfolio_quotes` 행을 만들 수 있음(`apply-bulk`의 `source: default_unverified`).
 - **종목 dossier** (`/portfolio/[symbol]`): 매수 이유, 목표/손절, PB/위원회/Journal 근거, thesis health, active alerts + **관련 섹터 온도**(Sector Radar와 동일 요약을 서버에서 붙여 판단 보조, 자동 주문 없음) + **비거래 의사결정 일지**(해당 종목 최근 기록).
 - **비거래 의사결정 일지** (`/decision-journal`): 실제 주문이 아니라 사지 않음·팔지 않음·관망 등의 판단만 기록. Trade Journal은 **실행한 거래**를 기록한다. API: `GET|POST /api/decision-journal`, `PATCH|DELETE /api/decision-journal/[id]`, `GET /api/decision-journal/review-due`. SQL: `docs/sql/append_web_decision_journal.sql`.

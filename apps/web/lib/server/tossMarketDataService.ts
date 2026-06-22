@@ -26,6 +26,52 @@ type TossExchangeRateResponse = {
   };
 };
 
+export type TossAccount = {
+  accountNo: string;
+  accountSeq: number;
+  accountType: string;
+};
+
+type CurrencyAmounts = {
+  krw: string;
+  usd?: string | null;
+};
+
+export type TossHoldingItem = {
+  symbol: string;
+  name: string;
+  marketCountry: 'KR' | 'US' | string;
+  currency: 'KRW' | 'USD' | string;
+  quantity: string;
+  lastPrice: string;
+  averagePurchasePrice: string;
+  marketValue: {
+    purchaseAmount: string;
+    amount: string;
+    amountAfterCost: string;
+  };
+  profitLoss: {
+    amount: string;
+    amountAfterCost: string;
+    rate: string;
+    rateAfterCost: string;
+  };
+  dailyProfitLoss: { amount: string; rate: string };
+};
+
+export type TossHoldingsOverview = {
+  totalPurchaseAmount: CurrencyAmounts;
+  marketValue: { amount: CurrencyAmounts; amountAfterCost: CurrencyAmounts };
+  profitLoss: {
+    amount: CurrencyAmounts;
+    amountAfterCost: CurrencyAmounts;
+    rate: string;
+    rateAfterCost: string;
+  };
+  dailyProfitLoss: { amount: CurrencyAmounts; rate: string };
+  items: TossHoldingItem[];
+};
+
 export type TossMarketPrice = {
   symbol: string;
   price: number;
@@ -88,12 +134,45 @@ async function getAccessToken(): Promise<string> {
   return tokenRequest;
 }
 
-async function tossGet<T>(path: string, accessToken: string): Promise<T> {
+async function tossGet<T>(path: string, accessToken: string, headers?: HeadersInit): Promise<T> {
   const response = await fetchWithTimeout(`${TOSS_API_BASE_URL}${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: { Authorization: `Bearer ${accessToken}`, ...headers },
   });
   if (!response.ok) throw new Error(`toss_api_failed_${response.status}`);
   return (await response.json()) as T;
+}
+
+export async function fetchTossAssetSnapshot(): Promise<{
+  account: TossAccount;
+  holdings: TossHoldingsOverview;
+  usdKrwRate?: number;
+}> {
+  const accessToken = await getAccessToken();
+  const accountResponse = await tossGet<{ result?: TossAccount[] }>('/api/v1/accounts', accessToken);
+  const accounts = accountResponse.result ?? [];
+  const configuredSeq = Number(process.env.TOSS_API_ACCOUNT_SEQ ?? NaN);
+  const account = Number.isFinite(configuredSeq)
+    ? accounts.find((candidate) => candidate.accountSeq === configuredSeq)
+    : accounts.find((candidate) => candidate.accountType === 'BROKERAGE') ?? accounts[0];
+  if (!account) throw new Error('toss_account_not_found');
+
+  const [holdingsResponse, exchangeRateResponse] = await Promise.all([
+    tossGet<{ result?: TossHoldingsOverview }>('/api/v1/holdings', accessToken, {
+      'X-Tossinvest-Account': String(account.accountSeq),
+    }),
+    tossGet<TossExchangeRateResponse>(
+      '/api/v1/exchange-rate?baseCurrency=USD&quoteCurrency=KRW',
+      accessToken,
+    ).catch(() => null),
+  ]);
+  if (!holdingsResponse.result) throw new Error('toss_holdings_missing');
+
+  const rate = Number(exchangeRateResponse?.result?.midRate ?? exchangeRateResponse?.result?.rate ?? NaN);
+  return {
+    account,
+    holdings: holdingsResponse.result,
+    usdKrwRate: Number.isFinite(rate) && rate > 0 ? rate : undefined,
+  };
 }
 
 function chunks<T>(values: T[], size: number): T[][] {

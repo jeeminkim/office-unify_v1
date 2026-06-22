@@ -37,6 +37,7 @@ export const NAV_TREE: NavGroup[] = [
     label: '포트폴리오',
     description: '보유 · 원장 · 관심종목',
     children: [
+      { href: '/assets', label: '내 자산', description: '토스증권 계좌 평가금액·손익·보유 종목' },
       { href: '/portfolio', label: '보유 현황', description: '평가·시세 품질·집중도 (읽기 중심)' },
       { href: '/portfolio-ledger', label: '보유/거래 원장', description: '매매 기록·수량/평단·ticker 수정' },
       { href: '/watchlist', label: '관심종목 관리', description: '관심종목·섹터·ticker·등록 후보 승인' },
@@ -84,7 +85,7 @@ export const MOBILE_PRIMARY = [
   { href: '/', label: '홈', short: '홈' },
   { href: '/action-items', label: 'Action', short: '작업' },
   { href: '/daily-review', label: 'Daily', short: '일일' },
-  { href: '/portfolio', label: 'Portfolio', short: '보유' },
+  { href: '/assets', label: 'Assets', short: '자산' },
 ] as const;
 
 export function isNavActive(pathname: string, href: string): boolean {

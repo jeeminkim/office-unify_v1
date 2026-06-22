@@ -92,8 +92,8 @@ export function AppNav() {
               href={item.href}
               className={`mobile-nav-target flex min-w-[3rem] flex-col items-center justify-center whitespace-nowrap break-normal [overflow-wrap:normal] [word-break:keep-all] [writing-mode:horizontal-tb] rounded-lg px-2 py-1 text-[10px] ${
                 isNavActive(pathname, item.href) ||
-                (item.href === "/portfolio" &&
-                  (pathname.startsWith("/portfolio-ledger") || pathname.startsWith("/watchlist")))
+                (item.href === "/assets" &&
+                  (pathname.startsWith("/portfolio") || pathname.startsWith("/watchlist")))
                   ? "font-semibold text-slate-900"
                   : "text-slate-600"
               }`}

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchTossMarketData,
+  fetchTossAssetSnapshot,
   isTossMarketDataConfigured,
   resetTossTokenCacheForTests,
 } from '@/lib/server/tossMarketDataService';
@@ -76,5 +77,39 @@ describe('tossMarketDataService', () => {
     const result = await fetchTossMarketData(['MSFT']);
     expect(result.prices.get('MSFT')?.price).toBe(450);
     expect(result.usdKrwRate).toBeUndefined();
+  });
+
+  it('loads holdings with the selected Toss account header', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/oauth2/token')) {
+        return Response.json({ access_token: 'asset-token', token_type: 'Bearer', expires_in: 86400 });
+      }
+      if (url.endsWith('/api/v1/accounts')) {
+        return Response.json({ result: [{ accountNo: '12345678901', accountSeq: 7, accountType: 'BROKERAGE' }] });
+      }
+      if (url.endsWith('/api/v1/holdings')) {
+        expect(new Headers(init?.headers).get('X-Tossinvest-Account')).toBe('7');
+        return Response.json({
+          result: {
+            totalPurchaseAmount: { krw: '6500000', usd: null },
+            marketValue: { amount: { krw: '7200000', usd: null }, amountAfterCost: { krw: '7050000', usd: null } },
+            profitLoss: { amount: { krw: '700000', usd: null }, amountAfterCost: { krw: '550000', usd: null }, rate: '0.1077', rateAfterCost: '0.0846' },
+            dailyProfitLoss: { amount: { krw: '100000', usd: null }, rate: '0.0141' },
+            items: [],
+          },
+        });
+      }
+      if (url.includes('/api/v1/exchange-rate')) {
+        return Response.json({ result: { midRate: '1375' } });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const result = await fetchTossAssetSnapshot();
+    expect(result.account.accountSeq).toBe(7);
+    expect(result.holdings.marketValue.amount.krw).toBe('7200000');
+    expect(result.usdKrwRate).toBe(1375);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });
