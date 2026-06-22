@@ -3,6 +3,7 @@ import { requirePersonaChatAuth } from '@/lib/server/persona-chat-auth';
 import { getServiceSupabase } from '@/lib/server/supabase-service';
 import { listWebPortfolioHoldingsForUser, listWebPortfolioWatchlistForUser } from '@office-unify/supabase-access';
 import { resolveWatchlistInstrument } from '@/lib/server/watchlistInstrumentResolve';
+import { fetchTossAssetSnapshot } from '@/lib/server/tossMarketDataService';
 
 type Body = {
   market?: 'KR' | 'US';
@@ -40,9 +41,10 @@ export async function POST(req: Request) {
         : 'AUTO';
 
   try {
-    const [holdings, watchlist] = await Promise.all([
+    const [holdings, watchlist, tossHoldings] = await Promise.all([
       listWebPortfolioHoldingsForUser(supabase, auth.userKey),
       listWebPortfolioWatchlistForUser(supabase, auth.userKey),
+      fetchTossAssetSnapshot().then((snapshot) => snapshot.holdings.items).catch(() => []),
     ]);
     const includeExisting = body.includeExisting !== false;
     const result = resolveWatchlistInstrument({
@@ -52,14 +54,21 @@ export async function POST(req: Request) {
       symbol: body.symbol,
       name: body.name,
       holdings: includeExisting
-        ? holdings.map((h) => ({
+        ? [...holdings.map((h) => ({
             market: h.market,
             symbol: h.symbol,
             name: h.name,
             sector: h.sector,
             google_ticker: h.google_ticker,
             quote_symbol: h.quote_symbol,
-          }))
+          })), ...tossHoldings.map((h) => ({
+            market: h.marketCountry,
+            symbol: h.symbol,
+            name: h.name,
+            sector: null,
+            google_ticker: h.marketCountry === 'KR' ? `KRX:${h.symbol}` : h.symbol,
+            quote_symbol: h.marketCountry === 'KR' ? undefined : h.symbol,
+          }))]
         : [],
       watchlist: includeExisting
         ? watchlist.map((w) => ({

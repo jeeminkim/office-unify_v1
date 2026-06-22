@@ -38,6 +38,7 @@ export const NAV_TREE: NavGroup[] = [
     description: '보유 · 원장 · 관심종목',
     children: [
       { href: '/assets', label: '내 자산', description: '토스증권 계좌 평가금액·손익·보유 종목' },
+      { href: '/discover', label: '종목 탐색', description: '종목명 검색·토스 현재가·가격 흐름 관찰 후보' },
       { href: '/portfolio', label: '보유 현황', description: '평가·시세 품질·집중도 (읽기 중심)' },
       { href: '/portfolio-ledger', label: '보유/거래 원장', description: '매매 기록·수량/평단·ticker 수정' },
       { href: '/watchlist', label: '관심종목 관리', description: '관심종목·섹터·ticker·등록 후보 승인' },

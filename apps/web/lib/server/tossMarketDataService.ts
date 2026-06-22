@@ -79,6 +79,40 @@ export type TossMarketPrice = {
   timestamp?: string;
 };
 
+export type TossStockInfo = {
+  symbol: string;
+  name: string;
+  englishName: string;
+  market: 'KOSPI' | 'KOSDAQ' | 'NYSE' | 'NASDAQ' | 'AMEX' | 'KR_ETC' | 'US_ETC' | string;
+  securityType: string;
+  isCommonShare: boolean;
+  status: string;
+  currency: string;
+  koreanMarketDetail?: {
+    liquidationTrading?: boolean;
+    nxtSupported?: boolean;
+    krxTradingSuspended?: boolean;
+    nxtTradingSuspended?: boolean;
+  } | null;
+};
+
+export type TossCandle = {
+  timestamp: string;
+  openPrice: string;
+  highPrice: string;
+  lowPrice: string;
+  closePrice: string;
+  volume: string;
+  currency: string;
+};
+
+export type TossStockWarning = {
+  warningType: string;
+  exchange?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+};
+
 let tokenCache: { accessToken: string; expiresAt: number } | null = null;
 let tokenRequest: Promise<string> | null = null;
 
@@ -134,12 +168,55 @@ async function getAccessToken(): Promise<string> {
   return tokenRequest;
 }
 
-async function tossGet<T>(path: string, accessToken: string, headers?: HeadersInit): Promise<T> {
+async function tossGet<T>(
+  path: string,
+  accessToken: string,
+  headers?: HeadersInit,
+  canRetryAuth = true,
+): Promise<T> {
   const response = await fetchWithTimeout(`${TOSS_API_BASE_URL}${path}`, {
     headers: { Authorization: `Bearer ${accessToken}`, ...headers },
   });
+  if (response.status === 401 && canRetryAuth) {
+    tokenCache = null;
+    const refreshedToken = await getAccessToken();
+    return tossGet<T>(path, refreshedToken, headers, false);
+  }
   if (!response.ok) throw new Error(`toss_api_failed_${response.status}`);
   return (await response.json()) as T;
+}
+
+export async function fetchTossStockInfo(symbols: string[]): Promise<Map<string, TossStockInfo>> {
+  const normalized = Array.from(new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean)));
+  if (normalized.length === 0) return new Map();
+  const accessToken = await getAccessToken();
+  const responses = await Promise.all(chunks(normalized, MAX_SYMBOLS_PER_REQUEST).map((batch) =>
+    tossGet<{ result?: TossStockInfo[] }>(
+      `/api/v1/stocks?symbols=${encodeURIComponent(batch.join(','))}`,
+      accessToken,
+    ),
+  ));
+  const rows = responses.flatMap((response) => response.result ?? []);
+  return new Map(rows.map((row) => [row.symbol.trim().toUpperCase(), row]));
+}
+
+export async function fetchTossDailyCandles(symbol: string, count = 30): Promise<TossCandle[]> {
+  const accessToken = await getAccessToken();
+  const safeCount = Math.max(1, Math.min(200, Math.trunc(count)));
+  const response = await tossGet<{ result?: { candles?: TossCandle[] } }>(
+    `/api/v1/candles?symbol=${encodeURIComponent(symbol.trim().toUpperCase())}&interval=1d&count=${safeCount}&adjusted=true`,
+    accessToken,
+  );
+  return response.result?.candles ?? [];
+}
+
+export async function fetchTossStockWarnings(symbol: string): Promise<TossStockWarning[]> {
+  const accessToken = await getAccessToken();
+  const response = await tossGet<{ result?: TossStockWarning[] }>(
+    `/api/v1/stocks/${encodeURIComponent(symbol.trim().toUpperCase())}/warnings`,
+    accessToken,
+  );
+  return response.result ?? [];
 }
 
 export async function fetchTossAssetSnapshot(): Promise<{
